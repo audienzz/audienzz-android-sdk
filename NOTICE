@@ -1,0 +1,19 @@
+Apache Prebid Mobile Android SDK
+Copyright© 2023 Prebid.org
+====================
+This product includes software developed at Copyright© 2023 Prebid.org
+
+Link to original library: [https://github.com/prebid/prebid-mobile-android)
+
+Overview:
+This library uses the Prebid SDK, only as a dependency and is connected using Gradle via
+mavenCentral. All Prebid Samples are copied in their original form and correspond to the version
+specified in gradle/libs.versions.toml#prebid. Any changes made to the files are reflected in
+the following changelog.
+
+Changelog:
+- ([Example PrebidDemoJava/build.gradle](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoJava/build.gradle))
+- ([Example PrebidDemoKotlin/build.gradle](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoKotlin/build.gradle))
+- ([Example PrebidInternalTestApp/build.gradle](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/build.gradle))
+
+You can read more about changes in files in the header of each file.

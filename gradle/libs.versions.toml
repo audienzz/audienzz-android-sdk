@@ -1,0 +1,64 @@
+[versions]
+# plugin
+gradle-android = "8.2.2"
+# prebid
+prebid = "2.2.0"
+# kotlin
+kotlin = "1.8.22"
+kotlin-coroutines = "1.7.0"
+kotlin-immutable-collections = "0.3.5"
+kotlin-atomic = "0.21.0"
+kotlin-serialization-json = "1.5.1"
+# project
+jvm-target = "17"
+jvm-target-kotlin = "17"
+sdk-min = "26"
+sdk-compile = "33"
+build-tools-version = "34.0.0"
+# test
+test-junit = "4.13.2"
+test-mockk = "1.13.7"
+
+[libraries]
+# plugin
+gradle-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+# prebid
+prebid = { module = "org.prebid:prebid-mobile-sdk", version.ref = "prebid" }
+# kotlin
+kotlin-bom = { module = "org.jetbrains.kotlin:kotlin-bom", version.ref = "kotlin" }
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib" }
+kotlin-allopen = { module = "org.jetbrains.kotlin:kotlin-allopen", version.ref = "kotlin" }
+kotlin-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlin-serialization-json" }
+kotlin-coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlin-coroutines" }
+kotlin-immutable-collections = { module = "org.jetbrains.kotlinx:kotlinx-collections-immutable", version.ref = "kotlin-immutable-collections" }
+kotlin-atomic = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "kotlin-atomic" }
+# test
+test-junit = { module = "junit:junit", version.ref = "test-junit" }
+test-mockk = { module = "io.mockk:mockk", version.ref = "test-mockk" }
+test-kotlin-coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlin-coroutines" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "gradle-android" }
+android-library = { id = "com.android.library", version.ref = "gradle-android" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlin-allopen = { id = "org.jetbrains.kotlin.plugin.allopen", version.ref = "kotlin" }
+
+[bundles]
+# bom
+kotlin-bom = [
+    "kotlin-stdlib",
+]
+# frameworks
+multithreading = ["kotlin-coroutines"]
+data = [
+    "kotlin-immutable-collections",
+    "kotlin-atomic",
+    "kotlin-serialization-json",
+]
+# test
+test = [
+    "test-junit",
+    "test-mockk",
+    "test-kotlin-coroutines",
+]
