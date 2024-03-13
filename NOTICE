@@ -15,5 +15,7 @@ Changelog:
 - ([Example PrebidDemoJava/build.gradle](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoJava/build.gradle))
 - ([Example PrebidDemoKotlin/build.gradle](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoKotlin/build.gradle))
 - ([Example PrebidInternalTestApp/build.gradle](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/build.gradle))
+- ([Example PrebidInternalTestApp/utils/DemoItemProvider](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/src/java/org/prebid/mobile/renderingtestapp/utils/DemoItemProvider.kt))
+- ([Example PrebidInternalTestApp/AdActivity](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/src/java/org/prebid/mobile/renderingtestapp/AdActivity.kt))
 
 You can read more about changes in files in the header of each file.

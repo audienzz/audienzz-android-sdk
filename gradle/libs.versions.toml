@@ -24,6 +24,9 @@ test-mockk = "1.13.7"
 gradle-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 # prebid
 prebid = { module = "org.prebid:prebid-mobile-sdk", version.ref = "prebid" }
+prebid-admob-adapters = { module = "org.prebid:prebid-mobile-sdk-admob-adapters", version.ref = "prebid" }
+prebid-max-adapters = { module = "org.prebid:prebid-mobile-sdk-max-adapters", version.ref = "prebid" }
+prebid-gam-event-handlers = { module = "org.prebid:prebid-mobile-sdk-gam-event-handlers", version.ref = "prebid" }
 # kotlin
 kotlin-bom = { module = "org.jetbrains.kotlin:kotlin-bom", version.ref = "kotlin" }
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib" }
@@ -48,6 +51,13 @@ kotlin-allopen = { id = "org.jetbrains.kotlin.plugin.allopen", version.ref = "ko
 # bom
 kotlin-bom = [
     "kotlin-stdlib",
+]
+# bom
+prebid = [
+    "prebid",
+    "prebid-admob-adapters",
+    "prebid-max-adapters",
+    "prebid-gam-event-handlers",
 ]
 # frameworks
 multithreading = ["kotlin-coroutines"]

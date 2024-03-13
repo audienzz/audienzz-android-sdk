@@ -45,7 +45,7 @@ dependencies {
 
     // prebid
     // TODO change api to implementation
-    api(libs.prebid)
+    api(libs.bundles.prebid)
 
     // Frameworks
     implementation(libs.bundles.multithreading)
