@@ -2,7 +2,7 @@
  * This file was mentioned as modified in the NOTICE file by Apache 2.0 License.
  *
  * Changelog:
- * - replace in onOptionsItemSelected switch to if else
+ * - Replaced in onOptionsItemSelected switch to if else
  */
 
 /*

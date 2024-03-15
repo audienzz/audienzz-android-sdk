@@ -1,4 +1,11 @@
 /*
+ * This file was mentioned as modified in the NOTICE file by Apache 2.0 License.
+ *
+ * Changelog:
+ * - Changed default title in initUi
+ */
+
+/*
  *    Copyright 2018-2021 Prebid.org, Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -66,7 +73,7 @@ abstract class AdFragment : BaseFragment() {
             val storedAuctionResponse = it.getString(getString(R.string.stored_auction_response), "")
             PrebidMobile.setStoredAuctionResponse(storedAuctionResponse)
             height = it.getInt(getString(R.string.key_height))
-            val title = it.getString(getString(R.string.key_title), getString(R.string.segment_title_in_app))
+            val title = it.getString(getString(R.string.key_title), getString(R.string.segment_title_gam))
             setTitle(title)
             shouldSetNoBids()
             it.getString(ARGUMENT_ACCOUNT_ID)?.let { accountId ->

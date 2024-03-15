@@ -12,10 +12,22 @@ specified in gradle/libs.versions.toml#prebid. Any changes made to the files are
 the following changelog.
 
 Changelog:
-- ([Example PrebidDemoJava/build.gradle](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoJava/build.gradle))
-- ([Example PrebidDemoKotlin/build.gradle](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoKotlin/build.gradle))
-- ([Example PrebidInternalTestApp/build.gradle](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/build.gradle))
-- ([Example PrebidInternalTestApp/utils/DemoItemProvider](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/src/java/org/prebid/mobile/renderingtestapp/utils/DemoItemProvider.kt))
-- ([Example PrebidInternalTestApp/AdActivity](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/src/java/org/prebid/mobile/renderingtestapp/AdActivity.kt))
+- ([Example/PrebidDemoJava/build.gradle](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoJava/build.gradle))
+- ([Example/PrebidDemoJava/testcases/TestCaseRepository](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoJava/src/main/java/org/prebid/mobile/javademo/testcases/TestCaseRepository.java))
+- ([Example/PrebidDemoJava/AndroidManifest](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoJava/src/main/AndroidManifest.xml))
+- ([Example/PrebidDemoJava/string](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoJava/src/main/res/values/string.xml))
+
+- ([Example/PrebidDemoKotlin/build.gradle](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoKotlin/build.gradle))
+- ([Example/PrebidDemoKotlin/testcases/TestCaseRepository](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoKotlin/src/main/java/org/prebid/mobile/prebidkotlindemo/testcases/TestCaseRepository.kt))
+- ([Example/PrebidDemoKotlin/AndroidManifest](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoKotlin/src/main/AndroidManifest.xml))
+- ([Example/PrebidDemoKotlin/string](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidDemoKotlin/src/main/res/values/string.xml))
+
+- ([Example/PrebidInternalTestApp/build.gradle](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/build.gradle))
+- ([Example/PrebidInternalTestApp/AdActivity](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/src/java/org/prebid/mobile/renderingtestapp/AdActivity.kt))
+- ([Example/PrebidInternalTestApp/AdFragment](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/src/java/org/prebid/mobile/renderingtestapp/AdFragment.kt))
+- ([Example/PrebidInternalTestApp/data/DemoItem](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/src/java/org/prebid/mobile/renderingtestapp/data/DemoItem.kt))
+- ([Example/PrebidInternalTestApp/utils/DemoItemProvider](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/src/java/org/prebid/mobile/renderingtestapp/utils/DemoItemProvider.kt))
+- ([Example/PrebidInternalTestApp/navigation](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/src/main/res/navigation/bidding_navigation.xml))
+- ([Example/PrebidInternalTestApp/arrays](https://github.com/audienzz/audienzz-android-sdk/Example/PrebidInternalTestApp/src/main/res/values/arrays.xml))
 
 You can read more about changes in files in the header of each file.

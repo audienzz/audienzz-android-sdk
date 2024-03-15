@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ This file was mentioned as modified in the NOTICE file by Apache 2.0 License
+  ~
+  ~ Changelog:
+  ~ - Added GamOriginalApiNativeLazyStyles
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="org.prebid.mobile.javademo">
 
@@ -75,6 +81,9 @@
             android:exported="true" />
         <activity
             android:name=".activities.ads.gam.original.GamOriginalApiNativeStyles"
+            android:exported="true" />
+        <activity
+            android:name=".activities.ads.gam.original.GamOriginalApiNativeLazyStyles"
             android:exported="true" />
         <activity
             android:name=".activities.ads.gam.original.GamOriginalApiVideoInStream"

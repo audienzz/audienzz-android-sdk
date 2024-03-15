@@ -1,3 +1,10 @@
+<!--
+  ~ This file was mentioned as modified in the NOTICE file by Apache 2.0 License.
+  ~
+  ~ Changelog:
+  ~ - Added gam_original_display_banner_320x50_lazy
+  ~ - Added gam_rendering_display_banner_320x50_lazy
+-->
 <resources>
 
     <string name="app_name">Prebid Kotlin Demo</string>
@@ -11,6 +18,7 @@
     <string name="settings_text">Demonstration of Prebid SDK customization in the Demo App will be introduced soon.</string>
 
     <string name="gam_original_display_banner_320x50">GAM (Original API) Display Banner 320x50</string>
+    <string name="gam_original_display_banner_320x50_lazy">GAM (Original) Display Banner 320x50 Lazy</string>
     <string name="gam_original_display_banner_300x250">GAM (Original API) Display Banner 300x250</string>
     <string name="gam_original_display_banner_multi_size">GAM (Original API) Display Banner Multi-size</string>
     <string name="gam_original_video_banner">GAM (Original API) Video Banner</string>
@@ -26,6 +34,7 @@
     <string name="gam_original_native_styles">GAM (Original API) Native Styles</string>
 
     <string name="gam_rendering_display_banner_320x50">GAM (Rendering API) Display Banner 320x50</string>
+    <string name="gam_rendering_display_banner_320x50_lazy">GAM (Rendering) Display Banner 320x50 Lazy</string>
     <string name="gam_rendering_display_interstitial">GAM (Rendering API) Display Interstitial</string>
     <string name="gam_rendering_video_banner">GAM (Rendering API) Video Banner</string>
     <string name="gam_rendering_video_interstitial">GAM (Rendering API) Video Interstitial</string>

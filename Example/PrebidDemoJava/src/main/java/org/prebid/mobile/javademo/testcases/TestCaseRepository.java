@@ -1,3 +1,10 @@
+/**
+ * This file was mentioned as modified in the NOTICE file by Apache 2.0 License.
+ * <p>
+ * Changelog:
+ * - Added in getList test case with GamOriginalApiNativeLazyStyles
+ */
+
 package org.prebid.mobile.javademo.testcases;
 
 import com.google.common.collect.Lists;
@@ -11,6 +18,7 @@ import org.prebid.mobile.javademo.activities.ads.gam.original.GamOriginalApiMult
 import org.prebid.mobile.javademo.activities.ads.gam.original.GamOriginalApiMultiformatBannerVideoNativeStyles;
 import org.prebid.mobile.javademo.activities.ads.gam.original.GamOriginalApiMultiformatInterstitial;
 import org.prebid.mobile.javademo.activities.ads.gam.original.GamOriginalApiNativeInApp;
+import org.prebid.mobile.javademo.activities.ads.gam.original.GamOriginalApiNativeLazyStyles;
 import org.prebid.mobile.javademo.activities.ads.gam.original.GamOriginalApiNativeStyles;
 import org.prebid.mobile.javademo.activities.ads.gam.original.GamOriginalApiVideoBanner;
 import org.prebid.mobile.javademo.activities.ads.gam.original.GamOriginalApiVideoInStream;
@@ -96,6 +104,12 @@ public class TestCaseRepository {
                 AdFormat.NATIVE,
                 IntegrationKind.GAM_ORIGINAL,
                 GamOriginalApiNativeStyles.class
+            ),
+            new TestCase(
+                R.string.gam_original_native_lazy_styles,
+                AdFormat.NATIVE,
+                IntegrationKind.GAM_ORIGINAL,
+                GamOriginalApiNativeLazyStyles.class
             ),
             new TestCase(
                 R.string.gam_original_in_stream,

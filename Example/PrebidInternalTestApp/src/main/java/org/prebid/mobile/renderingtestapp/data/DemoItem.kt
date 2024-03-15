@@ -1,4 +1,11 @@
 /*
+ * This file was mentioned as modified in the NOTICE file by Apache 2.0 License.
+ *
+ * Changelog:
+ * - Removed all enum values related to ads of types in-app, max and adMob
+ */
+
+/*
  *    Copyright 2018-2021 Prebid.org, Inc.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,11 +36,8 @@ enum class Tag(val tagName: String) {
     INTERSTITIAL("Interstitial"),
     NATIVE("Native"),
 
-    IN_APP("In-App"),
     GAM("GAM"),
     ORIGINAL("Original"),
-    ADMOB("AdMob"),
-    MAX("Max"),
 
     ALL("All")
 }

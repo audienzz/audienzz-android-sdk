@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
+  ~ This file was mentioned as modified in the NOTICE file by Apache 2.0 License
+  ~
+  ~ Changelog:
+  ~ - Removed all values related to ads of types in-app, max and adMob
+-->
+
+<!--
   ~    Copyright 2018-2021 Prebid.org, Inc.
   ~
   ~    Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,11 +33,8 @@
     </string-array>
 
     <string-array name="segments_integration">
-        <item>@string/segment_title_in_app</item>
         <item>@string/segment_title_gam</item>
         <item>@string/segment_title_gam_original</item>
-        <item>@string/segment_title_admob</item>
-        <item>@string/segment_title_max</item>
         <item>@string/segment_title_all</item>
     </string-array>
 
@@ -42,7 +46,4 @@
     <string name="segment_title_all">All</string>
     <string name="segment_title_gam">GAM</string>
     <string name="segment_title_gam_original">Original</string>
-    <string name="segment_title_admob">AdMob</string>
-    <string name="segment_title_max">Max</string>
-    <string name="segment_title_in_app">In-App</string>
 </resources>
