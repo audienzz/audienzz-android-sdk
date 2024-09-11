@@ -1,0 +1,68 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+android {
+    setCompileSdkVersion(34)
+    setBuildToolsVersion(
+        project.hasProperty("buildToolsVersion")
+            ? project.getProperty("buildToolsVersion")
+            : "34.0.0"
+    )
+    defaultConfig {
+        minSdkVersion 26
+        targetSdkVersion 34
+        versionCode project.hasProperty("versionCode")
+            ? project.getProperty("versionCode").toInteger()
+            : 1
+        versionName project.hasProperty("versionName")
+            ? project.getProperty("versionName") + "_KOTLIN"
+            : "offline"
+        applicationId "org.audienzz.mobile.testapp"
+        namespace applicationId
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        multiDexEnabled true
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        dataBinding true
+    }
+    // Fix for Exoplayer Problem
+    packagingOptions {
+        exclude("META-INF/*.kotlin_module")
+    }
+
+    def compileSourcesTask = task("compileSources")
+
+    applicationVariants.configureEach {
+        def nameTask = name[0].toUpperCase(Locale.getDefault()) + name.substring(1, name.size())
+        def flavoredCompileSourcesTask = tasks.named("compile${nameTask}Sources").get()
+        compileSourcesTask.dependsOn(flavoredCompileSourcesTask)
+    }
+}
+
+dependencies {
+    implementation project(':Audienzz')
+
+    // Standard libraries
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation("androidx.core:core-ktx:1.13.1")
+
+    // Advertisement
+    implementation 'com.google.android.gms:play-services-ads:23.0.0'
+
+    // Image Downloader
+    implementation "com.github.bumptech.glide:glide:4.14.2"
+
+    // Multidex
+    implementation 'androidx.multidex:multidex:2.0.1'
+
+    // Video Player
+    implementation 'com.google.android.exoplayer:exoplayer:2.19.1'
+    implementation 'com.google.android.exoplayer:exoplayer-core:2.19.1'
+    implementation 'com.google.android.exoplayer:exoplayer-ui:2.19.1'
+    implementation 'com.google.android.exoplayer:extension-ima:2.19.1'
+}

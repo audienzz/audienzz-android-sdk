@@ -1,0 +1,154 @@
+{
+  "formatVersion" : 1,
+  "database" : {
+    "version" : 1,
+    "identityHash" : "06c545b35f72b1e4d046d701f5747800",
+    "entities" : [
+      {
+        "tableName" : "event",
+        "createSql" : "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `uuid` TEXT, `visitor_id` TEXT, `company_id` TEXT, `session_id` TEXT, `device_id` TEXT, `event_type` TEXT, `timestamp` INTEGER NOT NULL, `result_code` TEXT, `ad_unit_id` TEXT, `ad_view_id` TEXT, `target_keywords` TEXT, `autorefresh` INTEGER, `autorefresh_time` INTEGER, `refresh` INTEGER, `sizes` TEXT, `ad_type` TEXT, `ad_subtype` TEXT, `api_type` TEXT, `error_message` TEXT, `screen_name` TEXT)",
+        "fields" : [
+          {
+            "fieldPath" : "id",
+            "columnName" : "id",
+            "affinity" : "INTEGER",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "uuid",
+            "columnName" : "uuid",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "visitorId",
+            "columnName" : "visitor_id",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "companyId",
+            "columnName" : "company_id",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "sessionId",
+            "columnName" : "session_id",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "deviceId",
+            "columnName" : "device_id",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "eventType",
+            "columnName" : "event_type",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "timestamp",
+            "columnName" : "timestamp",
+            "affinity" : "INTEGER",
+            "notNull" : true
+          },
+          {
+            "fieldPath" : "resultCode",
+            "columnName" : "result_code",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "adUnitId",
+            "columnName" : "ad_unit_id",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "adViewId",
+            "columnName" : "ad_view_id",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "targetKeywords",
+            "columnName" : "target_keywords",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "isAutorefresh",
+            "columnName" : "autorefresh",
+            "affinity" : "INTEGER",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "autorefreshTime",
+            "columnName" : "autorefresh_time",
+            "affinity" : "INTEGER",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "isRefresh",
+            "columnName" : "refresh",
+            "affinity" : "INTEGER",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "sizes",
+            "columnName" : "sizes",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "adType",
+            "columnName" : "ad_type",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "adSubtype",
+            "columnName" : "ad_subtype",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "apiType",
+            "columnName" : "api_type",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "errorMessage",
+            "columnName" : "error_message",
+            "affinity" : "TEXT",
+            "notNull" : false
+          },
+          {
+            "fieldPath" : "screenName",
+            "columnName" : "screen_name",
+            "affinity" : "TEXT",
+            "notNull" : false
+          }
+        ],
+        "primaryKey" : {
+          "autoGenerate" : true,
+          "columnNames" : [
+            "id"
+          ]
+        },
+        "indices" : [],
+        "foreignKeys" : []
+      }
+    ],
+    "views" : [],
+    "setupQueries" : [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '06c545b35f72b1e4d046d701f5747800')"
+    ]
+  }
+}
