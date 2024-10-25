@@ -1,6 +1,8 @@
 [versions]
 # plugin
 gradle-android = "8.2.2"
+maven-publish = "0.29.0"
+nmcp = "0.0.7"
 # prebid
 prebid = "2.2.3"
 # GMS
@@ -23,7 +25,7 @@ dagger = "2.51.1"
 # project
 jvm-target = "17"
 jvm-target-kotlin = "17"
-sdk-min = "26"
+sdk-min = "24"
 sdk-compile = "34"
 build-tools-version = "34.0.0"
 # test
@@ -77,6 +79,8 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 kotlin-allopen = { id = "org.jetbrains.kotlin.plugin.allopen", version.ref = "kotlin" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 kotlin-ksp = { id = "com.google.devtools.ksp", version.ref = "kotlin-ksp" }
+maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publish" }
+nmcp = { id = "com.gradleup.nmcp", version.ref = "nmcp" }
 
 [bundles]
 # bom

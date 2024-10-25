@@ -24,7 +24,7 @@ android {
     }
 
     defaultConfig {
-        namespace = "ch.audienzz"
+        namespace = "org.audienzz"
         minSdk = libs.versions.sdk.min.get().toInt()
         buildConfigField(
             "String",

@@ -271,12 +271,13 @@ object AudienzzPrebidMobile {
         mutableMapOf<AudienzzPrebidMobilePluginRenderer, PrebidMobilePluginRenderer>()
 
     init {
-        prebidServerAccountId = "0689a263-318d-448b-a3d4-b02e8a709d9d"
+        prebidServerAccountId = "3927"
         prebidServerHost = AudienzzHost.createCustomHost(
-            "https://prebid-server-test-j.prebid.org/openrtb2/auction",
+            "https://ib.adnxs.com/openrtb2/prebid",
         )
-        customStatusEndpoint = "https://prebid-server-test-j.prebid.org/status"
+        customStatusEndpoint = "https://ib.adnxs.com/status"
         isShareGeoLocation = true
+        enabledAssignNativeAssetId = true
     }
 
     private fun getPrebidMobilePluginRendererCached(

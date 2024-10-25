@@ -1,6 +1,5 @@
 package org.audienzz.mobile.di.module
 
-import ch.audienzz.BuildConfig
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Module
 import dagger.Provides
@@ -9,6 +8,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import okhttp3.logging.HttpLoggingInterceptor.Level
+import org.audienzz.BuildConfig
 import org.audienzz.mobile.event.network.EventApi
 import retrofit2.Converter.Factory
 import retrofit2.Retrofit

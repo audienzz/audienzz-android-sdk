@@ -8,10 +8,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.time.debounce
 import org.audienzz.mobile.di.qualifier.IO
 import org.audienzz.mobile.event.entity.EventDomain
 import org.audienzz.mobile.event.entity.EventType
@@ -22,9 +22,9 @@ import org.audienzz.mobile.event.preferences.EventPreferences
 import org.audienzz.mobile.event.repository.local.LocalEventRepository
 import org.audienzz.mobile.event.repository.remote.RemoteEventRepository
 import org.audienzz.mobile.util.CurrentActivityTracker
-import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -132,7 +132,7 @@ internal class EventLoggerImpl @Inject constructor(
 
         private const val TAG = "EventLogger"
 
-        private val DEBOUNCE_DURATION = Duration.ofMillis(500)
+        private val DEBOUNCE_DURATION = TimeUnit.MILLISECONDS.toMillis(500)
 
         private const val BATCH_LIMIT = 100
     }

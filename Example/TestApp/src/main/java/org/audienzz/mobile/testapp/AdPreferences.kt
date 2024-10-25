@@ -69,3 +69,4 @@ object AdPreferences {
     private fun getPreferences(context: Context) =
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 }
+

@@ -104,14 +104,14 @@ class GamOriginalApiHtmlBannerAdsHolder(parent: ViewGroup) : AdHolder(parent) {
     companion object {
 
         private const val AD_UNIT_ID_320_50 = "ca-app-pub-3940256099942544/2934735716"
-        private const val CONFIG_ID_320_50 = "prebid-demo-banner-320-50"
+        private const val CONFIG_ID_320_50 = "33994718"
 
         private const val AD_UNIT_ID_300_250 =
-            "ca-app-pub-3940256099942544/6300978111"
-        private const val CONFIG_ID_300_250 = "prebid-demo-banner-300-250"
+            "/96628199/de_audienzz.ch_v2/de_audienzz.ch_320_adnz_wideboard_1"
+        private const val CONFIG_ID_300_250 = "33994718"
 
         private const val AD_UNIT_ID_MULTISIZE =
             "ca-app-pub-3940256099942544/2435281174"
-        private const val CONFIG_ID_MULTISIZE = "prebid-demo-banner-multisize"
+        private const val CONFIG_ID_MULTISIZE = "33994718"
     }
 }
