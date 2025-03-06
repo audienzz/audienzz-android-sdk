@@ -50,12 +50,18 @@ fun View.addOnBecameVisibleOnScreenListener(listener: () -> Unit) {
  * Lazy loads [AudienzzInterstitialAdHandler] with specified params
  *
  * @see [addOnBecameVisibleOnScreenListener]
+ *
+ * @param manager use for work with listeners from Interstitial ad
+ *
+ * @param onLoadRequest return request and listener for Interstitial load ad
  */
 fun View.lazyLoadAd(
     adHandler: AudienzzInterstitialAdHandler,
     listener: AdManagerInterstitialAdLoadCallback,
     request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
     resultCallback: ((AudienzzResultCode?) -> Unit),
+    manager: AudienzzFullScreenContentCallback?,
+    onLoadRequest: ((AdManagerAdRequest, AdManagerInterstitialAdLoadCallback) -> Unit),
 ) {
     addOnBecameVisibleOnScreenListener {
         adHandler.load(
@@ -63,6 +69,8 @@ fun View.lazyLoadAd(
             listener = listener,
             request = request,
             resultCallback = resultCallback,
+            manager = manager,
+            onLoadRequest = onLoadRequest,
         )
     }
 }
@@ -77,6 +85,8 @@ fun View.lazyLoadAd(
     listener: RewardedAdLoadCallback,
     request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
     resultCallback: ((AudienzzResultCode?) -> Unit),
+    manager: AudienzzFullScreenContentCallback?,
+    requestCallback: ((AdManagerAdRequest, RewardedAdLoadCallback) -> Unit),
 ) {
     addOnBecameVisibleOnScreenListener {
         adHandler.load(
@@ -84,6 +94,8 @@ fun View.lazyLoadAd(
             listener = listener,
             request = request,
             resultCallback = resultCallback,
+            manager = manager,
+            requestCallback = requestCallback,
         )
     }
 }

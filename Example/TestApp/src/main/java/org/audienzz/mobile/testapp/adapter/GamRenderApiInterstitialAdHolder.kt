@@ -41,6 +41,7 @@ class GamRenderApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
         displayAdUnit = AudienzzInterstitialAdUnit(
             adContainer.context,
             DISPLAY_CONFIG_ID,
+            EnumSet.of(AudienzzAdUnitFormat.BANNER),
             eventHandler,
         )
 

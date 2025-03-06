@@ -24,18 +24,18 @@ object AdPreferences {
 
     fun getAllAdTypes() = listOf(
         HOLDER_TYPE_HTML_BANNER_ADS,
-        HOLDER_TYPE_VIDEO_BANNER_AD,
-        HOLDER_TYPE_MULTIFORMAT_ADS,
+//        HOLDER_TYPE_VIDEO_BANNER_AD, // - will be implement in the next versions
+//        HOLDER_TYPE_MULTIFORMAT_ADS, // - will be implement in the next versions
         HOLDER_TYPE_INTERSTITIAL_ADS,
         HOLDER_TYPE_REWARDED_AD,
-        HOLDER_TYPE_IN_STREAM_AD,
-        HOLDER_TYPE_IN_NATIVE_STYLES_AD,
-        HOLDER_TYPE_IN_APP_AD,
-        HOLDER_TYPE_RENDER_HTML_AD,
-        HOLDER_TYPE_RENDER_VIDEO_AD,
-        HOLDER_TYPE_RENDER_INTERSTITIAL_AD,
-        HOLDER_TYPE_RENDER_REWARDED_AD,
-        HOLDER_TYPE_RENDER_NATIVE_AD,
+//        HOLDER_TYPE_IN_STREAM_AD, // - will be implement in the next versions
+//        HOLDER_TYPE_IN_NATIVE_STYLES_AD, // - will be implement in the next versions
+//        HOLDER_TYPE_IN_APP_AD, //- will be implement in the next versions
+//        HOLDER_TYPE_RENDER_HTML_AD, // - will be implement in the next versions
+//        HOLDER_TYPE_RENDER_VIDEO_AD, // - will be implement in the next versions
+//        HOLDER_TYPE_RENDER_INTERSTITIAL_AD, // - will be implement in the next versions
+//        HOLDER_TYPE_RENDER_REWARDED_AD, // - will be implement in the next versions
+//        HOLDER_TYPE_RENDER_NATIVE_AD, // - will be implement in the next versions
     )
 
     fun getEnabledAdTypes(context: Context) =

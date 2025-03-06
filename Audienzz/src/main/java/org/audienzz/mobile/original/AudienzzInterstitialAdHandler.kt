@@ -1,6 +1,7 @@
 package org.audienzz.mobile.original
 
 import android.content.Context
+import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
@@ -17,7 +18,7 @@ import org.audienzz.mobile.event.closeAd
 import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
-import org.audienzz.mobile.event.util.adSubtype
+import org.audienzz.mobile.util.AudienzzFullScreenContentCallback
 
 class AudienzzInterstitialAdHandler(
     private val adUnit: AudienzzInterstitialAdUnit,
@@ -28,39 +29,38 @@ class AudienzzInterstitialAdHandler(
         eventLogger?.adCreation(
             adUnitId = adUnitId,
             adType = AdType.INTERSTITIAL,
-            adSubtype = adUnit.adFormats.adSubtype,
+            adSubtype = adUnit.getSubType(),
             apiType = ApiType.ORIGINAL,
         )
     }
 
+    /**
+     * @param manager use for work with listeners from Interstitial ad
+     * @param onLoadRequest return request and listener for Interstitial load ad
+     */
     @JvmOverloads fun load(
-        context: Context,
+        @Suppress("UNUSED_PARAMETER") context: Context,
         request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
         listener: AdManagerInterstitialAdLoadCallback,
         resultCallback: ((AudienzzResultCode?) -> Unit)? = null,
+        manager: AudienzzFullScreenContentCallback? = null,
+        onLoadRequest: ((AdManagerAdRequest, AdManagerInterstitialAdLoadCallback) -> Unit)? = null,
     ) {
         eventLogger?.bidRequest(
             adUnitId = adUnitId,
             adType = AdType.INTERSTITIAL,
-            adSubtype = adUnit.adFormats.adSubtype,
+            adSubtype = adUnit.getSubType(),
             apiType = ApiType.ORIGINAL,
             autorefreshTime = adUnit.autoRefreshTime.toLong(),
             isAutorefresh = adUnit.autoRefreshTime > 0,
             isRefresh = false,
         )
         adUnit.fetchDemand(request) { resultCode ->
-            resultCallback?.invoke(resultCode)
             if (resultCode == AudienzzResultCode.SUCCESS) {
-                AdManagerInterstitialAd.load(
-                    context,
-                    adUnitId,
-                    request,
-                    createAdListener(listener),
-                )
                 eventLogger?.bidWinner(
                     adUnitId = adUnitId,
                     adType = AdType.INTERSTITIAL,
-                    adSubtype = adUnit.adFormats.adSubtype,
+                    adSubtype = adUnit.getSubType(),
                     apiType = ApiType.ORIGINAL,
                     autorefreshTime = adUnit.autoRefreshTime.toLong(),
                     isAutorefresh = adUnit.autoRefreshTime > 0,
@@ -69,11 +69,14 @@ class AudienzzInterstitialAdHandler(
                     targetKeywords = adUnit.keywords.toList(),
                 )
             }
+            resultCallback?.invoke(resultCode)
+            onLoadRequest?.invoke(request, connectListeners(listener, manager))
         }
     }
 
-    private fun createAdListener(
+    private fun connectListeners(
         listener: AdManagerInterstitialAdLoadCallback?,
+        manager: AudienzzFullScreenContentCallback?,
     ): AdManagerInterstitialAdLoadCallback {
         return object : AdManagerInterstitialAdLoadCallback() {
             override fun onAdLoaded(adManagerInterstitialAd: AdManagerInterstitialAd) {
@@ -83,11 +86,28 @@ class AudienzzInterstitialAdHandler(
                     object : FullScreenContentCallback() {
                         override fun onAdClicked() {
                             eventLogger?.adClick(adUnitId)
+                            manager?.let { it.onAdClickedAd() }
                         }
 
                         override fun onAdDismissedFullScreenContent() {
                             super.onAdDismissedFullScreenContent()
                             eventLogger?.closeAd(adUnitId)
+                            manager?.let { it.onAdDismissedFullScreen() }
+                        }
+
+                        override fun onAdFailedToShowFullScreenContent(error: AdError) {
+                            super.onAdFailedToShowFullScreenContent(error)
+                            manager?.let { it.onAdFailedToShowFullScreen(error) }
+                        }
+
+                        override fun onAdImpression() {
+                            super.onAdImpression()
+                            manager?.let { it.onAdImpression() }
+                        }
+
+                        override fun onAdShowedFullScreenContent() {
+                            super.onAdShowedFullScreenContent()
+                            manager?.let { it.onAdShowedFullScreen() }
                         }
                     }
             }

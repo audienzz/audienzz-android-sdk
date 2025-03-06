@@ -39,8 +39,8 @@ class AudienzzRewardedAdUnit internal constructor(
         (eventHandler as? AudienzzGamRewardedEventHandler)?.adUnitId?.let {
             eventLogger?.adCreation(
                 adUnitId = it,
-                adType = AdType.BANNER,
-                adSubtype = AdSubtype.MULTIFORMAT,
+                adType = AdType.REWARDED,
+                adSubtype = AdSubtype.VIDEO,
                 apiType = ApiType.RENDER,
             )
         }

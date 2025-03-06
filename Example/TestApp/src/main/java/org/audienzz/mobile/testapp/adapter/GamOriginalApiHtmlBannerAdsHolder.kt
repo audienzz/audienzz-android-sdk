@@ -10,7 +10,6 @@ import org.audienzz.mobile.AudienzzBannerAdUnit
 import org.audienzz.mobile.AudienzzBannerParameters
 import org.audienzz.mobile.AudienzzSignals
 import org.audienzz.mobile.addentum.AudienzzAdViewUtils
-import org.audienzz.mobile.addentum.AudienzzPbFindSizeListener
 import org.audienzz.mobile.original.AudienzzAdViewHandler
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.util.pxToDp
@@ -53,17 +52,7 @@ class GamOriginalApiHtmlBannerAdsHolder(parent: ViewGroup) : AdHolder(parent) {
         adView.adListener = object : AdListener() {
             override fun onAdLoaded() {
                 super.onAdLoaded()
-                AudienzzAdViewUtils.findPrebidCreativeSize(
-                    adView,
-                    object : AudienzzPbFindSizeListener {
-                        override fun success(width: Int, height: Int) {
-                            adView.setAdSizes(AdSize(width, height))
-                        }
-
-                        override fun failure(errorCode: Int) {
-                            showFindCreativeSizeErrorDialog(adContainer.context, errorCode)
-                        }
-                    })
+                AudienzzAdViewUtils.hideScrollBar(adView)
             }
 
             override fun onAdFailedToLoad(error: LoadAdError) {

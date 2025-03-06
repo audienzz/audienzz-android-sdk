@@ -75,6 +75,18 @@ You can find more examples of practical implementation here:
 
 [Examples](Example/TestApp/src/main/java/org/audienzz/mobile/testapp/adapter)
 
+Troubleshooting
+========
+Sometimes there is a problem with the appearance of the scroll in banner ads.
+To avoid this behavior - call AudienzzAdViewUtils.hideScrollBar(adView: AdManagerAdView) in onAdLoaded():
+
+```kotlin
+override fun onAdLoaded() {
+    super.onAdLoaded()
+    AudienzzAdViewUtils.hideScrollBar(adView)
+}
+```
+
 License
 ========
 

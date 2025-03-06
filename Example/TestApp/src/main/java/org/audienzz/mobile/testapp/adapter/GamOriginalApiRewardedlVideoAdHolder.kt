@@ -1,5 +1,6 @@
 package org.audienzz.mobile.testapp.adapter
 
+import android.util.Log
 import android.view.ViewGroup
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
@@ -11,6 +12,7 @@ import org.audienzz.mobile.AudienzzSignals
 import org.audienzz.mobile.AudienzzVideoParameters
 import org.audienzz.mobile.original.AudienzzRewardedVideoAdHandler
 import org.audienzz.mobile.testapp.R
+import org.audienzz.mobile.util.AudienzzFullScreenContentCallback
 import org.audienzz.mobile.util.lazyLoadAd
 
 class GamOriginalApiRewardedlVideoAdHolder(parent: ViewGroup) : AdHolder(parent) {
@@ -21,6 +23,7 @@ class GamOriginalApiRewardedlVideoAdHolder(parent: ViewGroup) : AdHolder(parent)
     private var adUnit: AudienzzRewardedVideoAdUnit? = null
 
     private var button: Button? = null
+    private val logTagName: String = "Rewarded TAG"
 
     override fun createAds() {
         adUnit = AudienzzRewardedVideoAdUnit(CONFIG_ID)
@@ -45,7 +48,30 @@ class GamOriginalApiRewardedlVideoAdHolder(parent: ViewGroup) : AdHolder(parent)
             },
             resultCallback = { resultCode ->
                 showFetchErrorDialog(adContainer.context, resultCode)
-            })
+            },
+            manager = AudienzzFullScreenContentCallback(
+                onAdClickedAd = {
+                    Log.d(logTagName, "ad was clicked")
+                },
+                onAdImpression = {
+                    Log.d(logTagName, "on ad impression")
+                },
+                onAdDismissedFullScreen = {
+                    Log.d(logTagName, "ad was dissmissed")
+                },
+                onAdShowedFullScreen = {
+                    Log.d(logTagName, "ad was showed")
+                },
+            ),
+            requestCallback = { request, listener ->
+                RewardedAd.load(
+                    adContainer.context,
+                    AD_UNIT_ID,
+                    request,
+                    listener,
+                )
+            },
+        )
 
         button?.setOnClickListener {
             (adContainer.context as? AppCompatActivity)?.let { activity ->
@@ -62,7 +88,7 @@ class GamOriginalApiRewardedlVideoAdHolder(parent: ViewGroup) : AdHolder(parent)
     }
 
     companion object {
-        const val AD_UNIT_ID = "/21808260008/prebid-demo-app-original-api-video-interstitial"
-        const val CONFIG_ID = "prebid-demo-video-rewarded-320-480-original-api"
+        const val AD_UNIT_ID = "ca-app-pub-3940256099942544/1712485313"
+        const val CONFIG_ID = "34400101"
     }
 }

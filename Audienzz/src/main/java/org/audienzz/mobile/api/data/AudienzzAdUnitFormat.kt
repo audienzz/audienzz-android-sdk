@@ -7,7 +7,4 @@ enum class AudienzzAdUnitFormat(internal val prebidAdUnitFormat: AdUnitFormat) {
     BANNER(AdUnitFormat.BANNER),
 
     VIDEO(AdUnitFormat.VIDEO),
-
-    @Deprecated("Use BANNER instead")
-    DISPLAY(AdUnitFormat.DISPLAY),
 }

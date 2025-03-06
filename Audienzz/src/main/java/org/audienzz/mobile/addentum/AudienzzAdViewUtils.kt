@@ -1,6 +1,8 @@
 package org.audienzz.mobile.addentum
 
 import android.view.View
+import android.view.ViewGroup
+import android.webkit.WebView
 import org.audienzz.mobile.AudienzzPrebidNativeAd
 import org.audienzz.mobile.AudienzzPrebidNativeAdListener
 import org.prebid.mobile.PrebidNativeAd
@@ -57,6 +59,35 @@ object AudienzzAdViewUtils {
         }
 
         AdViewUtils.findNative(o, prebidListener)
+    }
+
+    /**
+     * Finds a WebView within a ViewGroup and disables its scrollbars.
+     *
+     * @param view The ViewGroup to search within.
+     */
+    @JvmStatic
+    fun hideScrollBar(view: ViewGroup) {
+        findWebView(view)?.apply {
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+        }
+    }
+
+    /**
+     * Recursively searches for a WebView within a ViewGroup.
+     *
+     * @param view The ViewGroup to search within.
+     * @return The first WebView found, or null if none exists.
+     */
+    private fun findWebView(view: ViewGroup): WebView? {
+        for (i in 0 until view.childCount) {
+            when (val child = view.getChildAt(i)) {
+                is WebView -> return child
+                is ViewGroup -> findWebView(child)?.let { return it }
+            }
+        }
+        return null
     }
 }
 

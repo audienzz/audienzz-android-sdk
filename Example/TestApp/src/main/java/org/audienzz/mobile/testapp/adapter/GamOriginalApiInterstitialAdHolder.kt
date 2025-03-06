@@ -1,6 +1,7 @@
 package org.audienzz.mobile.testapp.adapter
 
 import android.content.res.Configuration
+import android.util.Log
 import android.view.ViewGroup
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
@@ -13,6 +14,7 @@ import org.audienzz.mobile.AudienzzVideoParameters
 import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
 import org.audienzz.mobile.original.AudienzzInterstitialAdHandler
 import org.audienzz.mobile.testapp.R
+import org.audienzz.mobile.util.AudienzzFullScreenContentCallback
 import org.audienzz.mobile.util.getActivity
 import org.audienzz.mobile.util.lazyLoadAd
 import java.util.EnumSet
@@ -30,6 +32,7 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
     private var buttonDisplay: Button? = null
     private var buttonVideo: Button? = null
     private var buttonMultiformat: Button? = null
+    private val logTagName: String = "Interstitial TAG"
 
     override fun createAds() {
         createDisplayAd()
@@ -75,7 +78,30 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
             },
             resultCallback = { resultCode ->
                 showFetchErrorDialog(adContainer.context, resultCode)
-            })
+            },
+            manager = AudienzzFullScreenContentCallback(
+                onAdClickedAd = {
+                    Log.d(logTagName, "ad was clicked")
+                },
+                onAdImpression = {
+                    Log.d(logTagName, "on ad impression")
+                },
+                onAdDismissedFullScreen = {
+                    Log.d(logTagName, "ad was dissmissed")
+                },
+                onAdShowedFullScreen = {
+                    Log.d(logTagName, "ad was showed")
+                },
+            ),
+            onLoadRequest = { request, listener ->
+                AdManagerInterstitialAd.load(
+                    adContainer.context,
+                    AD_UNIT_ID_VIDEO,
+                    request,
+                    listener,
+                )
+            }
+        )
     }
 
     private fun createVideoAd() {
@@ -96,6 +122,14 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
                 resultCallback = { resultCode ->
                     showFetchErrorDialog(adContainer.context, resultCode)
                 },
+                onLoadRequest = { request, listener ->
+                    AdManagerInterstitialAd.load(
+                        adContainer.context,
+                        AD_UNIT_ID_VIDEO,
+                        request,
+                        listener,
+                    )
+                }
             )
         }
     }
@@ -125,6 +159,14 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
                 resultCallback = { resultCode ->
                     showFetchErrorDialog(adContainer.context, resultCode)
                 },
+                onLoadRequest = { request, listener ->
+                    AdManagerInterstitialAd.load(
+                        adContainer.context,
+                        AD_UNIT_ID_VIDEO,
+                        request,
+                        listener,
+                    )
+                }
             )
         }
     }
@@ -173,14 +215,14 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
     companion object {
 
         private const val AD_UNIT_ID_DISPLAY =
-            "/21808260008/prebid-demo-app-original-api-display-interstitial"
+            "/96628199/de_audienzz.ch_v2/de_audienzz.ch_320_adnz_wideboard_1"
         private const val AD_UNIT_ID_VIDEO =
-            "/21808260008/prebid-demo-app-original-api-video-interstitial"
+            "/96628199/de_audienzz.ch_v2/de_audienzz.ch_320_adnz_wideboard_1"
         private const val AD_UNIT_ID_MULTIFORMAT =
-            "/21808260008/prebid-demo-intestitial-multiformat"
+            "/96628199/de_audienzz.ch_v2/de_audienzz.ch_320_adnz_wideboard_1"
 
-        private const val CONFIG_ID_BANNER = "prebid-demo-display-interstitial-320-480"
-        private const val CONFIG_ID_VIDEO = "prebid-demo-video-interstitial-320-480-original-api"
+        private const val CONFIG_ID_BANNER = "34400101"
+        private const val CONFIG_ID_VIDEO = "34400101"
 
         private const val FALLBACK_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712"
     }
