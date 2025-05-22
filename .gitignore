@@ -76,3 +76,5 @@ captures/
 ### Other
 *.DS_Store
 .directory
+.idea/AndroidProjectSystem.xml
+.idea/deploymentTargetSelector.xml

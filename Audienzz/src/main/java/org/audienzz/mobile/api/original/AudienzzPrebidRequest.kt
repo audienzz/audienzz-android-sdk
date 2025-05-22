@@ -2,11 +2,8 @@ package org.audienzz.mobile.api.original
 
 import org.audienzz.mobile.AudienzzAdSize
 import org.audienzz.mobile.AudienzzBannerParameters
-import org.audienzz.mobile.AudienzzContentObject
-import org.audienzz.mobile.AudienzzDataObject
 import org.audienzz.mobile.AudienzzNativeParameters
 import org.audienzz.mobile.AudienzzVideoParameters
-import org.prebid.mobile.DataObject
 import org.prebid.mobile.api.original.PrebidRequest
 
 data class AudienzzPrebidRequest internal constructor(internal val prebidRequest: PrebidRequest) {
@@ -47,26 +44,6 @@ data class AudienzzPrebidRequest internal constructor(internal val prebidRequest
 
     fun setGpid(gpid: String?) {
         prebidRequest.setGpid(gpid)
-    }
-
-    fun setAppContent(appContent: AudienzzContentObject?) {
-        prebidRequest.setAppContent(appContent?.prebidContentObject)
-    }
-
-    fun setExtData(extData: Map<String, Set<String>>?) {
-        prebidRequest.setExtData(extData)
-    }
-
-    fun setExtKeywords(extKeywords: Set<String>?) {
-        prebidRequest.setExtKeywords(extKeywords)
-    }
-
-    fun setUserData(userData: List<AudienzzDataObject>) {
-        prebidRequest.setUserData(
-            arrayListOf<DataObject>().apply {
-                addAll(userData.map { it.prebidDataObject })
-            },
-        )
     }
 
     internal fun getAdSizes(): List<AudienzzAdSize> = buildList {

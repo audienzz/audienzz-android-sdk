@@ -22,7 +22,7 @@ data class AudienzzNativeImage internal constructor(internal val nativeImage: Na
         companion object {
 
             fun getTypeFromNumber(typeNumber: Int) =
-                values().find { it.typeNumber == typeNumber } ?: CUSTOM
+                Type.entries.find { it.typeNumber == typeNumber } ?: CUSTOM
         }
     }
 }

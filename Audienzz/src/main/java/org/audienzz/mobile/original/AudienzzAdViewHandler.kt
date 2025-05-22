@@ -90,7 +90,7 @@ class AudienzzAdViewHandler(
                 isAutorefresh = isAutorefresh,
                 isRefresh = isRefresh,
                 resultCode = resultCode?.toString(),
-                targetKeywords = adUnit.keywords.toList(),
+                targetKeywords = request.keywords.toList(),
             )
         }
     }

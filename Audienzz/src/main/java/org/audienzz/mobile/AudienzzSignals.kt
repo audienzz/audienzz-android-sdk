@@ -17,7 +17,7 @@ object AudienzzSignals {
 
             @JvmStatic
             internal fun fromPrebidApi(prebidApi: Signals.Api) =
-                values().find { it.prebidApi == prebidApi } ?: VPAID_1
+                Api.entries.find { it.prebidApi == prebidApi } ?: VPAID_1
         }
     }
 
@@ -34,7 +34,7 @@ object AudienzzSignals {
 
             @JvmStatic
             internal fun fromPrebidPlacement(prebidPlacement: Signals.Placement) =
-                Placement.values().find { it.prebidPlacement == prebidPlacement } ?: InStream
+                Placement.entries.find { it.prebidPlacement == prebidPlacement } ?: InStream
         }
     }
 
@@ -50,7 +50,7 @@ object AudienzzSignals {
 
             @JvmStatic
             internal fun fromPrebidPlaybackMethod(prebidPlaybackMethod: Signals.PlaybackMethod) =
-                PlaybackMethod.values().find { it.prebidPlaybackMethod == prebidPlaybackMethod }
+                PlaybackMethod.entries.find { it.prebidPlaybackMethod == prebidPlaybackMethod }
                     ?: AutoPlaySoundOn
         }
     }
@@ -64,7 +64,7 @@ object AudienzzSignals {
 
             @JvmStatic
             internal fun fromPrebidStartDelay(prebidStartDelay: Signals.StartDelay) =
-                StartDelay.values().find { it.prebidStartDelay == prebidStartDelay } ?: PreRoll
+                StartDelay.entries.find { it.prebidStartDelay == prebidStartDelay } ?: PreRoll
         }
     }
 
@@ -84,7 +84,7 @@ object AudienzzSignals {
 
             @JvmStatic
             internal fun fromPrebidProtocols(prebidProtocols: Signals.Protocols) =
-                Protocols.values().find { it.prebidProtocols == prebidProtocols } ?: VAST_1_0
+                Protocols.entries.find { it.prebidProtocols == prebidProtocols } ?: VAST_1_0
         }
     }
 }

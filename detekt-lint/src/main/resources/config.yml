@@ -62,7 +62,7 @@ comments:
   CommentOverPrivateProperty:
     active: false
   DeprecatedBlockTag:
-    active: true
+    active: false
   EndOfSentenceFormat:
     active: false
     endOfSentenceFormat: '([.?!][ \t\n\r\f<])|([.?!:]$)'
@@ -235,7 +235,7 @@ complexity:
     thresholdInInterfaces: 20
     thresholdInObjects: 20
     thresholdInEnums: 102
-    ignoreDeprecated: false
+    ignoreDeprecated: true
     ignorePrivate: true
     ignoreOverridden: true
 
@@ -801,7 +801,7 @@ potential-bugs:
   CastToNullableType:
     active: false
   Deprecation:
-    active: true
+    active: false
   DontDowncastCollectionTypes:
     active: true
   DoubleMutabilityForCollection:

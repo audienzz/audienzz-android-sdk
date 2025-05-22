@@ -13,9 +13,11 @@ enum class AudienzzPlacementType(internal val prebidPlacementType: PlacementType
     companion object {
 
         internal fun fromPrebidPlacementType(placementType: PlacementType) =
-            values().find { it.prebidPlacementType == placementType } ?: UNDEFINED
+            AudienzzPlacementType.entries.find { it.prebidPlacementType == placementType }
+                ?: UNDEFINED
 
         internal fun fromPrebidPlacementTypeValue(value: Int) =
-            values().find { it.prebidPlacementType.value == value } ?: UNDEFINED
+            AudienzzPlacementType.entries.find { it.prebidPlacementType.value == value }
+                ?: UNDEFINED
     }
 }

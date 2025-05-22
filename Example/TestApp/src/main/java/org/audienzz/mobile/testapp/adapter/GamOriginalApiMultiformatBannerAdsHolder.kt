@@ -221,7 +221,7 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
             }
 
             override fun failure(errorCode: Int) {
-                showFindCreativeSizeErrorDialog(adContainer.context, errorCode)
+                logFindCreativeSizeError(errorCode)
             }
         })
     }

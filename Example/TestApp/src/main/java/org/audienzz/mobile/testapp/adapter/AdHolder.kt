@@ -139,10 +139,10 @@ abstract class AdHolder(parent: ViewGroup) : RecyclerView.ViewHolder(
             R.string.error_message_load,
             throwable.message,
         )
-        showErrorDialog(adContainer.context, message)
+        showErrorDialog(context, message)
     }
 
-    protected fun showFindCreativeSizeErrorDialog(context: Context, errorCode: Int) {
+    protected fun logFindCreativeSizeError(errorCode: Int) {
         val message = adContainer.resources.getString(
             R.string.error_message_find_prebid_creative_size,
             errorCode,

@@ -16,7 +16,7 @@ import org.audienzz.mobile.original.AudienzzInterstitialAdHandler
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.util.AudienzzFullScreenContentCallback
 import org.audienzz.mobile.util.getActivity
-import org.audienzz.mobile.util.lazyLoadAd
+import org.audienzz.mobile.util.lazyAdLoader
 import java.util.EnumSet
 import java.util.Random
 
@@ -28,6 +28,8 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
     private var adUnitDisplay: AudienzzInterstitialAdUnit? = null
     private var adUnitVideo: AudienzzInterstitialAdUnit? = null
     private var adUnitMultiformat: AudienzzInterstitialAdUnit? = null
+
+    private var lazyLoadedInterstitialAd: AdManagerInterstitialAd? = null
 
     private var buttonDisplay: Button? = null
     private var buttonVideo: Button? = null
@@ -54,21 +56,23 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
             },
         )
 
-        var interstitial: AdManagerInterstitialAd? = null
-
         buttonDisplay?.setOnClickListener {
             adContainer.context.getActivity()?.let {
-                interstitial?.show(it)
+                lazyLoadedInterstitialAd?.show(it)
             }
         }
 
-        buttonDisplay?.lazyLoadAd(
+        setLazyLoadInterstitialAd(handler)
+    }
+
+    private fun setLazyLoadInterstitialAd(handler: AudienzzInterstitialAdHandler) {
+        buttonDisplay?.lazyAdLoader(
             adHandler = handler,
-            listener = object : AdManagerInterstitialAdLoadCallback() {
+            adLoadCallback = object : AdManagerInterstitialAdLoadCallback() {
                 override fun onAdLoaded(interstitialAd: AdManagerInterstitialAd) {
                     super.onAdLoaded(interstitialAd)
                     buttonDisplay?.isEnabled = true
-                    interstitial = interstitialAd
+                    lazyLoadedInterstitialAd = interstitialAd
                 }
 
                 override fun onAdFailedToLoad(loadAdError: LoadAdError) {
@@ -76,10 +80,7 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
                     showAdLoadingErrorDialog(adContainer.context, loadAdError)
                 }
             },
-            resultCallback = { resultCode ->
-                showFetchErrorDialog(adContainer.context, resultCode)
-            },
-            manager = AudienzzFullScreenContentCallback(
+            fullScreenContentCallback = AudienzzFullScreenContentCallback(
                 onAdClickedAd = {
                     Log.d(logTagName, "ad was clicked")
                 },
@@ -87,20 +88,24 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
                     Log.d(logTagName, "on ad impression")
                 },
                 onAdDismissedFullScreen = {
-                    Log.d(logTagName, "ad was dissmissed")
+                    lazyLoadedInterstitialAd = null
+                    buttonDisplay?.isEnabled = false
+                    setLazyLoadInterstitialAd(handler)
+                    Log.d(logTagName, "ad was dismissed")
                 },
                 onAdShowedFullScreen = {
                     Log.d(logTagName, "ad was showed")
                 },
             ),
-            onLoadRequest = { request, listener ->
+            resultCallback = { resultCode, request, listener ->
+                showFetchErrorDialog(adContainer.context, resultCode)
                 AdManagerInterstitialAd.load(
                     adContainer.context,
                     AD_UNIT_ID_VIDEO,
                     request,
                     listener,
                 )
-            }
+            },
         )
     }
 
@@ -117,19 +122,16 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
         buttonVideo?.isEnabled = true
         buttonVideo?.setOnClickListener {
             handler.load(
-                context = adContainer.context,
-                listener = createAdListener(buttonVideo),
-                resultCallback = { resultCode ->
+                adLoadCallback = createAdListener(),
+                resultCallback = { resultCode, request, listener ->
                     showFetchErrorDialog(adContainer.context, resultCode)
-                },
-                onLoadRequest = { request, listener ->
                     AdManagerInterstitialAd.load(
                         adContainer.context,
                         AD_UNIT_ID_VIDEO,
                         request,
                         listener,
                     )
-                }
+                },
             )
         }
     }
@@ -154,19 +156,16 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
         buttonMultiformat?.isEnabled = true
         buttonMultiformat?.setOnClickListener {
             handler.load(
-                context = adContainer.context,
-                listener = createAdListener(buttonMultiformat),
-                resultCallback = { resultCode ->
+                adLoadCallback = createAdListener(),
+                resultCallback = { resultCode, request, listener ->
                     showFetchErrorDialog(adContainer.context, resultCode)
-                },
-                onLoadRequest = { request, listener ->
                     AdManagerInterstitialAd.load(
                         adContainer.context,
                         AD_UNIT_ID_VIDEO,
                         request,
                         listener,
                     )
-                }
+                },
             )
         }
     }
@@ -184,7 +183,7 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
         }
     }
 
-    private fun createAdListener(button: Button?): AdManagerInterstitialAdLoadCallback {
+    private fun createAdListener(): AdManagerInterstitialAdLoadCallback {
         return object : AdManagerInterstitialAdLoadCallback() {
             override fun onAdLoaded(interstitialAd: AdManagerInterstitialAd) {
                 super.onAdLoaded(interstitialAd)

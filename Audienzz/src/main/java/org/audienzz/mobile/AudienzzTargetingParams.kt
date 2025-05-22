@@ -2,6 +2,8 @@ package org.audienzz.mobile
 
 import android.util.Pair
 import org.audienzz.mobile.rendering.models.openrtb.bidRequests.AudienzzExt
+import org.prebid.mobile.ExternalUserId
+import org.prebid.mobile.ExternalUserId.UniqueId
 import org.prebid.mobile.TargetingParams
 
 /**
@@ -10,55 +12,6 @@ import org.prebid.mobile.TargetingParams
  */
 @Suppress("TooManyFunctions")
 object AudienzzTargetingParams {
-
-    @JvmStatic val BIDDER_NAME_APP_NEXUS = TargetingParams.BIDDER_NAME_APP_NEXUS
-
-    @JvmStatic val BIDDER_NAME_RUBICON_PROJECT = TargetingParams.BIDDER_NAME_RUBICON_PROJECT
-
-    @JvmStatic
-    var userAge: Int?
-        get() = TargetingParams.getUserAge()
-        set(value) {
-            TargetingParams.setUserAge(value)
-        }
-
-    @JvmStatic
-    var yearOfBirth: Int
-        get() = TargetingParams.getYearOfBirth()
-        set(value) {
-            TargetingParams.setYearOfBirth(value)
-        }
-
-    enum class GENDER(internal val prebidTargetingParams: TargetingParams.GENDER) {
-        FEMALE(TargetingParams.GENDER.FEMALE),
-        MALE(TargetingParams.GENDER.MALE),
-        UNKNOWN(TargetingParams.GENDER.UNKNOWN), ;
-
-        val key: String = prebidTargetingParams.key
-
-        companion object {
-
-            @JvmStatic
-            internal fun fromPrebidGender(gender: TargetingParams.GENDER) =
-                values().find { it.prebidTargetingParams == gender } ?: UNKNOWN
-
-            @JvmStatic fun genderByKey(key: String) =
-                fromPrebidGender(TargetingParams.GENDER.genderByKey(key))
-        }
-    }
-
-    /**
-     * The current user's gender, if it's available. The default value is UNKNOWN.
-     * This should be set if the user's gender is known, as it can help make buying the ad
-     * space more attractive to advertisers.
-     */
-    @JvmStatic
-    var gender: GENDER
-        get() = GENDER.fromPrebidGender(TargetingParams.getGender())
-        set(value) {
-            TargetingParams.setGender(value.prebidTargetingParams)
-        }
-
     /**
      * User latitude and longitude
      *
@@ -73,49 +26,12 @@ object AudienzzTargetingParams {
         }
 
     @JvmStatic
-    val userDataDictionary: Map<String, Set<String>>
-        get() = TargetingParams.getUserDataDictionary()
-
-    @JvmStatic
     val userKeywords: String?
         get() = TargetingParams.getUserKeywords()
 
     @JvmStatic
     val keywordSet: Set<String>
         get() = TargetingParams.getUserKeywordsSet()
-
-    /**
-     * Optional feature to pass bidder data that was set in the
-     * exchange’s cookie. The string must be in base85 cookie safe
-     * characters and be in any format. Proper JSON encoding must
-     * be used to include “escaped” quotation marks.
-     *
-     * @param data Custom data to be passed
-     */
-    @JvmStatic
-    var userCustomData: String?
-        get() = TargetingParams.getUserCustomData()
-        set(value) {
-            TargetingParams.setUserCustomData(value)
-        }
-
-    @JvmStatic
-    var userId: String?
-        get() = TargetingParams.getUserId()
-        set(value) {
-            TargetingParams.setUserId(value)
-        }
-
-    /**
-     * Buyer-specific ID for the user as mapped by the exchange for
-     * the buyer. At least one of buyeruid or id is recommended.
-     */
-    @JvmStatic
-    var buyerId: String?
-        get() = TargetingParams.getBuyerId()
-        set(value) {
-            TargetingParams.setBuyerId(value)
-        }
 
     @JvmStatic
     var publisherName: String?
@@ -228,10 +144,6 @@ object AudienzzTargetingParams {
         }
 
     @JvmStatic
-    val extKeywordsSet: Set<String>
-        get() = TargetingParams.getExtKeywordsSet()
-
-    @JvmStatic
     val extDataDictionary: Map<String, Set<String>>
         get() = TargetingParams.getExtDataDictionary()
 
@@ -256,40 +168,6 @@ object AudienzzTargetingParams {
         set(value) {
             TargetingParams.setUserExt(value?.prebidExt)
         }
-
-    /**
-     * This method obtains the user data keyword & value for global user targeting
-     * if the key already exists the value will be appended to the list. No duplicates will be added
-     */
-    @JvmStatic
-    fun addUserData(key: String, value: String) {
-        TargetingParams.addUserData(key, value)
-    }
-
-    /**
-     * This method obtains the user data keyword & values set for global user targeting
-     * the values if the key already exist will be replaced with the new set of values
-     */
-    @JvmStatic
-    fun updateUserData(key: String, value: Set<String>) {
-        TargetingParams.updateUserData(key, value)
-    }
-
-    /**
-     * This method allows to remove specific user data keyword & value set from global user
-     * targeting
-     */
-    @JvmStatic
-    fun removeUserData(key: String) {
-        TargetingParams.removeUserData(key)
-    }
-
-    /**
-     * This method allows to remove all user data set from global user targeting
-     */
-    @JvmStatic fun clearUserData() {
-        TargetingParams.clearUserData()
-    }
 
     /**
      * This method obtains the user keyword for global user targeting
@@ -326,45 +204,44 @@ object AudienzzTargetingParams {
     }
 
     /**
-     * Use this API for storing the externalUserId in the SharedPreference.
+     * Use this API for setting the externalUserId in the SharedPreference.
      * Prebid server provide them participating server-side bid adapters.
      *
-     * @param externalUserId the externalUserId instance to be stored in the SharedPreference
+     * @param externalUserIds the externalUserIds objects to be stored in the SharedPreference
      */
     @JvmStatic
-    fun storeExternalUserId(externalUserId: AudienzzExternalUserId) {
-        TargetingParams.storeExternalUserId(externalUserId.prebidExternalUserId)
+    fun setExternalUserIds(externalUserIds: List<AudienzzExternalUserId>?) {
+        TargetingParams.setExternalUserIds(
+            externalUserIds?.map {
+                ExternalUserId(
+                    it.source,
+                    it.uniqueIds.map { uniqueId ->
+                        UniqueId(uniqueId.id, uniqueId.atype).apply {
+                            setExt(uniqueId.ext)
+                        }
+                    },
+                )
+            },
+        )
     }
 
     /**
-     * Returns the stored (in the SharedPreference) ExternalUserId instance for a given source
+     * Returns stored ExternalUserIds.
+     * Note: ext parameter is not returned
      */
     @JvmStatic
-    fun fetchStoredExternalUserId(source: String): AudienzzExternalUserId? =
-        TargetingParams.fetchStoredExternalUserId(source)?.let { AudienzzExternalUserId(it) }
-
-    /**
-     * Returns the stored (in the SharedPreferences) External User Id list
-     */
-    @JvmStatic
-    fun fetchStoredExternalUserIds(): List<AudienzzExternalUserId> =
-        TargetingParams.fetchStoredExternalUserIds().map { AudienzzExternalUserId(it) }
-
-    /**
-     * Removes the stored (in the SharedPreference) ExternalUserId instance for a given source
-     */
-    @JvmStatic
-    fun removeStoredExternalUserId(source: String) {
-        TargetingParams.removeStoredExternalUserId(source)
-    }
-
-    /**
-     * Clear the Stored ExternalUserId list from the SharedPreference
-     */
-    @JvmStatic
-    fun clearStoredExternalUserIds() {
-        TargetingParams.clearStoredExternalUserIds()
-    }
+    fun getExternalUserIds(): List<AudienzzExternalUserId>? =
+        TargetingParams.getExternalUserIds()?.map {
+            AudienzzExternalUserId(
+                it,
+                it.uniqueIds.map { uniqueId ->
+                    AudienzzExternalUserId.AudienzzUniqueId(
+                        uniqueId.id,
+                        uniqueId.atype,
+                    )
+                },
+            )
+        }
 
     /**
      * This method obtains the context data keyword & value context for global context targeting
@@ -400,41 +277,6 @@ object AudienzzTargetingParams {
     @JvmStatic
     fun clearExtData() {
         TargetingParams.clearExtData()
-    }
-
-    /**
-     * This method obtains the context keyword for adunit context targeting
-     * Inserts the given element in the set if it is not already present.
-     * (imp[].ext.context.keywords)
-     */
-    @JvmStatic
-    fun addExtKeyword(keyword: String) {
-        TargetingParams.addExtKeyword(keyword)
-    }
-
-    /**
-     * This method obtains the context keyword set for adunit context targeting
-     * Adds the elements of the given set to the set.
-     */
-    @JvmStatic
-    fun addExtKeywords(keywords: Set<String>) {
-        TargetingParams.addExtKeywords(keywords)
-    }
-
-    /**
-     * This method allows to remove specific context keyword from adunit context targeting
-     */
-    @JvmStatic
-    fun removeExtKeyword(keyword: String) {
-        TargetingParams.removeExtKeyword(keyword)
-    }
-
-    /**
-     * This method allows to remove all keywords from the set of adunit context targeting
-     */
-    @JvmStatic
-    fun clearExtKeywords() {
-        TargetingParams.clearExtKeywords()
     }
 
     /**

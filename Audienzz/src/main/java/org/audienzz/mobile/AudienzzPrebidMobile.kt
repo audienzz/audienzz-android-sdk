@@ -21,6 +21,7 @@ import org.audienzz.mobile.util.CurrentActivityTracker
 import org.json.JSONObject
 import org.prebid.mobile.PrebidMobile
 import org.prebid.mobile.PrebidMobile.LogLevel
+import org.prebid.mobile.TargetingParams
 import org.prebid.mobile.api.rendering.PrebidMobileInterstitialControllerInterface
 import org.prebid.mobile.api.rendering.pluginrenderer.PluginEventListener
 import org.prebid.mobile.api.rendering.pluginrenderer.PrebidMobilePluginRenderer
@@ -34,30 +35,6 @@ import org.prebid.mobile.rendering.listeners.SdkInitializationListener
 object AudienzzPrebidMobile {
 
     internal var companyId: String = ""
-
-    @JvmStatic
-    var isCoppaEnabled: Boolean
-        get() = PrebidMobile.isCoppaEnabled
-        set(value) {
-            PrebidMobile.isCoppaEnabled = value
-        }
-
-    @JvmStatic
-    var isUseExternalBrowser: Boolean
-        get() = PrebidMobile.useExternalBrowser
-        set(value) {
-            PrebidMobile.useExternalBrowser = value
-        }
-
-    /**
-     * If true, the SDK sends "af=3,5", indicating support for MRAID
-     */
-    @JvmStatic
-    var isSendMraidSupportParams: Boolean
-        get() = PrebidMobile.sendMraidSupportParams
-        set(value) {
-            PrebidMobile.sendMraidSupportParams = value
-        }
 
     /**
      * Minimum refresh interval allowed. 30 seconds
@@ -135,11 +112,7 @@ object AudienzzPrebidMobile {
         }
 
     @JvmStatic
-    var prebidServerHost: AudienzzHost
-        get() = AudienzzHost.fromPrebidHost(PrebidMobile.getPrebidServerHost())
-        set(value) {
-            PrebidMobile.setPrebidServerHost(value.prebidHost)
-        }
+    var audienzzHost: AudienzzHost = AudienzzHost.APPNEXUS
 
     @JvmStatic
     var isShareGeoLocation: Boolean
@@ -153,9 +126,23 @@ object AudienzzPrebidMobile {
      */
     @JvmStatic
     var externalUserIds: List<AudienzzExternalUserId>
-        get() = PrebidMobile.getExternalUserIds().map { AudienzzExternalUserId(it) }
+        get() = TargetingParams.getExternalUserIds()
+            .map {
+                AudienzzExternalUserId(
+                    it,
+                    it.uniqueIds.map { uniqueId ->
+                        AudienzzExternalUserId.AudienzzUniqueId(
+                            uniqueId.id,
+                            uniqueId.atype,
+                        )
+                            .apply {
+                                uniqueId.setExt(it.ext)
+                            }
+                    },
+                )
+            }
         set(value) {
-            PrebidMobile.setExternalUserIds(value.map { it.prebidExternalUserId })
+            TargetingParams.setExternalUserIds(value.map { it.prebidExternalUserId })
         }
 
     /**
@@ -272,9 +259,6 @@ object AudienzzPrebidMobile {
 
     init {
         prebidServerAccountId = "3927"
-        prebidServerHost = AudienzzHost.createCustomHost(
-            "https://ib.adnxs.com/openrtb2/prebid",
-        )
         customStatusEndpoint = "https://ib.adnxs.com/status"
         isShareGeoLocation = true
         enabledAssignNativeAssetId = true
@@ -330,7 +314,7 @@ object AudienzzPrebidMobile {
         }
         registerActivityCallbacks(context)
         MainComponent.init(context)
-        PrebidMobile.initializeSdk(context, listener)
+        PrebidMobile.initializeSdk(context, audienzzHost.hostUrl, listener)
     }
 
     private fun registerActivityCallbacks(context: Context) {
@@ -546,7 +530,7 @@ object AudienzzPrebidMobile {
         companion object {
 
             internal fun fromPrebidLogLevel(logLevel: LogLevel) =
-                values().find { it.prebidLogLevel == logLevel } ?: NONE
+                AudienzzLogLevel.entries.find { it.prebidLogLevel == logLevel } ?: NONE
         }
     }
 }

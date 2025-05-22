@@ -30,7 +30,7 @@ class BannerOriginalLazyAdapter : ListAdapter<Int, RecyclerView.ViewHolder>(
             HOLDER_TYPE_VIDEO_BANNER_AD -> GamOriginalApiVideoBannerAdHolder(parent)
             HOLDER_TYPE_MULTIFORMAT_ADS -> GamOriginalApiMultiformatBannerAdsHolder(parent)
             HOLDER_TYPE_INTERSTITIAL_ADS -> GamOriginalApiInterstitialAdHolder(parent)
-            HOLDER_TYPE_REWARDED_AD -> GamOriginalApiRewardedlVideoAdHolder(parent)
+            HOLDER_TYPE_REWARDED_AD -> GamOriginalApiRewardedVideoAdHolder(parent)
             HOLDER_TYPE_IN_STREAM_AD -> GamOriginApiInStreamAdHolder(parent)
             HOLDER_TYPE_IN_NATIVE_STYLES_AD -> GamOriginApiNativeStyleAdHolder(parent)
             HOLDER_TYPE_IN_APP_AD -> GamOriginApiInAppAdHolder(parent)

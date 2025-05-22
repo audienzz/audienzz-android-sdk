@@ -5,9 +5,7 @@ import android.util.AttributeSet
 import android.view.View
 import android.widget.FrameLayout
 import org.audienzz.mobile.AudienzzAdSize
-import org.audienzz.mobile.AudienzzContentObject
-import org.audienzz.mobile.AudienzzDataObject
-import org.audienzz.mobile.api.data.AudienzzBannerAdPosition
+import org.audienzz.mobile.api.data.AudienzzAdPosition
 import org.audienzz.mobile.api.data.AudienzzVideoPlacementType
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.api.rendering.listeners.AudienzzBannerVideoListener
@@ -47,14 +45,10 @@ class AudienzzBannerView internal constructor(
             prebidBannerView.videoPlacementType = value?.prebidVideoPlacementType
         }
 
-    val extDataDictionary: Map<String, Set<String>> = prebidBannerView.extDataDictionary
-
-    val extKeywordsSet: Set<String> = prebidBannerView.extKeywordsSet
-
-    var adPosition: AudienzzBannerAdPosition
-        get() = AudienzzBannerAdPosition.fromPrebidBannerAdPosition(prebidBannerView.adPosition)
+    var adPosition: AudienzzAdPosition
+        get() = AudienzzAdPosition.fromPrebidAdPosition(prebidBannerView.adPosition)
         set(value) {
-            prebidBannerView.adPosition = value.prebidBannerAdPosition
+            prebidBannerView.adPosition = value.prebidAdPosition
         }
 
     var pbAdSlot: String?
@@ -62,9 +56,6 @@ class AudienzzBannerView internal constructor(
         set(value) {
             prebidBannerView.pbAdSlot = value
         }
-
-    val userData: List<AudienzzDataObject> =
-        prebidBannerView.userData.map { AudienzzDataObject(it) }
 
     val bidResponse: AudienzzBidResponse? =
         prebidBannerView.bidResponse?.let { AudienzzBidResponse(it) }
@@ -168,50 +159,6 @@ class AudienzzBannerView internal constructor(
         prebidBannerView.setEventHandler(
             getBannerEventHandler(eventHandler),
         )
-    }
-
-    fun addExtData(key: String, value: String) {
-        prebidBannerView.addExtData(key, value)
-    }
-
-    fun updateExtData(key: String, value: Set<String>) {
-        prebidBannerView.updateExtData(key, value)
-    }
-
-    fun removeExtData(key: String) {
-        prebidBannerView.removeExtData(key)
-    }
-
-    fun clearExtData() {
-        prebidBannerView.clearExtData()
-    }
-
-    fun addExtKeyword(keyword: String) {
-        prebidBannerView.addExtKeyword(keyword)
-    }
-
-    fun addExtKeywords(keywords: Set<String>) {
-        prebidBannerView.addExtKeywords(keywords)
-    }
-
-    fun removeExtKeyword(keyword: String) {
-        prebidBannerView.removeExtKeyword(keyword)
-    }
-
-    fun clearExtKeywords() {
-        prebidBannerView.clearExtKeywords()
-    }
-
-    fun setAppContent(content: AudienzzContentObject) {
-        prebidBannerView.setAppContent(content.prebidContentObject)
-    }
-
-    fun addUserData(dataObject: AudienzzDataObject) {
-        prebidBannerView.addUserData(dataObject.prebidDataObject)
-    }
-
-    fun clearUserData() {
-        prebidBannerView.clearUserData()
     }
 
     companion object {

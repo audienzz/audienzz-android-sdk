@@ -2,7 +2,7 @@ package org.audienzz.mobile.api.mediation
 
 import android.content.Context
 import org.audienzz.mobile.AudienzzAdSize
-import org.audienzz.mobile.api.data.AudienzzBannerAdPosition
+import org.audienzz.mobile.api.data.AudienzzAdPosition
 import org.audienzz.mobile.api.data.AudienzzFetchDemandResult
 import org.audienzz.mobile.rendering.bidding.display.AudienzzPrebidMediationDelegate
 import org.prebid.mobile.api.mediation.MediationBannerAdUnit
@@ -11,12 +11,10 @@ class AudienzzMediationBannerAdUnit internal constructor(
     internal val prebidMediationBannerAdUnit: MediationBannerAdUnit,
 ) : AudienzzMediationBaseAdUnit(prebidMediationBannerAdUnit) {
 
-    var adPosition: AudienzzBannerAdPosition?
-        get() = prebidMediationBannerAdUnit.adPosition?.let {
-            AudienzzBannerAdPosition.fromPrebidBannerAdPosition(it)
-        }
+    var adPosition: AudienzzAdPosition?
+        get() = AudienzzAdPosition.fromPrebidAdPosition(prebidMediationBannerAdUnit.adPosition)
         set(value) {
-            prebidMediationBannerAdUnit.adPosition = value?.prebidBannerAdPosition
+            prebidMediationBannerAdUnit.adPosition = value?.prebidAdPosition
         }
 
     constructor(

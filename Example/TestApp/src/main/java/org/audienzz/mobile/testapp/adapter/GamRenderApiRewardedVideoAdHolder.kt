@@ -2,6 +2,7 @@ package org.audienzz.mobile.testapp.adapter
 
 import android.app.Activity
 import android.view.ViewGroup
+import org.audienzz.mobile.AudienzzReward
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.api.rendering.AudienzzRewardedAdUnit
 import org.audienzz.mobile.api.rendering.listeners.AudienzzRewardedAdUnitListener
@@ -48,7 +49,11 @@ class GamRenderApiRewardedVideoAdHolder(parent: ViewGroup) : AdHolder(parent) {
 
             override fun onAdClosed(rewardedAdUnit: AudienzzRewardedAdUnit?) {}
 
-            override fun onUserEarnedReward(rewardedAdUnit: AudienzzRewardedAdUnit?) {}
+            override fun onUserEarnedReward(
+                rewardedAdUnit: AudienzzRewardedAdUnit?,
+                reward: AudienzzReward?,
+            ) {
+            }
         })
         button.addOnBecameVisibleOnScreenListener {
             adUnit?.loadAd()

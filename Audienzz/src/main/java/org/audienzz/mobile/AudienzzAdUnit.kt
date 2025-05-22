@@ -11,18 +11,6 @@ import org.prebid.mobile.api.original.OnFetchDemandResult
 abstract class AudienzzAdUnit internal constructor(
     private val adUnit: AdUnit,
 ) {
-
-    /**
-     * Content for adunit, content, in which impression will appear
-     */
-    var appContent: AudienzzContentObject?
-        get() = AudienzzContentObject(adUnit.appContent)
-        set(value) {
-            adUnit.appContent = value?.prebidContentObject
-        }
-
-    val userData: List<AudienzzDataObject> = adUnit.userData.map(::AudienzzDataObject)
-
     var pbAdSlot: String?
         get() = adUnit.pbAdSlot
         set(value) {
@@ -38,8 +26,6 @@ abstract class AudienzzAdUnit internal constructor(
     internal val autoRefreshTime get() = adUnit.configuration.autoRefreshDelay
 
     internal val adFormats get() = adUnit.configuration.adFormats
-
-    internal val keywords get() = adUnit.configuration.extKeywordsSet
 
     fun setAutoRefreshInterval(
         @IntRange(
@@ -76,74 +62,5 @@ abstract class AudienzzAdUnit internal constructor(
         val onFetchDemandResult =
             OnFetchDemandResult { bidInfo -> listener(AudienzzBidInfo(bidInfo)) }
         adUnit.fetchDemand(onFetchDemandResult)
-    }
-
-    /**
-     * This method obtains the context data keyword & value for adunit context targeting
-     * if the key already exists the value will be appended to the list. No duplicates will be added
-     */
-    fun addExtData(key: String, value: String) {
-        adUnit.addExtData(key, value)
-    }
-
-    /**
-     * This method obtains the context data keyword & values for adunit context targeting
-     * the values if the key already exist will be replaced with the new set of values
-     */
-    fun updateExtData(key: String, value: Set<String>) {
-        adUnit.updateExtData(key, value)
-    }
-
-    /**
-     * This method allows to remove specific context data keyword & values set from adunit
-     * context targeting
-     */
-    fun removeExtData(key: String) {
-        adUnit.removeExtData(key)
-    }
-
-    /**
-     * This method allows to remove all context data set from adunit context targeting
-     */
-    fun clearExtData() {
-        adUnit.clearExtData()
-    }
-
-    /**
-     * This method obtains the context keyword for adunit context targeting
-     * Inserts the given element in the set if it is not already present.
-     */
-    fun addExtKeyword(keyword: String) {
-        adUnit.addExtKeyword(keyword)
-    }
-
-    /**
-     * This method obtains the context keyword set for adunit context targeting
-     * Adds the elements of the given set to the set.
-     */
-    fun addExtKeywords(keywords: Set<String>) {
-        adUnit.addExtKeywords(keywords)
-    }
-
-    /**
-     * This method allows to remove specific context keyword from adunit context targeting
-     */
-    fun removeExtKeyword(keyword: String) {
-        adUnit.removeExtKeyword(keyword)
-    }
-
-    /**
-     * This method allows to remove all keywords from the set of adunit context targeting
-     */
-    fun clearExtKeywords() {
-        adUnit.clearExtKeywords()
-    }
-
-    fun addUserData(dataObject: AudienzzDataObject) {
-        adUnit.addUserData(dataObject.prebidDataObject)
-    }
-
-    fun clearUserData() {
-        adUnit.clearUserData()
     }
 }

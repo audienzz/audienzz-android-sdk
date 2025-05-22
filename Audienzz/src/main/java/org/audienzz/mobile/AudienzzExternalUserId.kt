@@ -2,36 +2,23 @@ package org.audienzz.mobile
 
 import org.json.JSONObject
 import org.prebid.mobile.ExternalUserId
+import org.prebid.mobile.ExternalUserId.UniqueId
 
 /**
  * Defines the User Id Object from an External Third Party Source
  */
 data class AudienzzExternalUserId internal constructor(
     internal val prebidExternalUserId: ExternalUserId,
+    internal val uniqueIds: List<AudienzzUniqueId>,
 ) {
 
-    var source: String
+    val source: String
         get() = prebidExternalUserId.source
-        set(value) {
-            prebidExternalUserId.source = value
-        }
-
-    var identifier: String
-        get() = prebidExternalUserId.identifier
-        set(value) {
-            prebidExternalUserId.identifier = value
-        }
-
-    var atype: Int?
-        get() = prebidExternalUserId.atype
-        set(value) {
-            prebidExternalUserId.atype = value
-        }
 
     var ext: Map<String, Any>?
         get() = prebidExternalUserId.ext
         set(value) {
-            prebidExternalUserId.ext = value
+            prebidExternalUserId.setExt(value)
         }
 
     val json: JSONObject? = prebidExternalUserId.json
@@ -45,16 +32,23 @@ data class AudienzzExternalUserId internal constructor(
      */
     constructor(
         source: String,
-        identifier: String,
-        atype: Int?,
-        ext: Map<String, Any>?,
+        uniqueIds: List<AudienzzUniqueId>,
     ) : this(
         ExternalUserId(
             source,
-            identifier,
-            atype,
-            ext,
+            uniqueIds.map {
+                UniqueId(it.id, it.atype).apply {
+                    setExt(it.ext)
+                }
+            },
         ),
+        uniqueIds,
+    )
+
+    data class AudienzzUniqueId(
+        val id: String,
+        val atype: Int,
+        var ext: MutableMap<String?, Any?>? = null,
     )
 
     override fun toString(): String = prebidExternalUserId.toString()

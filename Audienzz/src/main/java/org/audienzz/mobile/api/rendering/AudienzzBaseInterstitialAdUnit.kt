@@ -1,8 +1,6 @@
 package org.audienzz.mobile.api.rendering
 
 import androidx.annotation.FloatRange
-import org.audienzz.mobile.AudienzzContentObject
-import org.audienzz.mobile.AudienzzDataObject
 import org.audienzz.mobile.api.data.AudienzzPosition
 import org.audienzz.mobile.rendering.bidding.data.bid.AudienzzBidResponse
 import org.prebid.mobile.api.rendering.BaseInterstitialAdUnit
@@ -11,12 +9,6 @@ import org.prebid.mobile.api.rendering.BaseInterstitialAdUnit
 abstract class AudienzzBaseInterstitialAdUnit internal constructor(
     private val adUnit: BaseInterstitialAdUnit,
 ) {
-
-    var appContent: AudienzzContentObject?
-        get() = adUnit.appContent?.let { AudienzzContentObject(it) }
-        set(value) {
-            adUnit.appContent = value?.prebidContentObject
-        }
 
     var pbAdSlot: String?
         get() = adUnit.pbAdSlot
@@ -41,53 +33,6 @@ abstract class AudienzzBaseInterstitialAdUnit internal constructor(
      */
     fun show() {
         adUnit.show()
-    }
-
-    fun addExtData(key: String, value: String) {
-        adUnit.addExtData(key, value)
-    }
-
-    fun updateExtData(key: String, value: String) {
-        adUnit.addExtData(key, value)
-    }
-
-    fun removeExtData(key: String) {
-        adUnit.removeExtData(key)
-    }
-
-    fun clearExtData() {
-        adUnit.clearExtData()
-    }
-
-    fun getExtDataDictionary(): Map<String, Set<String>> = adUnit.extDataDictionary
-
-    fun addExtKeyword(keyword: String) {
-        adUnit.addExtKeyword(keyword)
-    }
-
-    fun addExtKeywords(keywords: Set<String>) {
-        adUnit.addExtKeywords(keywords)
-    }
-
-    fun removeExtKeyword(keyword: String) {
-        adUnit.removeExtKeyword(keyword)
-    }
-
-    fun getExtKeywordsSet(): Set<String> = adUnit.extKeywordsSet
-
-    fun clearExtKeywords() {
-        adUnit.clearExtKeywords()
-    }
-
-    fun addUserData(dataObject: AudienzzDataObject) {
-        adUnit.addUserData(dataObject.prebidDataObject)
-    }
-
-    fun getUserData(): List<AudienzzDataObject>? =
-        adUnit.userData?.map { AudienzzDataObject(it) }
-
-    fun clearUserData() {
-        adUnit.clearUserData()
     }
 
     /**
@@ -150,8 +95,4 @@ abstract class AudienzzBaseInterstitialAdUnit internal constructor(
 
     fun getBidResponse(): AudienzzBidResponse? =
         adUnit.bidResponse?.let { AudienzzBidResponse(it) }
-
-    fun addContent(content: AudienzzContentObject) {
-        adUnit.addContent(content.prebidContentObject)
-    }
 }

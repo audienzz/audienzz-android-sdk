@@ -20,6 +20,9 @@ enum class AudienzzInitializationStatus(
 
         @JvmStatic
         fun fromPrebidInitializationStatus(initializationStatus: InitializationStatus) =
-            values().find { it.prebidInitializationStatus == initializationStatus } ?: SUCCEEDED
+            AudienzzInitializationStatus.entries.find {
+                it.prebidInitializationStatus == initializationStatus
+            }
+                ?: SUCCEEDED
     }
 }

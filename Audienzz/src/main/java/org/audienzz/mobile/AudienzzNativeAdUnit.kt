@@ -72,7 +72,7 @@ class AudienzzNativeAdUnit internal constructor(
 
             @JvmStatic
             fun fromPrebidContextType(contextType: NativeAdUnit.CONTEXT_TYPE) =
-                values().find { it.prebidContextType == contextType } ?: CONTENT_CENTRIC
+                ContextType.entries.find { it.prebidContextType == contextType } ?: CONTENT_CENTRIC
         }
     }
 
@@ -101,7 +101,7 @@ class AudienzzNativeAdUnit internal constructor(
 
             @JvmStatic
             fun fromPrebidContextSubtype(contextSubtype: NativeAdUnit.CONTEXTSUBTYPE) =
-                values().find { it.prebidContextSubtype == contextSubtype } ?: GENERAL
+                ContextSubtype.entries.find { it.prebidContextSubtype == contextSubtype } ?: GENERAL
         }
     }
 
@@ -122,7 +122,8 @@ class AudienzzNativeAdUnit internal constructor(
 
             @JvmStatic
             fun fromPrebidPlacementType(placementType: NativeAdUnit.PLACEMENTTYPE) =
-                values().find { it.prebidPlacementType == placementType } ?: CONTENT_FEED
+                PlacementType.entries.find { it.prebidPlacementType == placementType }
+                    ?: CONTENT_FEED
         }
     }
 }

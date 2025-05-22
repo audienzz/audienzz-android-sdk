@@ -24,7 +24,7 @@ data class AudienzzNativeData internal constructor(internal val nativeData: Nati
         companion object {
 
             fun getFromNativeDataType(nativeDataType: NativeData.Type) =
-                values().find { it.nativeDataType == nativeDataType } ?: CUSTOM
+                Type.entries.find { it.nativeDataType == nativeDataType } ?: CUSTOM
         }
     }
 }

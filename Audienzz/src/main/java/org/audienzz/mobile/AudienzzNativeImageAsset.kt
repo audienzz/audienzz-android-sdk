@@ -85,7 +85,7 @@ class AudienzzNativeImageAsset internal constructor(
 
             @JvmStatic
             fun fromPrebidImageType(imageAsset: NativeImageAsset.IMAGE_TYPE) =
-                values().find { it.prebidImageType == imageAsset } ?: ICON
+                ImageType.entries.find { it.prebidImageType == imageAsset } ?: ICON
         }
     }
 }

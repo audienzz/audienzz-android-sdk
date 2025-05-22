@@ -3,8 +3,6 @@ package org.audienzz.mobile.configuration
 import androidx.annotation.FloatRange
 import org.audienzz.mobile.AudienzzAdSize
 import org.audienzz.mobile.AudienzzBannerParameters
-import org.audienzz.mobile.AudienzzContentObject
-import org.audienzz.mobile.AudienzzDataObject
 import org.audienzz.mobile.AudienzzVideoParameters
 import org.audienzz.mobile.api.data.AudienzzAdFormat
 import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
@@ -13,7 +11,6 @@ import org.audienzz.mobile.rendering.bidding.data.bid.AudienzzBidResponse
 import org.audienzz.mobile.rendering.interstitial.AudienzzInterstitialSizes
 import org.audienzz.mobile.rendering.models.AudienzzAdPosition
 import org.audienzz.mobile.rendering.models.AudienzzPlacementType
-import org.prebid.mobile.DataObject
 import org.prebid.mobile.configuration.AdUnitConfiguration
 import java.util.EnumSet
 
@@ -26,12 +23,6 @@ class AudienzzAdUnitConfiguration internal constructor(
         get() = prebidAdUnitConfiguration.configId
         set(value) {
             prebidAdUnitConfiguration.configId = value
-        }
-
-    var appContent: AudienzzContentObject?
-        get() = prebidAdUnitConfiguration.appContent?.let { AudienzzContentObject(it) }
-        set(value) {
-            prebidAdUnitConfiguration.appContent = value?.prebidContentObject
         }
 
     var pbAdSlot: String?
@@ -173,70 +164,6 @@ class AudienzzAdUnitConfiguration internal constructor(
 
     fun modifyUsingBidResponse(bidResponse: AudienzzBidResponse?) {
         prebidAdUnitConfiguration.modifyUsingBidResponse(bidResponse?.prebidBidResponse)
-    }
-
-    fun addUserData(dataObject: AudienzzDataObject) {
-        prebidAdUnitConfiguration.addUserData(dataObject.prebidDataObject)
-    }
-
-    fun getUserData(): List<AudienzzDataObject> =
-        prebidAdUnitConfiguration.userData.map { AudienzzDataObject(it) }
-
-    fun clearUserData() {
-        prebidAdUnitConfiguration.clearUserData()
-    }
-
-    fun setUserData(userData: List<AudienzzDataObject>) {
-        prebidAdUnitConfiguration.setUserData(
-            arrayListOf<DataObject>().apply {
-                addAll(userData.map { it.prebidDataObject })
-            },
-        )
-    }
-
-    fun addExtData(key: String, value: String) {
-        prebidAdUnitConfiguration.addExtData(key, value)
-    }
-
-    fun addExtData(key: String, value: Set<String>) {
-        prebidAdUnitConfiguration.addExtData(key, value)
-    }
-
-    fun removeExtData(key: String) {
-        prebidAdUnitConfiguration.removeExtData(key)
-    }
-
-    fun getExtDataDictionary(): Map<String, Set<String>> =
-        prebidAdUnitConfiguration.extDataDictionary
-
-    fun clearExtData() {
-        prebidAdUnitConfiguration.clearExtData()
-    }
-
-    fun setExtData(extData: Map<String, Set<String>>?) {
-        prebidAdUnitConfiguration.setExtData(extData)
-    }
-
-    fun addExtKeyword(keyword: String) {
-        prebidAdUnitConfiguration.addExtKeyword(keyword)
-    }
-
-    fun addExtKeywords(keywords: Set<String>) {
-        prebidAdUnitConfiguration.addExtKeywords(keywords)
-    }
-
-    fun removeExtKeyword(key: String) {
-        prebidAdUnitConfiguration.removeExtKeyword(key)
-    }
-
-    fun setExtKeywords(extKeywords: Set<String>?) {
-        prebidAdUnitConfiguration.setExtKeywords(extKeywords)
-    }
-
-    fun getExtKeywordsSet(): Set<String> = prebidAdUnitConfiguration.extKeywordsSet
-
-    fun clearExtKeywords() {
-        prebidAdUnitConfiguration.clearExtKeywords()
     }
 
     fun addAdFormat(adFormat: AudienzzAdFormat?) {

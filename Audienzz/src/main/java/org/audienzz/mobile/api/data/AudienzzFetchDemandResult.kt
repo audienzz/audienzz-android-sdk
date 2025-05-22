@@ -71,6 +71,7 @@ enum class AudienzzFetchDemandResult(internal val prebidFetchDemandResult: Fetch
 
         @JvmStatic
         internal fun fromPrebidFetchDemandResult(fetchDemandResult: FetchDemandResult) =
-            values().find { it.prebidFetchDemandResult == fetchDemandResult } ?: SUCCESS
+            AudienzzFetchDemandResult.entries.find { it.prebidFetchDemandResult == fetchDemandResult }
+                ?: SUCCESS
     }
 }

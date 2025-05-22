@@ -75,7 +75,7 @@ class GamOriginalApiVideoBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
                         }
 
                         override fun failure(errorCode: Int) {
-                            showFindCreativeSizeErrorDialog(adContainer.context, errorCode)
+                            logFindCreativeSizeError(errorCode)
                         }
                     },
                 )

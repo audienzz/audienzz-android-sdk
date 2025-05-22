@@ -22,7 +22,7 @@ Getting started
 
 Initialize SDK
 -------
-First of all, SDK needs to be intialized with context. It's done asynchronously, so after callback
+First of all, SDK needs to be initialized with context. It's done asynchronously, so after callback
 is triggered with `SUCCEEDED` status, SDK is ready to use.
 
 ```kotlin

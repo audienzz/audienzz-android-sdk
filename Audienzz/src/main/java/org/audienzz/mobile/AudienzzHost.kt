@@ -1,31 +1,13 @@
 package org.audienzz.mobile
 
-import org.prebid.mobile.Host
-
-enum class AudienzzHost(internal val prebidHost: Host) {
+enum class AudienzzHost(var hostUrl: String) {
 
     /**
      * URL <a href=https://ib.adnxs.com/openrtb2/prebid>https://ib.adnxs.com/openrtb2/prebid</a>
      */
-    APPNEXUS(Host.APPNEXUS),
+    APPNEXUS("https://ib.adnxs.com/openrtb2/prebid"),
 
-    RUBICON(Host.RUBICON),
+    RUBICON("https://prebid-server.rubiconproject.com/openrtb2/auction"),
 
-    CUSTOM(Host.CUSTOM), ;
-
-    var hostUrl: String
-        get() = prebidHost.hostUrl
-        set(value) {
-            prebidHost.hostUrl = value
-        }
-
-    companion object {
-
-        @JvmStatic
-        internal fun fromPrebidHost(host: Host) =
-            values().find { it.prebidHost == host } ?: APPNEXUS
-
-        @JvmStatic
-        fun createCustomHost(url: String) = fromPrebidHost(Host.createCustomHost(url))
-    }
+    CUSTOM(""),
 }

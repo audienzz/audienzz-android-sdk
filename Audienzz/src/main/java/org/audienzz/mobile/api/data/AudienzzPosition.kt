@@ -16,6 +16,6 @@ enum class AudienzzPosition(internal val prebidPosition: Position) {
 
         @JvmStatic
         internal fun fromPrebidPosition(position: Position) =
-            values().find { it.prebidPosition == position } ?: TOP_LEFT
+            AudienzzPosition.entries.find { it.prebidPosition == position } ?: TOP_LEFT
     }
 }

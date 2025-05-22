@@ -40,7 +40,7 @@ data class AudienzzNativeEventTracker internal constructor(
 
             @JvmStatic
             fun fromPrebidEventType(eventType: NativeEventTracker.EVENT_TYPE) =
-                values().find { it.prebidNativeEventTracker == eventType } ?: IMPRESSION
+                EventType.entries.find { it.prebidNativeEventTracker == eventType } ?: IMPRESSION
         }
     }
 
@@ -55,7 +55,8 @@ data class AudienzzNativeEventTracker internal constructor(
 
             @JvmStatic
             fun fromPrebidEventTrackingMethod(eventType: NativeEventTracker.EVENT_TRACKING_METHOD) =
-                values().find { it.prebidEventTrackingMethod == eventType } ?: IMAGE
+                EventTrackingMethod.entries.find { it.prebidEventTrackingMethod == eventType }
+                    ?: IMAGE
         }
     }
 }

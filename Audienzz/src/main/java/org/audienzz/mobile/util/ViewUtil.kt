@@ -51,26 +51,47 @@ fun View.addOnBecameVisibleOnScreenListener(listener: () -> Unit) {
  *
  * @see [addOnBecameVisibleOnScreenListener]
  *
- * @param manager use for work with listeners from Interstitial ad
+ * @param fullScreenContentCallback use for work with callbacks from Interstitial ad
  *
- * @param onLoadRequest return request and listener for Interstitial load ad
+ * @param resultCallback return result code, request and listener for Interstitial ad
+ * Then it is required to load GAM ad.
  */
+fun View.lazyAdLoader(
+    adHandler: AudienzzInterstitialAdHandler,
+    request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
+    adLoadCallback: AdManagerInterstitialAdLoadCallback,
+    fullScreenContentCallback: AudienzzFullScreenContentCallback? = null,
+    resultCallback: (
+    (
+        AudienzzResultCode?,
+        AdManagerAdRequest,
+        AdManagerInterstitialAdLoadCallback,
+    ) -> Unit
+    ),
+) {
+    addOnBecameVisibleOnScreenListener {
+        adHandler.load(
+            request = request,
+            adLoadCallback = adLoadCallback,
+            fullScreenContentCallback = fullScreenContentCallback,
+            resultCallback = resultCallback,
+        )
+    }
+}
+
+@Deprecated("Use lazyLoadAd() instead with more parameters", ReplaceWith("lazyLoadAd()"))
 fun View.lazyLoadAd(
     adHandler: AudienzzInterstitialAdHandler,
-    listener: AdManagerInterstitialAdLoadCallback,
     request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
+    adLoadCallback: AdManagerInterstitialAdLoadCallback,
     resultCallback: ((AudienzzResultCode?) -> Unit),
-    manager: AudienzzFullScreenContentCallback?,
-    onLoadRequest: ((AdManagerAdRequest, AdManagerInterstitialAdLoadCallback) -> Unit),
 ) {
     addOnBecameVisibleOnScreenListener {
         adHandler.load(
             context = context,
-            listener = listener,
             request = request,
+            adLoadCallback = adLoadCallback,
             resultCallback = resultCallback,
-            manager = manager,
-            onLoadRequest = onLoadRequest,
         )
     }
 }
@@ -80,22 +101,46 @@ fun View.lazyLoadAd(
  *
  * @see [addOnBecameVisibleOnScreenListener]
  */
+@Deprecated("Use lazyLoadAd() instead with more parameters", ReplaceWith("lazyLoadAd()"))
 fun View.lazyLoadAd(
     adHandler: AudienzzRewardedVideoAdHandler,
-    listener: RewardedAdLoadCallback,
     request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
+    adLoadCallback: RewardedAdLoadCallback,
     resultCallback: ((AudienzzResultCode?) -> Unit),
-    manager: AudienzzFullScreenContentCallback?,
-    requestCallback: ((AdManagerAdRequest, RewardedAdLoadCallback) -> Unit),
 ) {
     addOnBecameVisibleOnScreenListener {
         adHandler.load(
             context = context,
-            listener = listener,
+            adLoadCallback = adLoadCallback,
             request = request,
             resultCallback = resultCallback,
-            manager = manager,
-            requestCallback = requestCallback,
+        )
+    }
+}
+
+/**
+ * Lazy loads [AudienzzRewardedVideoAdHandler] with specified params
+ *
+ * @see [addOnBecameVisibleOnScreenListener]
+ *
+ * @param fullScreenContentCallback use for work with callbacks from Rewarded ad
+ *
+ * @param resultCallback return result code, request and listener for Rewarded ad
+ * Then it is required to load GAM ad.
+ */
+fun View.lazyAdLoader(
+    adHandler: AudienzzRewardedVideoAdHandler,
+    request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
+    adLoadCallback: RewardedAdLoadCallback,
+    fullScreenContentCallback: AudienzzFullScreenContentCallback? = null,
+    resultCallback: ((AudienzzResultCode?, AdManagerAdRequest, RewardedAdLoadCallback) -> Unit),
+) {
+    addOnBecameVisibleOnScreenListener {
+        adHandler.load(
+            request = request,
+            adLoadCallback = adLoadCallback,
+            fullScreenContentCallback = fullScreenContentCallback,
+            resultCallback = resultCallback,
         )
     }
 }

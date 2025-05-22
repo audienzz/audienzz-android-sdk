@@ -25,7 +25,7 @@ internal fun EventLogger.bidWinner(
     resultCode: String?,
     adUnitId: String,
     adViewId: String? = null,
-    targetKeywords: List<String>,
+    targetKeywords: List<String>?,
     isAutorefresh: Boolean,
     autorefreshTime: Long = 0,
     isRefresh: Boolean,

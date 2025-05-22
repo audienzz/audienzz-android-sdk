@@ -74,6 +74,6 @@ enum class AudienzzResultCode(private val prebidResultCode: ResultCode) {
     companion object {
 
         internal fun getResultCode(prebidCode: ResultCode?): AudienzzResultCode? =
-            values().firstOrNull { it.prebidResultCode == prebidCode }
+            AudienzzResultCode.entries.firstOrNull { it.prebidResultCode == prebidCode }
     }
 }

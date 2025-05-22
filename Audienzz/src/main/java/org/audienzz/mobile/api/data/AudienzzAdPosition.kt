@@ -1,4 +1,4 @@
-package org.audienzz.mobile.rendering.models
+package org.audienzz.mobile.api.data
 
 import org.prebid.mobile.rendering.models.AdPosition
 
@@ -8,12 +8,15 @@ enum class AudienzzAdPosition(internal val prebidAdPosition: AdPosition) {
     HEADER(AdPosition.HEADER),
     FOOTER(AdPosition.FOOTER),
     SIDEBAR(AdPosition.SIDEBAR),
-    FULLSCREEN(AdPosition.FULLSCREEN), ;
+    ;
+
+    val value: Int = prebidAdPosition.value
 
     companion object {
 
         @JvmStatic
-        internal fun fromPrebidAdPositionValue(value: Int) =
-            AudienzzAdPosition.entries.find { it.prebidAdPosition.value == value } ?: UNDEFINED
+        internal fun fromPrebidAdPosition(adPosition: AdPosition) =
+            AudienzzAdPosition.entries.find { it.prebidAdPosition == adPosition }
+                ?: UNDEFINED
     }
 }

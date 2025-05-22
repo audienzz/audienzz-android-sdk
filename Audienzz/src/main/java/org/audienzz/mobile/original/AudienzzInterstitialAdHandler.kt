@@ -34,17 +34,13 @@ class AudienzzInterstitialAdHandler(
         )
     }
 
-    /**
-     * @param manager use for work with listeners from Interstitial ad
-     * @param onLoadRequest return request and listener for Interstitial load ad
-     */
-    @JvmOverloads fun load(
-        @Suppress("UNUSED_PARAMETER") context: Context,
+    @Deprecated("Use load() without context")
+    @JvmOverloads
+    fun load(
+        context: Context,
         request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
-        listener: AdManagerInterstitialAdLoadCallback,
+        adLoadCallback: AdManagerInterstitialAdLoadCallback,
         resultCallback: ((AudienzzResultCode?) -> Unit)? = null,
-        manager: AudienzzFullScreenContentCallback? = null,
-        onLoadRequest: ((AdManagerAdRequest, AdManagerInterstitialAdLoadCallback) -> Unit)? = null,
     ) {
         eventLogger?.bidRequest(
             adUnitId = adUnitId,
@@ -66,48 +62,36 @@ class AudienzzInterstitialAdHandler(
                     isAutorefresh = adUnit.autoRefreshTime > 0,
                     isRefresh = false,
                     resultCode = resultCode.toString(),
-                    targetKeywords = adUnit.keywords.toList(),
+                    targetKeywords = request.keywords.toList(),
+                )
+                AdManagerInterstitialAd.load(
+                    context,
+                    adUnitId,
+                    request,
+                    connectAdLoadCallback(adLoadCallback),
                 )
             }
             resultCallback?.invoke(resultCode)
-            onLoadRequest?.invoke(request, connectListeners(listener, manager))
         }
     }
 
-    private fun connectListeners(
-        listener: AdManagerInterstitialAdLoadCallback?,
-        manager: AudienzzFullScreenContentCallback?,
-    ): AdManagerInterstitialAdLoadCallback {
+    @Deprecated("Will be removed in next versions")
+    private fun connectAdLoadCallback(adLoadCallback: AdManagerInterstitialAdLoadCallback?):
+        AdManagerInterstitialAdLoadCallback {
         return object : AdManagerInterstitialAdLoadCallback() {
             override fun onAdLoaded(adManagerInterstitialAd: AdManagerInterstitialAd) {
                 super.onAdLoaded(adManagerInterstitialAd)
-                listener?.onAdLoaded(adManagerInterstitialAd)
+                adLoadCallback?.onAdLoaded(adManagerInterstitialAd)
                 adManagerInterstitialAd.fullScreenContentCallback =
                     object : FullScreenContentCallback() {
                         override fun onAdClicked() {
+                            super.onAdClicked()
                             eventLogger?.adClick(adUnitId)
-                            manager?.let { it.onAdClickedAd() }
                         }
 
                         override fun onAdDismissedFullScreenContent() {
                             super.onAdDismissedFullScreenContent()
                             eventLogger?.closeAd(adUnitId)
-                            manager?.let { it.onAdDismissedFullScreen() }
-                        }
-
-                        override fun onAdFailedToShowFullScreenContent(error: AdError) {
-                            super.onAdFailedToShowFullScreenContent(error)
-                            manager?.let { it.onAdFailedToShowFullScreen(error) }
-                        }
-
-                        override fun onAdImpression() {
-                            super.onAdImpression()
-                            manager?.let { it.onAdImpression() }
-                        }
-
-                        override fun onAdShowedFullScreenContent() {
-                            super.onAdShowedFullScreenContent()
-                            manager?.let { it.onAdShowedFullScreen() }
                         }
                     }
             }
@@ -115,7 +99,102 @@ class AudienzzInterstitialAdHandler(
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                 super.onAdFailedToLoad(loadAdError)
                 eventLogger?.adFailedToLoad(adUnitId = adUnitId, errorMessage = loadAdError.message)
-                listener?.onAdFailedToLoad(loadAdError)
+                adLoadCallback?.onAdFailedToLoad(loadAdError)
+            }
+        }
+    }
+
+    /**
+     * @param fullScreenContentCallback use for work with callbacks from Interstitial ad
+     * @param resultCallback return result code, request and callback for Interstitial ad.
+     * Then it is required to load GAM ad.
+     */
+    @JvmOverloads fun load(
+        request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
+        adLoadCallback: AdManagerInterstitialAdLoadCallback,
+        fullScreenContentCallback: AudienzzFullScreenContentCallback? = null,
+        resultCallback: (
+        (
+            AudienzzResultCode?,
+            AdManagerAdRequest,
+            AdManagerInterstitialAdLoadCallback,
+        ) -> Unit
+        ),
+    ) {
+        eventLogger?.bidRequest(
+            adUnitId = adUnitId,
+            adType = AdType.INTERSTITIAL,
+            adSubtype = adUnit.getSubType(),
+            apiType = ApiType.ORIGINAL,
+            autorefreshTime = adUnit.autoRefreshTime.toLong(),
+            isAutorefresh = adUnit.autoRefreshTime > 0,
+            isRefresh = false,
+        )
+        adUnit.fetchDemand(request) { resultCode ->
+            if (resultCode == AudienzzResultCode.SUCCESS) {
+                eventLogger?.bidWinner(
+                    adUnitId = adUnitId,
+                    adType = AdType.INTERSTITIAL,
+                    adSubtype = adUnit.getSubType(),
+                    apiType = ApiType.ORIGINAL,
+                    autorefreshTime = adUnit.autoRefreshTime.toLong(),
+                    isAutorefresh = adUnit.autoRefreshTime > 0,
+                    isRefresh = false,
+                    resultCode = resultCode.toString(),
+                    targetKeywords = request.keywords.toList(),
+                )
+            }
+            resultCallback(
+                resultCode,
+                request,
+                connectCallbacks(adLoadCallback, fullScreenContentCallback),
+            )
+        }
+    }
+
+    private fun connectCallbacks(
+        adLoadCallback: AdManagerInterstitialAdLoadCallback?,
+        fullScreenContentCallback: AudienzzFullScreenContentCallback?,
+    ): AdManagerInterstitialAdLoadCallback {
+        return object : AdManagerInterstitialAdLoadCallback() {
+            override fun onAdLoaded(adManagerInterstitialAd: AdManagerInterstitialAd) {
+                super.onAdLoaded(adManagerInterstitialAd)
+                adLoadCallback?.onAdLoaded(adManagerInterstitialAd)
+                adManagerInterstitialAd.fullScreenContentCallback =
+                    object : FullScreenContentCallback() {
+                        override fun onAdClicked() {
+                            super.onAdClicked()
+                            eventLogger?.adClick(adUnitId)
+                            fullScreenContentCallback?.onAdClickedAd()
+                        }
+
+                        override fun onAdDismissedFullScreenContent() {
+                            super.onAdDismissedFullScreenContent()
+                            eventLogger?.closeAd(adUnitId)
+                            fullScreenContentCallback?.onAdDismissedFullScreen()
+                        }
+
+                        override fun onAdFailedToShowFullScreenContent(error: AdError) {
+                            super.onAdFailedToShowFullScreenContent(error)
+                            fullScreenContentCallback?.onAdFailedToShowFullScreen(error)
+                        }
+
+                        override fun onAdImpression() {
+                            super.onAdImpression()
+                            fullScreenContentCallback?.onAdImpression()
+                        }
+
+                        override fun onAdShowedFullScreenContent() {
+                            super.onAdShowedFullScreenContent()
+                            fullScreenContentCallback?.onAdShowedFullScreen()
+                        }
+                    }
+            }
+
+            override fun onAdFailedToLoad(loadAdError: LoadAdError) {
+                super.onAdFailedToLoad(loadAdError)
+                eventLogger?.adFailedToLoad(adUnitId = adUnitId, errorMessage = loadAdError.message)
+                adLoadCallback?.onAdFailedToLoad(loadAdError)
             }
         }
     }

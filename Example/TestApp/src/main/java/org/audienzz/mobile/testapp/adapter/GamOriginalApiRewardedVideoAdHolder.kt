@@ -13,9 +13,9 @@ import org.audienzz.mobile.AudienzzVideoParameters
 import org.audienzz.mobile.original.AudienzzRewardedVideoAdHandler
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.util.AudienzzFullScreenContentCallback
-import org.audienzz.mobile.util.lazyLoadAd
+import org.audienzz.mobile.util.lazyAdLoader
 
-class GamOriginalApiRewardedlVideoAdHolder(parent: ViewGroup) : AdHolder(parent) {
+class GamOriginalApiRewardedVideoAdHolder(parent: ViewGroup) : AdHolder(parent) {
 
     override val titleRes: Int
         get() = R.string.gam_original_rewarded_video_title
@@ -34,9 +34,9 @@ class GamOriginalApiRewardedlVideoAdHolder(parent: ViewGroup) : AdHolder(parent)
         button = createButton(R.string.show_rewarded)
 
         var rewarded: RewardedAd? = null
-        adContainer.lazyLoadAd(
+        adContainer.lazyAdLoader(
             adHandler = handler,
-            listener = object : RewardedAdLoadCallback() {
+            adLoadCallback = object : RewardedAdLoadCallback() {
                 override fun onAdLoaded(rewardedAd: RewardedAd) {
                     button?.isEnabled = true
                     rewarded = rewardedAd
@@ -46,10 +46,7 @@ class GamOriginalApiRewardedlVideoAdHolder(parent: ViewGroup) : AdHolder(parent)
                     showAdLoadingErrorDialog(adContainer.context, loadAdError)
                 }
             },
-            resultCallback = { resultCode ->
-                showFetchErrorDialog(adContainer.context, resultCode)
-            },
-            manager = AudienzzFullScreenContentCallback(
+            fullScreenContentCallback = AudienzzFullScreenContentCallback(
                 onAdClickedAd = {
                     Log.d(logTagName, "ad was clicked")
                 },
@@ -57,19 +54,21 @@ class GamOriginalApiRewardedlVideoAdHolder(parent: ViewGroup) : AdHolder(parent)
                     Log.d(logTagName, "on ad impression")
                 },
                 onAdDismissedFullScreen = {
-                    Log.d(logTagName, "ad was dissmissed")
+                    Log.d(logTagName, "ad was dismissed")
                 },
                 onAdShowedFullScreen = {
                     Log.d(logTagName, "ad was showed")
                 },
             ),
-            requestCallback = { request, listener ->
+            resultCallback = { resultCode, request, listener ->
+                showFetchErrorDialog(adContainer.context, resultCode)
                 RewardedAd.load(
                     adContainer.context,
                     AD_UNIT_ID,
                     request,
                     listener,
                 )
+                showFetchErrorDialog(adContainer.context, resultCode)
             },
         )
 

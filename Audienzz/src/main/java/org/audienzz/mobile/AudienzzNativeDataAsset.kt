@@ -67,7 +67,7 @@ class AudienzzNativeDataAsset internal constructor(
 
             @JvmStatic
             fun fromPrebidDataType(dataType: NativeDataAsset.DATA_TYPE) =
-                values().find { it.prebidDataType == dataType } ?: SPONSORED
+                DataType.entries.find { it.prebidDataType == dataType } ?: SPONSORED
         }
     }
 }

@@ -1,5 +1,6 @@
 package org.audienzz.mobile.api.rendering.listeners
 
+import org.audienzz.mobile.AudienzzReward
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.api.rendering.AudienzzRewardedAdUnit
 
@@ -52,5 +53,5 @@ interface AudienzzRewardedAdUnitListener {
      * @param rewardedAdUnit view of the corresponding event. Contains reward instance inside.
      * Prebid reward is always null.
      */
-    fun onUserEarnedReward(rewardedAdUnit: AudienzzRewardedAdUnit?) {}
+    fun onUserEarnedReward(rewardedAdUnit: AudienzzRewardedAdUnit?, reward: AudienzzReward?) {}
 }

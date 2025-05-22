@@ -15,7 +15,7 @@ interface AudienzzPrebidMediationDelegate {
     /**
      * Sets response into a given mediation ad object
      */
-    fun setResponsetoLocalExtras(response: AudienzzBidResponse?)
+    fun setResponseToLocalExtras(response: AudienzzBidResponse?)
 
     /**
      * Checks if banner view is visible, and it is possible to make refresh.

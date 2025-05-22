@@ -1,6 +1,7 @@
 package org.audienzz.mobile.api.rendering
 
 import android.content.Context
+import org.audienzz.mobile.AudienzzReward
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.api.rendering.listeners.AudienzzRewardedAdUnitListener
 import org.audienzz.mobile.event.adClick
@@ -21,12 +22,11 @@ import org.prebid.mobile.api.rendering.listeners.RewardedAdUnitListener
 import org.prebid.mobile.rendering.bidding.data.bid.Bid
 import org.prebid.mobile.rendering.bidding.interfaces.RewardedEventHandler
 import org.prebid.mobile.rendering.bidding.listeners.RewardedVideoEventListener
+import org.prebid.mobile.rendering.interstitial.rewarded.Reward
 
 class AudienzzRewardedAdUnit internal constructor(
     internal val prebidRewardedAdUnit: RewardedAdUnit,
 ) : AudienzzBaseInterstitialAdUnit(prebidRewardedAdUnit) {
-
-    val userReward: Any? get() = prebidRewardedAdUnit.userReward
 
     private var eventHandler: AudienzzRewardedEventHandler? = null
 
@@ -160,8 +160,18 @@ class AudienzzRewardedAdUnit internal constructor(
                     listener.onAdClosed(rewardedAdUnit?.let { AudienzzRewardedAdUnit(it) })
                 }
 
-                override fun onUserEarnedReward(rewardedAdUnit: RewardedAdUnit?) {
-                    listener.onUserEarnedReward(rewardedAdUnit?.let { AudienzzRewardedAdUnit(it) })
+                override fun onUserEarnedReward(
+                    rewardedAdUnit: RewardedAdUnit?,
+                    reward: Reward?,
+                ) {
+                    listener.onUserEarnedReward(
+                        rewardedAdUnit?.let {
+                            AudienzzRewardedAdUnit(it)
+                        },
+                        reward?.let {
+                            AudienzzReward(it.type, it.count, it.ext)
+                        },
+                    )
                 }
             }
     }

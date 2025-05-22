@@ -14,7 +14,10 @@ enum class AudienzzVideoPlacementType(internal val prebidVideoPlacementType: Vid
 
         @JvmStatic
         internal fun fromPrebidVideoPlacementType(videoPlacementType: VideoPlacementType) =
-            values().find { it.prebidVideoPlacementType == videoPlacementType } ?: IN_BANNER
+            AudienzzVideoPlacementType.entries.find {
+                it.prebidVideoPlacementType == videoPlacementType
+            }
+                ?: IN_BANNER
 
         @JvmStatic
         fun mapToVideoPlacementType(placementTypeValue: Int) =
