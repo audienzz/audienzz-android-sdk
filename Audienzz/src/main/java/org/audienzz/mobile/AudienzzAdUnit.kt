@@ -23,6 +23,12 @@ abstract class AudienzzAdUnit internal constructor(
             adUnit.gpid = value
         }
 
+    var impOrtbConfig: String?
+        get() = adUnit.impOrtbConfig
+        set(value) {
+            adUnit.impOrtbConfig = value
+        }
+
     internal val autoRefreshTime get() = adUnit.configuration.autoRefreshDelay
 
     internal val adFormats get() = adUnit.configuration.adFormats
