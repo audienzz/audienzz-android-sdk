@@ -315,4 +315,18 @@ object AudienzzTargetingParams {
      */
     @JvmStatic
     fun getPurposeConsent(index: Int): Boolean? = TargetingParams.getPurposeConsent(index)
+
+    @JvmStatic
+    fun getGlobalOrtbConfig(): String? = TargetingParams.getGlobalOrtbConfig()
+
+    /**
+     * Sets global OpenRTB JSON string for merging with the original request.
+     * Expected format: "{"new_field": "value"}".
+     * Params:
+     * ortbConfig – JSON OpenRTB string.
+     */
+    @JvmStatic
+    fun setGlobalOrtbConfig(ortbConfig: String) {
+        TargetingParams.setGlobalOrtbConfig(ortbConfig)
+    }
 }

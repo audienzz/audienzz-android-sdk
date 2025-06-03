@@ -36,6 +36,10 @@ object AudienzzPrebidMobile {
 
     internal var companyId: String = ""
 
+    /** Schain object for audienzz **/
+    const val AUDIENZZ_SCHAIN_OBJECT_CONFIG =
+        """{ "source": { "schain": [{ "asi":"audienzz.ch", "sid":"812net", "hp":1 }] } }"""
+
     /**
      * Minimum refresh interval allowed. 30 seconds
      */
@@ -262,6 +266,9 @@ object AudienzzPrebidMobile {
         customStatusEndpoint = "https://ib.adnxs.com/status"
         isShareGeoLocation = true
         enabledAssignNativeAssetId = true
+        AudienzzTargetingParams.setGlobalOrtbConfig(
+            AUDIENZZ_SCHAIN_OBJECT_CONFIG,
+        )
     }
 
     private fun getPrebidMobilePluginRendererCached(
