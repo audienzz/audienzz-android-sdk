@@ -10,6 +10,7 @@
     <string name="gam_original_instream_video_title">GAM Original API In-stream Video Ad</string>
     <string name="gam_original_native_styles_title">GAM Original API Native styles Ad</string>
     <string name="gam_original_in_app_title">GAM Original API In App Ad</string>
+    <string name="gam_original_unfilled">Unfilled Ad</string>
 
     <string name="gam_render_html_banner_title">GAM Render API HTML Banner</string>
     <string name="gam_render_video_banner_title">GAM Render API Video Banner</string>
@@ -35,5 +36,15 @@
     <string name="error_message_fetch_code">Fetch command ended with error code %1$s</string>
     <string name="error_message_find_prebid_creative_size">findPrebidCreativeSize ended with error code %1$d</string>
     <string name="error_message_load">Error during ad loading: %1$s</string>
+    <string name="ad_display">Ad Display</string>
+    <string name="request_ad">Request Ad</string>
+    <string name="clear_all">Clear All</string>
+    <string name="remove_key">Remove Key</string>
+    <string name="key_to_remove">Key to Remove</string>
+    <string name="remove_key_value">Remove Values for the Key</string>
+    <string name="submit_key_value">Submit Key-Value</string>
+    <string name="value">Value</string>
+    <string name="key">Key</string>
+    <string name="add_key_value_pair">Add Key-Value Pair</string>
 
 </resources>

@@ -5,17 +5,8 @@ import android.widget.Toast
 import androidx.core.content.edit
 import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_HTML_BANNER_ADS
 import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_INTERSTITIAL_ADS
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_IN_APP_AD
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_IN_NATIVE_STYLES_AD
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_IN_STREAM_AD
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_MULTIFORMAT_ADS
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_RENDER_HTML_AD
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_RENDER_INTERSTITIAL_AD
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_RENDER_NATIVE_AD
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_RENDER_REWARDED_AD
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_RENDER_VIDEO_AD
 import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_REWARDED_AD
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_VIDEO_BANNER_AD
+import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_UNFILLED_AD
 
 object AdPreferences {
 
@@ -28,6 +19,7 @@ object AdPreferences {
 //        HOLDER_TYPE_MULTIFORMAT_ADS, // - will be implement in the next versions
         HOLDER_TYPE_INTERSTITIAL_ADS,
         HOLDER_TYPE_REWARDED_AD,
+        HOLDER_TYPE_UNFILLED_AD,
 //        HOLDER_TYPE_IN_STREAM_AD, // - will be implement in the next versions
 //        HOLDER_TYPE_IN_NATIVE_STYLES_AD, // - will be implement in the next versions
 //        HOLDER_TYPE_IN_APP_AD, //- will be implement in the next versions
@@ -59,7 +51,7 @@ object AdPreferences {
         Toast.makeText(
             context,
             R.string.relaunch_app_to_apply_changes,
-            Toast.LENGTH_SHORT
+            Toast.LENGTH_SHORT,
         ).show()
     }
 

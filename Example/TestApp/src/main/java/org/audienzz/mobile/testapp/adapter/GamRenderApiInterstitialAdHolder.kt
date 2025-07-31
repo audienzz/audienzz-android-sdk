@@ -14,8 +14,7 @@ import java.util.EnumSet
 
 class GamRenderApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
 
-    override val titleRes: Int
-        get() = R.string.gam_render_interstitial_title
+    override val titleRes = R.string.gam_render_interstitial_title
 
     private var displayAdUnit: AudienzzInterstitialAdUnit? = null
     private var videoAdUnit: AudienzzInterstitialAdUnit? = null

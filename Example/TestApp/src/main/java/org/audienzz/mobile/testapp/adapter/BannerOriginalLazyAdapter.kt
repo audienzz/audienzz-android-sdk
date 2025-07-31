@@ -11,14 +11,13 @@ import java.security.InvalidParameterException
 
 class BannerOriginalLazyAdapter : ListAdapter<Int, RecyclerView.ViewHolder>(
     object : DiffUtil.ItemCallback<Int>() {
-        override fun areItemsTheSame(oldItem: Int, newItem: Int): Boolean {
-            return oldItem == newItem
-        }
+        override fun areItemsTheSame(oldItem: Int, newItem: Int): Boolean =
+            oldItem == newItem
 
-        override fun areContentsTheSame(oldItem: Int, newItem: Int): Boolean {
-            return oldItem == newItem
-        }
-    }) {
+        override fun areContentsTheSame(oldItem: Int, newItem: Int): Boolean =
+            oldItem == newItem
+    },
+) {
 
     override fun getItemViewType(position: Int): Int =
         getItem(position)
@@ -34,6 +33,7 @@ class BannerOriginalLazyAdapter : ListAdapter<Int, RecyclerView.ViewHolder>(
             HOLDER_TYPE_IN_STREAM_AD -> GamOriginApiInStreamAdHolder(parent)
             HOLDER_TYPE_IN_NATIVE_STYLES_AD -> GamOriginApiNativeStyleAdHolder(parent)
             HOLDER_TYPE_IN_APP_AD -> GamOriginApiInAppAdHolder(parent)
+            HOLDER_TYPE_UNFILLED_AD -> UnfilledAdHolder(parent)
             HOLDER_TYPE_RENDER_HTML_AD -> GamRenderApiHtmlBannerAdHolder(parent)
             HOLDER_TYPE_RENDER_VIDEO_AD -> GamRenderApiVideoBannerAdHolder(parent)
             HOLDER_TYPE_RENDER_INTERSTITIAL_AD -> GamRenderApiInterstitialAdHolder(parent)
@@ -67,7 +67,7 @@ class BannerOriginalLazyAdapter : ListAdapter<Int, RecyclerView.ViewHolder>(
 
     private inner class DefaultHolder(parent: ViewGroup) : RecyclerView.ViewHolder(
         LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_lazy, parent, false)
+            .inflate(R.layout.item_lazy, parent, false),
     ) {
 
         private val tvTestCaseName = itemView.findViewById<TextView>(R.id.tvTestCaseName)
@@ -89,12 +89,13 @@ class BannerOriginalLazyAdapter : ListAdapter<Int, RecyclerView.ViewHolder>(
         const val HOLDER_TYPE_IN_STREAM_AD = 6
         const val HOLDER_TYPE_IN_NATIVE_STYLES_AD = 7
         const val HOLDER_TYPE_IN_APP_AD = 8
+        const val HOLDER_TYPE_UNFILLED_AD = 9
 
         // Render API
-        const val HOLDER_TYPE_RENDER_HTML_AD = 9
-        const val HOLDER_TYPE_RENDER_VIDEO_AD = 10
-        const val HOLDER_TYPE_RENDER_INTERSTITIAL_AD = 11
-        const val HOLDER_TYPE_RENDER_REWARDED_AD = 12
-        const val HOLDER_TYPE_RENDER_NATIVE_AD = 13
+        const val HOLDER_TYPE_RENDER_HTML_AD = 10
+        const val HOLDER_TYPE_RENDER_VIDEO_AD = 11
+        const val HOLDER_TYPE_RENDER_INTERSTITIAL_AD = 12
+        const val HOLDER_TYPE_RENDER_REWARDED_AD = 13
+        const val HOLDER_TYPE_RENDER_NATIVE_AD = 14
     }
 }

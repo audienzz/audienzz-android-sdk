@@ -12,8 +12,7 @@ import org.audienzz.mobile.util.addOnBecameVisibleOnScreenListener
 
 class GamRenderApiRewardedVideoAdHolder(parent: ViewGroup) : AdHolder(parent) {
 
-    override val titleRes: Int
-        get() = R.string.gam_render_rewarded_video_title
+    override val titleRes = R.string.gam_render_rewarded_video_title
 
     private var adUnit: AudienzzRewardedAdUnit? = null
 

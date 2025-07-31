@@ -1,7 +1,9 @@
 package org.audienzz.mobile
 
+import CustomTargetingManager
 import android.util.Pair
 import org.audienzz.mobile.rendering.models.openrtb.bidRequests.AudienzzExt
+import org.json.JSONObject
 import org.prebid.mobile.ExternalUserId
 import org.prebid.mobile.ExternalUserId.UniqueId
 import org.prebid.mobile.TargetingParams
@@ -12,6 +14,8 @@ import org.prebid.mobile.TargetingParams
  */
 @Suppress("TooManyFunctions")
 object AudienzzTargetingParams {
+    internal val CUSTOM_TARGETING_MANAGER = CustomTargetingManager()
+
     /**
      * User latitude and longitude
      *
@@ -326,7 +330,57 @@ object AudienzzTargetingParams {
      * ortbConfig – JSON OpenRTB string.
      */
     @JvmStatic
-    fun setGlobalOrtbConfig(ortbConfig: String) {
-        TargetingParams.setGlobalOrtbConfig(ortbConfig)
+    fun setGlobalOrtbConfig(ortbConfig: JSONObject) =
+        TargetingParams.setGlobalOrtbConfig(
+            AudienzzUtil.mergeJsonObjects(
+                AudienzzPrebidMobile.AUDIENZZ_SCHAIN_OBJECT_CONFIG,
+                ortbConfig,
+            ).toString(),
+        )
+
+    /** Add a key-value global targeting */
+    @JvmStatic
+    fun addGlobalTargeting(key: String, value: String) {
+        CUSTOM_TARGETING_MANAGER.addCustomTargeting(key, value)
+        setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
+    }
+
+    /** Add a key values global targeting */
+    @JvmStatic
+    fun addGlobalTargeting(key: String, value: Set<String>) {
+        CUSTOM_TARGETING_MANAGER.addCustomTargeting(key, value)
+        setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
+    }
+
+    /** Remove targeting for a key */
+    @JvmStatic
+    fun removeGlobalTargeting(key: String) {
+        CUSTOM_TARGETING_MANAGER.removeCustomTargeting(key)
+        setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
+    }
+
+    /** Clear global targeting */
+    @JvmStatic
+    fun clearGlobalTargeting() {
+        CUSTOM_TARGETING_MANAGER.clearCustomTargeting()
+        val currentConfig = getGlobalOrtbConfig()
+        if (currentConfig != null) {
+            val configJson = JSONObject(currentConfig)
+
+            val appObj = configJson.optJSONObject("app") ?: return
+            val contentObj = appObj.optJSONObject("content") ?: return
+
+            contentObj.remove("keywords")
+
+            if (contentObj.length() == 0) {
+                appObj.remove("content")
+            }
+
+            if (appObj.length() == 0) {
+                configJson.remove("app")
+            }
+
+            TargetingParams.setGlobalOrtbConfig(configJson.toString())
+        }
     }
 }

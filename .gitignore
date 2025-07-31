@@ -78,3 +78,4 @@ captures/
 .directory
 .idea/AndroidProjectSystem.xml
 .idea/deploymentTargetSelector.xml
+/.idea

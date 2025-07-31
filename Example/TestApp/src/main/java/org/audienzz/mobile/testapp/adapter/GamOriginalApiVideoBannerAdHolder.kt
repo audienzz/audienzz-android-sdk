@@ -16,8 +16,7 @@ import java.util.EnumSet
 
 class GamOriginalApiVideoBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
 
-    override val titleRes: Int
-        get() = R.string.gam_original_video_banner_title
+    override val titleRes = R.string.gam_original_video_banner_title
 
     private var adUnit: AudienzzBannerAdUnit? = null
 
@@ -51,7 +50,7 @@ class GamOriginalApiVideoBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
         return AudienzzVideoParameters(listOf("video/x-flv", "video/mp4")).apply {
             api = listOf(
                 AudienzzSignals.Api.VPAID_1,
-                AudienzzSignals.Api.VPAID_2
+                AudienzzSignals.Api.VPAID_2,
             )
             maxBitrate = 1500
             minBitrate = 300
@@ -59,7 +58,7 @@ class GamOriginalApiVideoBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
             minDuration = 5
             playbackMethod = listOf(AudienzzSignals.PlaybackMethod.AutoPlaySoundOn)
             protocols = listOf(
-                AudienzzSignals.Protocols.VAST_2_0
+                AudienzzSignals.Protocols.VAST_2_0,
             )
         }
     }

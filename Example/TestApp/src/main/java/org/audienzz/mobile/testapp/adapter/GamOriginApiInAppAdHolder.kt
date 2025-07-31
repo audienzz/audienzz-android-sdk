@@ -27,8 +27,7 @@ import org.audienzz.mobile.testapp.R
 
 class GamOriginApiInAppAdHolder(parent: ViewGroup) : AdHolder(parent) {
 
-    override val titleRes: Int
-        get() = R.string.gam_original_in_app_title
+    override val titleRes = R.string.gam_original_in_app_title
 
     private var adView: AdManagerAdView? = null
     private var unifiedNativeAd: NativeAd? = null
@@ -93,27 +92,31 @@ class GamOriginApiInAppAdHolder(parent: ViewGroup) : AdHolder(parent) {
         val onCustomAdLoaded =
             NativeCustomFormatAd.OnCustomFormatAdLoadedListener { nativeCustomTemplateAd: NativeCustomFormatAd? ->
                 Log.d(TAG, "Custom ad loaded")
-                AudienzzAdViewUtils.findNative(nativeCustomTemplateAd!!, object :
-                    AudienzzPrebidNativeAdListener {
-                    override fun onPrebidNativeLoaded(ad: AudienzzPrebidNativeAd?) {
-                        ad?.let { inflatePrebidNativeAd(it, wrapper) }
-                    }
+                AudienzzAdViewUtils.findNative(
+                    nativeCustomTemplateAd!!,
+                    object :
+                        AudienzzPrebidNativeAdListener {
+                        override fun onPrebidNativeLoaded(ad: AudienzzPrebidNativeAd?) {
+                            ad?.let { inflatePrebidNativeAd(it, wrapper) }
+                        }
 
-                    override fun onPrebidNativeNotFound() {
-                        Log.e(TAG, "onPrebidNativeNotFound")
-                    }
+                        override fun onPrebidNativeNotFound() {
+                            Log.e(TAG, "onPrebidNativeNotFound")
+                        }
 
-                    override fun onPrebidNativeNotValid() {
-                        Log.e(TAG, "onPrebidNativeNotValid")
-                    }
-                })
+                        override fun onPrebidNativeNotValid() {
+                            Log.e(TAG, "onPrebidNativeNotValid")
+                        }
+                    },
+                )
             }
 
         return AdLoader.Builder(wrapper.context, AD_UNIT_ID)
             .forAdManagerAdView(onGamAdLoaded, AdSize.BANNER)
             .forNativeAd(onUnifiedAdLoaded)
             .forCustomFormatAd(
-                CUSTOM_FORMAT_ID, onCustomAdLoaded
+                CUSTOM_FORMAT_ID,
+                onCustomAdLoaded,
             ) { _: NativeCustomFormatAd?, _: String? -> }
             .withAdListener(object : AdListener() {
                 override fun onAdFailedToLoad(loadAdError: LoadAdError) {

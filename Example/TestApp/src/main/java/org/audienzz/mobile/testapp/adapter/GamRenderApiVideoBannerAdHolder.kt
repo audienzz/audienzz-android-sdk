@@ -9,8 +9,7 @@ import org.audienzz.mobile.testapp.R
 
 class GamRenderApiVideoBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
 
-    override val titleRes: Int
-        get() = R.string.gam_render_video_banner_title
+    override val titleRes = R.string.gam_render_video_banner_title
 
     private var adView: AudienzzBannerView? = null
 

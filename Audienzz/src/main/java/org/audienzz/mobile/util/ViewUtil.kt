@@ -6,11 +6,12 @@ import android.view.View
 import android.view.ViewTreeObserver
 import androidx.annotation.Px
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
-import com.google.android.gms.ads.admanager.AdManagerInterstitialAdLoadCallback
-import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.original.AudienzzInterstitialAdHandler
 import org.audienzz.mobile.original.AudienzzRewardedVideoAdHandler
+import org.audienzz.mobile.original.callbacks.AudienzzFullScreenContentCallback
+import org.audienzz.mobile.original.callbacks.AudienzzInterstitialAdLoadCallback
+import org.audienzz.mobile.original.callbacks.AudienzzRewardedAdLoadCallback
 
 /**
  * Returns true if the view's visibility is VISIBLE and it's located in screen rect.
@@ -58,61 +59,22 @@ fun View.addOnBecameVisibleOnScreenListener(listener: () -> Unit) {
  */
 fun View.lazyAdLoader(
     adHandler: AudienzzInterstitialAdHandler,
-    request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
-    adLoadCallback: AdManagerInterstitialAdLoadCallback,
+    gamRequestBuilder: AdManagerAdRequest.Builder = AdManagerAdRequest.Builder(),
+    adLoadCallback: AudienzzInterstitialAdLoadCallback,
     fullScreenContentCallback: AudienzzFullScreenContentCallback? = null,
     resultCallback: (
     (
         AudienzzResultCode?,
         AdManagerAdRequest,
-        AdManagerInterstitialAdLoadCallback,
+        AudienzzInterstitialAdLoadCallback,
     ) -> Unit
     ),
 ) {
     addOnBecameVisibleOnScreenListener {
         adHandler.load(
-            request = request,
+            gamRequestBuilder = gamRequestBuilder,
             adLoadCallback = adLoadCallback,
             fullScreenContentCallback = fullScreenContentCallback,
-            resultCallback = resultCallback,
-        )
-    }
-}
-
-@Deprecated("Use lazyLoadAd() instead with more parameters", ReplaceWith("lazyLoadAd()"))
-fun View.lazyLoadAd(
-    adHandler: AudienzzInterstitialAdHandler,
-    request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
-    adLoadCallback: AdManagerInterstitialAdLoadCallback,
-    resultCallback: ((AudienzzResultCode?) -> Unit),
-) {
-    addOnBecameVisibleOnScreenListener {
-        adHandler.load(
-            context = context,
-            request = request,
-            adLoadCallback = adLoadCallback,
-            resultCallback = resultCallback,
-        )
-    }
-}
-
-/**
- * Lazy loads [AudienzzRewardedVideoAdHandler] with specified params
- *
- * @see [addOnBecameVisibleOnScreenListener]
- */
-@Deprecated("Use lazyLoadAd() instead with more parameters", ReplaceWith("lazyLoadAd()"))
-fun View.lazyLoadAd(
-    adHandler: AudienzzRewardedVideoAdHandler,
-    request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
-    adLoadCallback: RewardedAdLoadCallback,
-    resultCallback: ((AudienzzResultCode?) -> Unit),
-) {
-    addOnBecameVisibleOnScreenListener {
-        adHandler.load(
-            context = context,
-            adLoadCallback = adLoadCallback,
-            request = request,
             resultCallback = resultCallback,
         )
     }
@@ -130,14 +92,20 @@ fun View.lazyLoadAd(
  */
 fun View.lazyAdLoader(
     adHandler: AudienzzRewardedVideoAdHandler,
-    request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
-    adLoadCallback: RewardedAdLoadCallback,
+    gamRequestBuilder: AdManagerAdRequest.Builder = AdManagerAdRequest.Builder(),
+    adLoadCallback: AudienzzRewardedAdLoadCallback,
     fullScreenContentCallback: AudienzzFullScreenContentCallback? = null,
-    resultCallback: ((AudienzzResultCode?, AdManagerAdRequest, RewardedAdLoadCallback) -> Unit),
+    resultCallback: (
+    (
+        AudienzzResultCode?,
+        AdManagerAdRequest,
+        AudienzzRewardedAdLoadCallback,
+    ) -> Unit
+    ),
 ) {
     addOnBecameVisibleOnScreenListener {
         adHandler.load(
-            request = request,
+            gamRequestBuilder = gamRequestBuilder,
             adLoadCallback = adLoadCallback,
             fullScreenContentCallback = fullScreenContentCallback,
             resultCallback = resultCallback,

@@ -24,13 +24,12 @@ import org.audienzz.mobile.testapp.view.SingleAdActivity
 
 abstract class AdHolder(parent: ViewGroup) : RecyclerView.ViewHolder(
     LayoutInflater.from(parent.context)
-        .inflate(R.layout.layout_ads_container, parent, false)
+        .inflate(R.layout.layout_ads_container, parent, false),
 ) {
 
     protected val adContainer: LinearLayout = itemView.findViewById(R.id.adContainer)
 
-    protected val refreshTimeSeconds: Int
-        get() = 60
+    protected val refreshTimeSeconds = 60
 
     @get:StringRes protected abstract val titleRes: Int
 

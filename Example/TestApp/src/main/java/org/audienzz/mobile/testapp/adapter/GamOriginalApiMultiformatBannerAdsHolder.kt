@@ -44,8 +44,7 @@ import java.util.Random
 
 class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(parent) {
 
-    override val titleRes: Int
-        get() = R.string.gam_original_multiformat_title
+    override val titleRes = R.string.gam_original_multiformat_title
 
     private var adUnit: AudienzzBannerAdUnit? = null
     private var adUnitMultiformat: AudienzzPrebidAdUnit? = null
@@ -66,7 +65,7 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
             configId,
             WIDTH,
             HEIGHT,
-            EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO)
+            EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO),
         )
         adUnit?.setAutoRefreshInterval(refreshTimeSeconds)
 
@@ -103,11 +102,11 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
             setNativeParameters(createNativeParameters())
         }
 
-        val gamRequest = AdManagerAdRequest.Builder().build()
+        val gamRequestBuilder = AdManagerAdRequest.Builder()
         AudienzzMultiformatAdHandler(adUnitMultiformat!!, AD_UNIT_ID_MULTIFORMAT)
-            .load(gamRequest, prebidRequest) { bidInfo ->
+            .load(gamRequestBuilder, prebidRequest) { bidInfo ->
                 showFetchErrorDialog(adContainer.context, bidInfo.resultCode)
-                loadGam(gamRequest, AD_UNIT_ID_MULTIFORMAT)
+                loadGam(gamRequestBuilder)
             }
     }
 
@@ -122,7 +121,9 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
                             adView.setAdSizes(AdSize(width, height))
                         }
 
-                        override fun failure(errorCode: Int) {}
+                        override fun failure(errorCode: Int) {
+                            TODO("Not yet implemented")
+                        }
                     },
                 )
             }
@@ -134,7 +135,7 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
         }
     }
 
-    private fun loadGam(gamRequest: AdManagerAdRequest, unitId: String) {
+    private fun loadGam(gamRequestBuilder: AdManagerAdRequest.Builder) {
         val onBannerLoaded = OnAdManagerAdViewLoadedListener { adView ->
             showBannerAd(adView)
         }
@@ -148,13 +149,13 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
                 showPrebidNativeAd(customNativeAd)
             }
 
-        val adLoader = AdLoader.Builder(adContainer.context, unitId)
+        val adLoader = AdLoader.Builder(adContainer.context, AD_UNIT_ID_MULTIFORMAT)
             .forAdManagerAdView(onBannerLoaded, AdSize.BANNER, AdSize.MEDIUM_RECTANGLE)
             .forNativeAd(onNativeLoaded)
             .forCustomFormatAd(CUSTOM_FORMAT_ID, onPrebidNativeAdLoaded, null)
             .withAdManagerAdViewOptions(AdManagerAdViewOptions.Builder().build())
             .build()
-        adLoader.loadAd(gamRequest)
+        adLoader.loadAd(gamRequestBuilder.build())
     }
 
     private fun createBannerParameters() = AudienzzBannerParameters().apply {
@@ -203,8 +204,8 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
         nativeParameters.addEventTracker(
             AudienzzNativeEventTracker(
                 AudienzzNativeEventTracker.EventType.IMPRESSION,
-                arrayListOf(AudienzzNativeEventTracker.EventTrackingMethod.IMAGE)
-            )
+                arrayListOf(AudienzzNativeEventTracker.EventTrackingMethod.IMAGE),
+            ),
         )
         nativeParameters.setContextType(AudienzzNativeAdUnit.ContextType.SOCIAL_CENTRIC)
         nativeParameters.setPlacementType(AudienzzNativeAdUnit.PlacementType.CONTENT_FEED)
@@ -215,15 +216,18 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
 
     private fun showBannerAd(adView: AdManagerAdView) {
         adContainer.addView(adView)
-        AudienzzAdViewUtils.findPrebidCreativeSize(adView, object : AudienzzPbFindSizeListener {
-            override fun success(width: Int, height: Int) {
-                adView.setAdSizes(AdSize(width, height))
-            }
+        AudienzzAdViewUtils.findPrebidCreativeSize(
+            adView,
+            object : AudienzzPbFindSizeListener {
+                override fun success(width: Int, height: Int) {
+                    adView.setAdSizes(AdSize(width, height))
+                }
 
-            override fun failure(errorCode: Int) {
-                logFindCreativeSizeError(errorCode)
-            }
-        })
+                override fun failure(errorCode: Int) {
+                    logFindCreativeSizeError(errorCode)
+                }
+            },
+        )
     }
 
     private fun showNativeAd(ad: NativeAd, wrapper: ViewGroup) {
@@ -254,19 +258,22 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
     }
 
     private fun showPrebidNativeAd(customNativeAd: NativeCustomFormatAd) {
-        AudienzzAdViewUtils.findNative(customNativeAd, object : AudienzzPrebidNativeAdListener {
-            override fun onPrebidNativeLoaded(ad: AudienzzPrebidNativeAd?) {
-                ad?.let(::inflatePrebidNativeAd)
-            }
+        AudienzzAdViewUtils.findNative(
+            customNativeAd,
+            object : AudienzzPrebidNativeAdListener {
+                override fun onPrebidNativeLoaded(ad: AudienzzPrebidNativeAd?) {
+                    ad?.let(::inflatePrebidNativeAd)
+                }
 
-            override fun onPrebidNativeNotFound() {
-                Log.e("PrebidAdViewUtils", "Find native failed: native not found")
-            }
+                override fun onPrebidNativeNotFound() {
+                    Log.e("PrebidAdViewUtils", "Find native failed: native not found")
+                }
 
-            override fun onPrebidNativeNotValid() {
-                Log.e("PrebidAdViewUtils", "Find native failed: native not valid")
-            }
-        })
+                override fun onPrebidNativeNotValid() {
+                    Log.e("PrebidAdViewUtils", "Find native failed: native not valid")
+                }
+            },
+        )
     }
 
     private fun inflatePrebidNativeAd(ad: AudienzzPrebidNativeAd) {

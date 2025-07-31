@@ -1,6 +1,7 @@
 package org.audienzz.mobile.original
 
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
+import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.api.data.AudienzzBidInfo
 import org.audienzz.mobile.api.original.AudienzzPrebidAdUnit
 import org.audienzz.mobile.api.original.AudienzzPrebidRequest
@@ -30,7 +31,7 @@ class AudienzzMultiformatAdHandler(
     }
 
     @JvmOverloads fun load(
-        gamRequest: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
+        gamRequestBuilder: AdManagerAdRequest.Builder = AdManagerAdRequest.Builder(),
         prebidRequest: AudienzzPrebidRequest,
         callback: (AudienzzBidInfo) -> Unit,
     ) {
@@ -49,7 +50,11 @@ class AudienzzMultiformatAdHandler(
             isAutorefresh = isAutorefresh,
             isRefresh = isRefresh,
         )
-        adUnit.fetchDemand(gamRequest, prebidRequest) { bidInfo ->
+        val request = AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(
+            gamRequestBuilder,
+        )
+            .build()
+        adUnit.fetchDemand(request, prebidRequest) { bidInfo ->
             callback.invoke(bidInfo)
             eventLogger?.bidWinner(
                 adUnitId = adUnitId,
@@ -61,7 +66,7 @@ class AudienzzMultiformatAdHandler(
                 isAutorefresh = isAutorefresh,
                 isRefresh = isRefresh,
                 resultCode = bidInfo.resultCode.toString(),
-                targetKeywords = gamRequest.keywords.toList(),
+                targetKeywords = request.keywords.toList(),
             )
         }
     }

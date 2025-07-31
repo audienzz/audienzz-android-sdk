@@ -2,7 +2,6 @@ package org.audienzz.mobile.testapp.adapter
 
 import android.util.Log
 import android.view.ViewGroup
-import androidx.core.view.doOnNextLayout
 import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.LoadAdError
@@ -13,44 +12,24 @@ import org.audienzz.mobile.AudienzzSignals
 import org.audienzz.mobile.addentum.AudienzzAdViewUtils
 import org.audienzz.mobile.original.AudienzzAdViewHandler
 import org.audienzz.mobile.testapp.R
-import org.audienzz.mobile.util.pxToDp
 
-class GamOriginalApiHtmlBannerAdsHolder(parent: ViewGroup) : AdHolder(parent) {
+class UnfilledAdHolder(parent: ViewGroup) : AdHolder(parent) {
 
-    override val titleRes = R.string.gam_original_html_banner_title
+    override val titleRes: Int = R.string.gam_original_unfilled
 
-    private var adUnit320x50 = AudienzzBannerAdUnit(CONFIG_ID_320_50, 320, 50)
-    private var adUnit300x250 = AudienzzBannerAdUnit(CONFIG_ID_300_250, 300, 250)
-    private var adUnitMultisize = AudienzzBannerAdUnit(CONFIG_ID_MULTISIZE, 320, 50)
+    private var unfilledAdUnit = AudienzzBannerAdUnit(
+        UNFILLED_CONFIG_ID,
+        AD_SIZE.width,
+        AD_SIZE.height,
+    )
 
-    private val logTagName: String = "[BannerAd]"
+    private val logTagName: String = "[UnfilledAd]"
 
     override fun createAds() {
-        createAd(300, 250, AD_UNIT_ID_320_50, adUnit320x50)
-        createAd(300, 250, AD_UNIT_ID_300_250, adUnit300x250)
-        createAd(320, 50, AD_UNIT_ID_MULTISIZE, adUnitMultisize, true)
-    }
-
-    private fun createAd(
-        width: Int,
-        height: Int,
-        unitId: String,
-        adUnit: AudienzzBannerAdUnit,
-        adaptiveSize: Boolean = false,
-    ) {
         val adView = AdManagerAdView(adContainer.context)
-        if (adaptiveSize) {
-            adView.doOnNextLayout {
-                adView.setAdSizes(
-                    AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(
-                        adContainer.context,
-                        adContainer.resources.pxToDp(it.width),
-                    ),
-                )
-            }
-        }
-        adView.adUnitId = unitId
-        adView.setAdSizes(AdSize(width, height))
+
+        adView.adUnitId = UNFILLED_AD_UNIT_ID
+        adView.setAdSizes(AD_SIZE)
         applyAdCallback(adView)
 
         adContainer.addView(adView)
@@ -58,15 +37,14 @@ class GamOriginalApiHtmlBannerAdsHolder(parent: ViewGroup) : AdHolder(parent) {
 
         val parameters = AudienzzBannerParameters()
         parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
-        adUnit.bannerParameters = parameters
-        adUnit.setAutoRefreshInterval(refreshTimeSeconds)
+        unfilledAdUnit.bannerParameters = parameters
+        unfilledAdUnit.setAutoRefreshInterval(refreshTimeSeconds)
 
         AudienzzAdViewHandler(
             adView = adView,
-            adUnit = adUnit,
+            adUnit = unfilledAdUnit,
         ).load(
-            callback = { request, resultCode ->
-                showFetchErrorDialog(adContainer.context, resultCode)
+            callback = { request, _ ->
                 adView.loadAd(request)
             },
         )
@@ -83,7 +61,7 @@ class GamOriginalApiHtmlBannerAdsHolder(parent: ViewGroup) : AdHolder(parent) {
             override fun onAdFailedToLoad(error: LoadAdError) {
                 super.onAdFailedToLoad(error)
                 Log.d(logTagName, "onAdFailedToLoad $error")
-                showAdLoadingErrorDialog(adContainer.context, error)
+                adContainer.removeView(adView)
             }
 
             override fun onAdClicked() {
@@ -114,28 +92,17 @@ class GamOriginalApiHtmlBannerAdsHolder(parent: ViewGroup) : AdHolder(parent) {
     }
 
     override fun onAttach() {
-        adUnit320x50.resumeAutoRefresh()
-        adUnit300x250.resumeAutoRefresh()
-        adUnitMultisize.resumeAutoRefresh()
+        unfilledAdUnit.resumeAutoRefresh()
     }
 
     override fun onDetach() {
-        adUnit320x50.stopAutoRefresh()
-        adUnit300x250.stopAutoRefresh()
-        adUnitMultisize.stopAutoRefresh()
+        unfilledAdUnit.stopAutoRefresh()
     }
 
     companion object {
+        private const val UNFILLED_AD_UNIT_ID = "/96628199/testapp_publisher/high_floor"
+        private const val UNFILLED_CONFIG_ID = "2"
 
-        private const val AD_UNIT_ID_320_50 = "ca-app-pub-3940256099942544/2934735716"
-        private const val CONFIG_ID_320_50 = "33994718"
-
-        private const val AD_UNIT_ID_300_250 =
-            "/96628199/de_audienzz.ch_v2/de_audienzz.ch_320_adnz_wideboard_1"
-        private const val CONFIG_ID_300_250 = "33994718"
-
-        private const val AD_UNIT_ID_MULTISIZE =
-            "ca-app-pub-3940256099942544/2435281174"
-        private const val CONFIG_ID_MULTISIZE = "33994718"
+        private val AD_SIZE = AdSize(320, 50)
     }
 }

@@ -6,6 +6,7 @@ import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import com.google.android.gms.ads.admanager.AdManagerAdView
 import org.audienzz.mobile.AudienzzAdUnit
 import org.audienzz.mobile.AudienzzResultCode
+import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.event.adClick
 import org.audienzz.mobile.event.adCreation
 import org.audienzz.mobile.event.adFailedToLoad
@@ -44,9 +45,13 @@ class AudienzzAdViewHandler(
      */
     @JvmOverloads fun load(
         withLazyLoading: Boolean = true,
-        request: AdManagerAdRequest = AdManagerAdRequest.Builder().build(),
+        gamRequestBuilder: AdManagerAdRequest.Builder = AdManagerAdRequest.Builder(),
         callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit,
     ) {
+        val request =
+            AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER
+                .applyToGamRequestBuilder(gamRequestBuilder)
+                .build()
         if (withLazyLoading) {
             adView.addOnBecameVisibleOnScreenListener {
                 fetchDemand(request, callback)

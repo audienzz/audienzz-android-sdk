@@ -22,8 +22,7 @@ import org.audienzz.mobile.testapp.R
 
 class GamOriginApiInStreamAdHolder(parent: ViewGroup) : AdHolder(parent) {
 
-    override val titleRes: Int
-        get() = R.string.gam_original_instream_video_title
+    override val titleRes = R.string.gam_original_instream_video_title
 
     private var adUnit: AudienzzInStreamVideoAdUnit? = null
     private var player: SimpleExoPlayer? = null
@@ -46,7 +45,7 @@ class GamOriginApiInStreamAdHolder(parent: ViewGroup) : AdHolder(parent) {
             val prebidURL = AudienzzUtil.generateInstreamUriForGam(
                 AD_UNIT_ID,
                 sizes,
-                bidInfo.targetingKeywords
+                bidInfo.targetingKeywords,
             )
             adsUri = Uri.parse(prebidURL)
             initializePlayer()
@@ -85,8 +84,12 @@ class GamOriginApiInStreamAdHolder(parent: ViewGroup) : AdHolder(parent) {
         val mediaSource: MediaSource = mediaSourceFactory.createMediaSource(mediaItem)
         val dataSpec = DataSpec(adsUri!!)
         val adsMediaSource = AdsMediaSource(
-            mediaSource, dataSpec, "ad", mediaSourceFactory,
-            adsLoader!!, playerView!!
+            mediaSource,
+            dataSpec,
+            "ad",
+            mediaSourceFactory,
+            adsLoader!!,
+            playerView!!,
         )
         player?.setMediaSource(adsMediaSource)
         player?.playWhenReady = true

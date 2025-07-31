@@ -13,8 +13,7 @@ import org.audienzz.mobile.testapp.R
 
 class GamOriginApiNativeStyleAdHolder(parent: ViewGroup) : AdHolder(parent) {
 
-    override val titleRes: Int
-        get() = R.string.gam_original_native_styles_title
+    override val titleRes = R.string.gam_original_native_styles_title
 
     private var nativeAdUnit: AudienzzNativeAdUnit? = null
 

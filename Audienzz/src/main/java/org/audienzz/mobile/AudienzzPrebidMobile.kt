@@ -37,8 +37,9 @@ object AudienzzPrebidMobile {
     internal var companyId: String = ""
 
     /** Schain object for audienzz **/
-    const val AUDIENZZ_SCHAIN_OBJECT_CONFIG =
-        """{ "source": { "schain": [{ "asi":"audienzz.ch", "sid":"812net", "hp":1 }] } }"""
+    val AUDIENZZ_SCHAIN_OBJECT_CONFIG = JSONObject(
+        """{ "source": { "schain": [{ "asi":"audienzz.ch", "sid":"812net", "hp":1 }] } }""",
+    )
 
     /**
      * Minimum refresh interval allowed. 30 seconds

@@ -1,5 +1,8 @@
 package org.audienzz.mobile
 
+import android.util.Log
+import org.json.JSONException
+import org.json.JSONObject
 import org.prebid.mobile.Util
 
 object AudienzzUtil {
@@ -38,4 +41,25 @@ object AudienzzUtil {
         sizes?.map { it.adSize }?.toHashSet(),
         prebidKeywords,
     )
+
+    @JvmStatic
+    fun mergeJsonObjects(base: JSONObject, additional: JSONObject): JSONObject {
+        try {
+            val result = JSONObject(base.toString())
+
+            additional.keys().forEach { key ->
+                val value = additional.get(key)
+
+                if (value is JSONObject && result.has(key) && result.get(key) is JSONObject) {
+                    result.put(key, mergeJsonObjects(result.getJSONObject(key), value))
+                } else {
+                    result.put(key, value)
+                }
+            }
+            return result
+        } catch (e: JSONException) {
+            Log.e("AudienzzUtil", "Error merging JSON objects", e)
+        }
+        return base
+    }
 }

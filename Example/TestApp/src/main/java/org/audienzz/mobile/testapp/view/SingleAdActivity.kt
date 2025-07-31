@@ -7,28 +7,30 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.databinding.DataBindingUtil
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter
-import org.audienzz.mobile.testapp.databinding.ActivityMainBinding
+import org.audienzz.mobile.testapp.databinding.AdsPageFragmentBinding
 
 class SingleAdActivity : AppCompatActivity() {
 
     private lateinit var adapter: BannerOriginalLazyAdapter
 
-    private lateinit var binding: ActivityMainBinding
+    private lateinit var binding: AdsPageFragmentBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        binding = DataBindingUtil.setContentView(this, R.layout.activity_main)
+        binding = DataBindingUtil.setContentView(this, R.layout.ads_page_fragment)
 
         adapter = BannerOriginalLazyAdapter()
         binding.list.adapter = adapter
 
         val adType = intent.getIntExtra(AD_TYPE, 0)
-        adapter.submitList(buildList {
-            add(adType)
-            addAll(List(50) { BannerOriginalLazyAdapter.HOLDER_TYPE_DEFAULT })
-            add(adType)
-        })
+        adapter.submitList(
+            buildList {
+                add(adType)
+                addAll(List(50) { BannerOriginalLazyAdapter.HOLDER_TYPE_DEFAULT })
+                add(adType)
+            },
+        )
     }
 
     companion object {
