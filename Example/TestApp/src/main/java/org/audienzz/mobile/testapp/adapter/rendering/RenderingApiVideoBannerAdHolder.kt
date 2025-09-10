@@ -1,4 +1,4 @@
-package org.audienzz.mobile.testapp.adapter
+package org.audienzz.mobile.testapp.adapter.rendering
 
 import android.view.ViewGroup
 import org.audienzz.mobile.AudienzzAdSize
@@ -6,10 +6,12 @@ import org.audienzz.mobile.api.data.AudienzzVideoPlacementType
 import org.audienzz.mobile.api.rendering.AudienzzBannerView
 import org.audienzz.mobile.eventhandlers.AudienzzGamBannerEventHandler
 import org.audienzz.mobile.testapp.R
+import org.audienzz.mobile.testapp.adapter.BaseAdHolder
+import org.audienzz.mobile.testapp.constants.SizeConstants
 
-class GamRenderApiVideoBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
+class RenderingApiVideoBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
-    override val titleRes = R.string.gam_render_video_banner_title
+    override val titleRes = R.string.rendering_api_video_banner_title
 
     private var adView: AudienzzBannerView? = null
 
@@ -17,13 +19,13 @@ class GamRenderApiVideoBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
         val eventHandler = AudienzzGamBannerEventHandler(
             adContainer.context,
             AD_UNIT_ID,
-            AudienzzAdSize(WIDTH, HEIGHT),
+            AudienzzAdSize(SizeConstants.MEDIUM_BANNER_WIDTH, SizeConstants.MEDIUM_BANNER_HEIGHT),
         )
         adView = AudienzzBannerView(adContainer.context, CONFIG_ID, eventHandler).apply {
-            setAutoRefreshDelay(refreshTimeSeconds)
+            setAutoRefreshDelay(DEFAULT_REFRESH_TIME)
             videoPlacementType = AudienzzVideoPlacementType.IN_BANNER
             view.let { adContainer.addView(it) }
-            view.layoutParams.height = HEIGHT
+            view.layoutParams.height = SizeConstants.MEDIUM_BANNER_HEIGHT
             loadAd(lazyLoad = true)
         }
     }
@@ -33,10 +35,7 @@ class GamRenderApiVideoBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
     }
 
     companion object {
-
         private const val AD_UNIT_ID = "/21808260008/prebid_oxb_300x250_banner"
         private const val CONFIG_ID = "prebid-demo-video-outstream"
-        private const val WIDTH = 300
-        private const val HEIGHT = 250
     }
 }

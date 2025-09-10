@@ -1,11 +1,10 @@
-package org.audienzz.mobile.testapp.adapter
+package org.audienzz.mobile.testapp.adapter.original
 
 import android.content.res.Configuration
 import android.util.Log
 import android.view.ViewGroup
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
-import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.admanager.AdManagerInterstitialAd
 import org.audienzz.mobile.AudienzzInterstitialAdUnit
@@ -13,17 +12,19 @@ import org.audienzz.mobile.AudienzzSignals
 import org.audienzz.mobile.AudienzzVideoParameters
 import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
 import org.audienzz.mobile.original.AudienzzInterstitialAdHandler
-import org.audienzz.mobile.original.callbacks.AudienzzFullScreenContentCallback
 import org.audienzz.mobile.original.callbacks.AudienzzInterstitialAdLoadCallback
 import org.audienzz.mobile.testapp.R
+import org.audienzz.mobile.testapp.adapter.BaseAdHolder
+import org.audienzz.mobile.testapp.constants.VideoConstants
+import org.audienzz.mobile.testapp.utils.FullscreenAdUtils
 import org.audienzz.mobile.util.getActivity
 import org.audienzz.mobile.util.lazyAdLoader
 import java.util.EnumSet
 import java.util.Random
 
-class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
+class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
-    override val titleRes = R.string.gam_original_interstitial_video_title
+    override val titleRes = R.string.original_api_interstitial_video_title
 
     private var adUnitDisplay: AudienzzInterstitialAdUnit? = null
     private var adUnitVideo: AudienzzInterstitialAdUnit? = null
@@ -35,8 +36,6 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
     private var buttonVideo: Button? = null
     private var buttonMultiformat: Button? = null
 
-    private val logTagName: String = "[InterstitialAd]"
-
     override fun createAds() {
         createDisplayAd()
         createVideoAd()
@@ -45,7 +44,11 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
 
     private fun createDisplayAd() {
         buttonDisplay = createButton(R.string.show_display_interstitial)
-        adUnitDisplay = AudienzzInterstitialAdUnit(CONFIG_ID_BANNER, 80, 60)
+        adUnitDisplay = AudienzzInterstitialAdUnit(
+            CONFIG_ID_BANNER,
+            DEFAULT_MIN_WIDTH,
+            DEFAULT_MIN_HEIGHT,
+        )
 
         val orientation = adContainer.resources.configuration.orientation
         val handler = AudienzzInterstitialAdHandler(
@@ -81,35 +84,14 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
                     showAdLoadingErrorDialog(adContainer.context, loadAdError)
                 }
             },
-            fullScreenContentCallback = object : AudienzzFullScreenContentCallback() {
-                override fun onAdClicked() {
-                    super.onAdClicked()
-                    Log.d(logTagName, "Ad was clicked")
-                }
-
-                override fun onAdShowedFullScreenContent() {
-                    super.onAdShowedFullScreenContent()
-                    Log.d(logTagName, "Ad was shown")
-                }
-
-                override fun onAdImpression() {
-                    super.onAdImpression()
-                    Log.d(logTagName, "Ad impression")
-                }
-
-                override fun onAdDismissedFullScreenContent() {
-                    super.onAdDismissedFullScreenContent()
+            fullScreenContentCallback = FullscreenAdUtils.createFullScreenCallback(
+                logTag = TAG,
+                onAdDismissedCallback = {
                     lazyLoadedInterstitialAd = null
                     buttonDisplay?.isEnabled = false
                     setLazyLoadInterstitialAd(handler)
-                    Log.d(logTagName, "Ad was dismissed")
-                }
-
-                override fun onAdFailedToShowFullScreenContent(adError: AdError) {
-                    super.onAdFailedToShowFullScreenContent(adError)
-                    Log.d(logTagName, "Ad failed to show $adError")
-                }
-            },
+                },
+            ),
             resultCallback = { resultCode, request, listener ->
                 showFetchErrorDialog(adContainer.context, resultCode)
                 AdManagerInterstitialAd.load(
@@ -136,7 +118,7 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
         buttonVideo?.setOnClickListener {
             handler.load(
                 adLoadCallback = createAdLoadCallback(),
-                fullScreenContentCallback = createFullScreenCallback(),
+                fullScreenContentCallback = FullscreenAdUtils.createFullScreenCallback(TAG),
                 resultCallback = { resultCode, request, listener ->
                     showFetchErrorDialog(adContainer.context, resultCode)
                     AdManagerInterstitialAd.load(
@@ -161,7 +143,10 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
             configId,
             EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO),
         )
-        adUnitMultiformat?.setMinSizePercentage(80, 60)
+        adUnitMultiformat?.setMinSizePercentage(
+            DEFAULT_MIN_WIDTH,
+            DEFAULT_MIN_HEIGHT,
+        )
         adUnitMultiformat?.videoParameters = AudienzzVideoParameters(listOf("video/mp4"))
 
         buttonMultiformat = createButton(R.string.show_multiformat_interstitial)
@@ -171,7 +156,7 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
         buttonMultiformat?.setOnClickListener {
             handler.load(
                 adLoadCallback = createAdLoadCallback(),
-                fullScreenContentCallback = createFullScreenCallback(),
+                fullScreenContentCallback = FullscreenAdUtils.createFullScreenCallback(TAG),
                 resultCallback = { resultCode, request, listener ->
                     showFetchErrorDialog(adContainer.context, resultCode)
                     AdManagerInterstitialAd.load(
@@ -189,41 +174,12 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
         return AudienzzVideoParameters(listOf("video/x-flv", "video/mp4")).apply {
             placement = AudienzzSignals.Placement.Interstitial
             api = listOf(AudienzzSignals.Api.VPAID_1, AudienzzSignals.Api.VPAID_2)
-            maxBitrate = 1500
-            minBitrate = 300
-            maxDuration = 30
-            minDuration = 5
+            maxBitrate = VideoConstants.MAX_BITRATE
+            minBitrate = VideoConstants.MIN_BITRATE
+            maxDuration = VideoConstants.MAX_DURATION
+            minDuration = VideoConstants.MIN_DURATION
             playbackMethod = listOf(AudienzzSignals.PlaybackMethod.AutoPlaySoundOn)
             protocols = listOf(AudienzzSignals.Protocols.VAST_2_0)
-        }
-    }
-
-    private fun createFullScreenCallback(): AudienzzFullScreenContentCallback {
-        return object : AudienzzFullScreenContentCallback() {
-            override fun onAdClicked() {
-                super.onAdClicked()
-                Log.d(logTagName, "Ad was clicked")
-            }
-
-            override fun onAdShowedFullScreenContent() {
-                super.onAdShowedFullScreenContent()
-                Log.d(logTagName, "Ad was shown")
-            }
-
-            override fun onAdImpression() {
-                super.onAdImpression()
-                Log.d(logTagName, "Ad impression")
-            }
-
-            override fun onAdDismissedFullScreenContent() {
-                super.onAdDismissedFullScreenContent()
-                Log.d(logTagName, "Ad was dismissed")
-            }
-
-            override fun onAdFailedToShowFullScreenContent(p0: AdError) {
-                super.onAdFailedToShowFullScreenContent(p0)
-                Log.d(logTagName, "Ad failed to show")
-            }
         }
     }
 
@@ -231,7 +187,7 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
         return object : AudienzzInterstitialAdLoadCallback() {
             override fun onAdLoaded(interstitialAd: AdManagerInterstitialAd) {
                 super.onAdLoaded(interstitialAd)
-                Log.d(logTagName, "Ad was loaded")
+                Log.d(TAG, "Ad was loaded")
                 (adContainer.context as? AppCompatActivity)?.let {
                     interstitialAd.show(it)
                 }
@@ -239,7 +195,7 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
 
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                 super.onAdFailedToLoad(loadAdError)
-                Log.d(logTagName, "Ad failed to loaded")
+                Log.d(TAG, "Ad failed to loaded")
                 showAdLoadingErrorDialog(adContainer.context, loadAdError)
             }
         }
@@ -258,17 +214,17 @@ class GamOriginalApiInterstitialAdHolder(parent: ViewGroup) : AdHolder(parent) {
     }
 
     companion object {
-
+        private const val TAG = "Original API InterstitialAd"
         private const val AD_UNIT_ID_DISPLAY =
             "/96628199/de_audienzz.ch_v2/de_audienzz.ch_320_adnz_wideboard_1"
         private const val AD_UNIT_ID_VIDEO =
             "/96628199/de_audienzz.ch_v2/de_audienzz.ch_320_adnz_wideboard_1"
         private const val AD_UNIT_ID_MULTIFORMAT =
             "/96628199/de_audienzz.ch_v2/de_audienzz.ch_320_adnz_wideboard_1"
-
         private const val CONFIG_ID_BANNER = "34400101"
         private const val CONFIG_ID_VIDEO = "34400101"
-
         private const val FALLBACK_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712"
+        private const val DEFAULT_MIN_WIDTH = 80
+        private const val DEFAULT_MIN_HEIGHT = 60
     }
 }

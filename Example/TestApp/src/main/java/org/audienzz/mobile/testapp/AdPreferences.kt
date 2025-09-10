@@ -3,10 +3,10 @@ package org.audienzz.mobile.testapp
 import android.content.Context
 import android.widget.Toast
 import androidx.core.content.edit
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_HTML_BANNER_ADS
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_INTERSTITIAL_ADS
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_REWARDED_AD
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_UNFILLED_AD
+import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_HTML_BANNER_ADS
+import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_INTERSTITIAL_ADS
+import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_REWARDED_AD
+import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_UNFILLED_AD
 
 object AdPreferences {
 

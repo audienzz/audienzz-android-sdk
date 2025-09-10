@@ -1,4 +1,4 @@
-package org.audienzz.mobile.testapp.adapter
+package org.audienzz.mobile.testapp.adapter.original
 
 import android.view.ViewGroup
 import com.google.android.gms.ads.AdListener
@@ -12,26 +12,34 @@ import org.audienzz.mobile.addentum.AudienzzPbFindSizeListener
 import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
 import org.audienzz.mobile.original.AudienzzAdViewHandler
 import org.audienzz.mobile.testapp.R
+import org.audienzz.mobile.testapp.adapter.BaseAdHolder
+import org.audienzz.mobile.testapp.constants.SizeConstants
+import org.audienzz.mobile.testapp.constants.VideoConstants
 import java.util.EnumSet
 
-class GamOriginalApiVideoBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
+class OriginalApiVideoBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
-    override val titleRes = R.string.gam_original_video_banner_title
+    override val titleRes = R.string.original_api_video_banner_title
 
     private var adUnit: AudienzzBannerAdUnit? = null
 
     override fun createAds() {
         adUnit = AudienzzBannerAdUnit(
             CONFIG_ID,
-            WIDTH,
-            HEIGHT,
+            SizeConstants.MEDIUM_BANNER_WIDTH,
+            SizeConstants.MEDIUM_BANNER_HEIGHT,
             EnumSet.of(AudienzzAdUnitFormat.VIDEO),
         )
         adUnit?.videoParameters = configureVideoParameters()
 
         val adView = AdManagerAdView(adContainer.context)
         adView.adUnitId = AD_UNIT_ID
-        adView.setAdSizes(AdSize(WIDTH, HEIGHT))
+        adView.setAdSizes(
+            AdSize(
+                SizeConstants.MEDIUM_BANNER_WIDTH,
+                SizeConstants.MEDIUM_BANNER_HEIGHT,
+            ),
+        )
         adView.adListener = createListener(adView)
 
         adContainer.addView(adView)
@@ -52,10 +60,10 @@ class GamOriginalApiVideoBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
                 AudienzzSignals.Api.VPAID_1,
                 AudienzzSignals.Api.VPAID_2,
             )
-            maxBitrate = 1500
-            minBitrate = 300
-            maxDuration = 30
-            minDuration = 5
+            maxBitrate = VideoConstants.MAX_BITRATE
+            minBitrate = VideoConstants.MIN_BITRATE
+            maxDuration = VideoConstants.MAX_DURATION
+            minDuration = VideoConstants.MIN_DURATION
             playbackMethod = listOf(AudienzzSignals.PlaybackMethod.AutoPlaySoundOn)
             protocols = listOf(
                 AudienzzSignals.Protocols.VAST_2_0,
@@ -91,10 +99,7 @@ class GamOriginalApiVideoBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
     }
 
     companion object {
-
-        const val AD_UNIT_ID = "/21808260008/prebid-demo-original-api-video-banner"
-        const val CONFIG_ID = "prebid-demo-video-outstream-original-api"
-        const val WIDTH = 300
-        const val HEIGHT = 250
+        private const val AD_UNIT_ID = "/21808260008/prebid-demo-original-api-video-banner"
+        private const val CONFIG_ID = "prebid-demo-video-outstream-original-api"
     }
 }

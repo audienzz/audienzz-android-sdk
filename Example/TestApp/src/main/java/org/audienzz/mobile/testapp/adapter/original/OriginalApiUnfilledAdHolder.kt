@@ -1,4 +1,4 @@
-package org.audienzz.mobile.testapp.adapter
+package org.audienzz.mobile.testapp.adapter.original
 
 import android.util.Log
 import android.view.ViewGroup
@@ -12,24 +12,29 @@ import org.audienzz.mobile.AudienzzSignals
 import org.audienzz.mobile.addentum.AudienzzAdViewUtils
 import org.audienzz.mobile.original.AudienzzAdViewHandler
 import org.audienzz.mobile.testapp.R
+import org.audienzz.mobile.testapp.adapter.BaseAdHolder
+import org.audienzz.mobile.testapp.constants.SizeConstants
 
-class UnfilledAdHolder(parent: ViewGroup) : AdHolder(parent) {
+class OriginalApiUnfilledAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
-    override val titleRes: Int = R.string.gam_original_unfilled
+    override val titleRes: Int = R.string.original_api_unfilled
 
     private var unfilledAdUnit = AudienzzBannerAdUnit(
         UNFILLED_CONFIG_ID,
-        AD_SIZE.width,
-        AD_SIZE.height,
+        SizeConstants.SMALL_BANNER_WIDTH,
+        SizeConstants.SMALL_BANNER_HEIGHT,
     )
-
-    private val logTagName: String = "[UnfilledAd]"
 
     override fun createAds() {
         val adView = AdManagerAdView(adContainer.context)
 
         adView.adUnitId = UNFILLED_AD_UNIT_ID
-        adView.setAdSizes(AD_SIZE)
+        adView.setAdSizes(
+            AdSize(
+                SizeConstants.SMALL_BANNER_WIDTH,
+                SizeConstants.SMALL_BANNER_HEIGHT,
+            ),
+        )
         applyAdCallback(adView)
 
         adContainer.addView(adView)
@@ -38,7 +43,7 @@ class UnfilledAdHolder(parent: ViewGroup) : AdHolder(parent) {
         val parameters = AudienzzBannerParameters()
         parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
         unfilledAdUnit.bannerParameters = parameters
-        unfilledAdUnit.setAutoRefreshInterval(refreshTimeSeconds)
+        unfilledAdUnit.setAutoRefreshInterval(DEFAULT_REFRESH_TIME)
 
         AudienzzAdViewHandler(
             adView = adView,
@@ -54,39 +59,39 @@ class UnfilledAdHolder(parent: ViewGroup) : AdHolder(parent) {
         adView.adListener = object : AdListener() {
             override fun onAdLoaded() {
                 super.onAdLoaded()
-                Log.d(logTagName, "onAdLoaded")
+                Log.d(TAG, "onAdLoaded")
                 AudienzzAdViewUtils.hideScrollBar(adView)
             }
 
             override fun onAdFailedToLoad(error: LoadAdError) {
                 super.onAdFailedToLoad(error)
-                Log.d(logTagName, "onAdFailedToLoad $error")
+                Log.d(TAG, "onAdFailedToLoad $error")
                 adContainer.removeView(adView)
             }
 
             override fun onAdClicked() {
                 super.onAdClicked()
-                Log.d(logTagName, "onAdClicked")
+                Log.d(TAG, "onAdClicked")
             }
 
             override fun onAdClosed() {
                 super.onAdClosed()
-                Log.d(logTagName, "onAdClosed")
+                Log.d(TAG, "onAdClosed")
             }
 
             override fun onAdOpened() {
                 super.onAdOpened()
-                Log.d(logTagName, "onAdOpened")
+                Log.d(TAG, "onAdOpened")
             }
 
             override fun onAdImpression() {
                 super.onAdImpression()
-                Log.d(logTagName, "onAdImpression")
+                Log.d(TAG, "onAdImpression")
             }
 
             override fun onAdSwipeGestureClicked() {
                 super.onAdSwipeGestureClicked()
-                Log.d(logTagName, "onAdSwipeGestureClicked")
+                Log.d(TAG, "onAdSwipeGestureClicked")
             }
         }
     }
@@ -100,9 +105,8 @@ class UnfilledAdHolder(parent: ViewGroup) : AdHolder(parent) {
     }
 
     companion object {
+        private const val TAG = "Original API UnfilledAd"
         private const val UNFILLED_AD_UNIT_ID = "/96628199/testapp_publisher/high_floor"
         private const val UNFILLED_CONFIG_ID = "2"
-
-        private val AD_SIZE = AdSize(320, 50)
     }
 }

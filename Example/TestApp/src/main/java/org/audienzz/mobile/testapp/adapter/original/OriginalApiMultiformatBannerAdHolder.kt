@@ -1,4 +1,4 @@
-package org.audienzz.mobile.testapp.adapter
+package org.audienzz.mobile.testapp.adapter.original
 
 import android.util.Log
 import android.view.View
@@ -21,12 +21,8 @@ import org.audienzz.mobile.AudienzzAdSize
 import org.audienzz.mobile.AudienzzBannerAdUnit
 import org.audienzz.mobile.AudienzzBannerParameters
 import org.audienzz.mobile.AudienzzNativeAdUnit
-import org.audienzz.mobile.AudienzzNativeAsset
-import org.audienzz.mobile.AudienzzNativeDataAsset
 import org.audienzz.mobile.AudienzzNativeEventTracker
-import org.audienzz.mobile.AudienzzNativeImageAsset
 import org.audienzz.mobile.AudienzzNativeParameters
-import org.audienzz.mobile.AudienzzNativeTitleAsset
 import org.audienzz.mobile.AudienzzPrebidNativeAd
 import org.audienzz.mobile.AudienzzPrebidNativeAdListener
 import org.audienzz.mobile.AudienzzSignals
@@ -39,12 +35,15 @@ import org.audienzz.mobile.api.original.AudienzzPrebidRequest
 import org.audienzz.mobile.original.AudienzzAdViewHandler
 import org.audienzz.mobile.original.AudienzzMultiformatAdHandler
 import org.audienzz.mobile.testapp.R
+import org.audienzz.mobile.testapp.adapter.BaseAdHolder
+import org.audienzz.mobile.testapp.constants.SizeConstants
+import org.audienzz.mobile.testapp.utils.NativeAdUtils
 import java.util.EnumSet
 import java.util.Random
 
-class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(parent) {
+class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
-    override val titleRes = R.string.gam_original_multiformat_title
+    override val titleRes = R.string.original_api_multiformat_title
 
     private var adUnit: AudienzzBannerAdUnit? = null
     private var adUnitMultiformat: AudienzzPrebidAdUnit? = null
@@ -63,11 +62,11 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
 
         adUnit = AudienzzBannerAdUnit(
             configId,
-            WIDTH,
-            HEIGHT,
+            SizeConstants.MEDIUM_BANNER_WIDTH,
+            SizeConstants.MEDIUM_BANNER_HEIGHT,
             EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO),
         )
-        adUnit?.setAutoRefreshInterval(refreshTimeSeconds)
+        adUnit?.setAutoRefreshInterval(DEFAULT_REFRESH_TIME)
 
         val parameters = AudienzzBannerParameters()
         parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
@@ -76,7 +75,12 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
 
         val adView = AdManagerAdView(adContainer.context).apply {
             adUnitId = AD_UNIT_ID
-            setAdSizes(AdSize(WIDTH, HEIGHT))
+            setAdSizes(
+                AdSize(
+                    SizeConstants.MEDIUM_BANNER_WIDTH,
+                    SizeConstants.MEDIUM_BANNER_HEIGHT,
+                ),
+            )
             adListener = createGAMListener(this)
         }
 
@@ -159,48 +163,20 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
     }
 
     private fun createBannerParameters() = AudienzzBannerParameters().apply {
-        adSizes = mutableSetOf(AudienzzAdSize(300, 250))
+        adSizes = mutableSetOf(
+            AudienzzAdSize(
+                SizeConstants.MEDIUM_BANNER_WIDTH,
+                SizeConstants.MEDIUM_BANNER_HEIGHT,
+            ),
+        )
     }
 
     private fun createVideoParameters() = AudienzzVideoParameters(listOf("video/mp4")).apply {
-        adSize = AudienzzAdSize(320, 480)
+        adSize = AudienzzAdSize(SizeConstants.VIDEO_BANNER_WIDTH, SizeConstants.VIDEO_BANNER_HEIGHT)
     }
 
     private fun createNativeParameters(): AudienzzNativeParameters {
-        val assets = mutableListOf<AudienzzNativeAsset>()
-
-        val title = AudienzzNativeTitleAsset()
-        title.len = 90
-        title.isRequired = true
-        assets.add(title)
-
-        val icon = AudienzzNativeImageAsset(20, 20, 20, 20)
-        icon.imageType = AudienzzNativeImageAsset.ImageType.ICON
-        icon.isRequired = true
-        assets.add(icon)
-
-        val image = AudienzzNativeImageAsset(200, 200, 200, 200)
-        image.imageType = AudienzzNativeImageAsset.ImageType.MAIN
-        image.isRequired = true
-        assets.add(image)
-
-        val data = AudienzzNativeDataAsset()
-        data.len = 90
-        data.dataType = AudienzzNativeDataAsset.DataType.SPONSORED
-        data.isRequired = true
-        assets.add(data)
-
-        val body = AudienzzNativeDataAsset()
-        body.isRequired = true
-        body.dataType = AudienzzNativeDataAsset.DataType.DESC
-        assets.add(body)
-
-        val cta = AudienzzNativeDataAsset()
-        cta.isRequired = true
-        cta.dataType = AudienzzNativeDataAsset.DataType.CTATEXT
-        assets.add(cta)
-
-        val nativeParameters = AudienzzNativeParameters(assets)
+        val nativeParameters = NativeAdUtils.createNativeParameters()
         nativeParameters.addEventTracker(
             AudienzzNativeEventTracker(
                 AudienzzNativeEventTracker.EventType.IMPRESSION,
@@ -309,16 +285,11 @@ class GamOriginalApiMultiformatBannerAdsHolder(parent: ViewGroup) : AdHolder(par
     }
 
     companion object {
-
         private const val AD_UNIT_ID = "/21808260008/prebid-demo-original-banner-multiformat"
         private const val CONFIG_ID_BANNER = "prebid-demo-banner-300-250"
         private const val CONFIG_ID_VIDEO = "prebid-demo-video-outstream-original-api"
-        private const val WIDTH = 300
-        private const val HEIGHT = 250
-
-        const val CONFIG_ID_NATIVE = "prebid-demo-banner-native-styles"
-        const val CUSTOM_FORMAT_ID = "12304464"
-
-        const val AD_UNIT_ID_MULTIFORMAT = "/21808260008/prebid-demo-multiformat"
+        private const val CONFIG_ID_NATIVE = "prebid-demo-banner-native-styles"
+        private const val CUSTOM_FORMAT_ID = "12304464"
+        private const val AD_UNIT_ID_MULTIFORMAT = "/21808260008/prebid-demo-multiformat"
     }
 }

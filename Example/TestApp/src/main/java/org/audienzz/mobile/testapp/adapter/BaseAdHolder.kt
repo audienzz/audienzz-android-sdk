@@ -20,22 +20,21 @@ import com.google.android.gms.ads.LoadAdError
 import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.testapp.AdPreferences
 import org.audienzz.mobile.testapp.R
+import org.audienzz.mobile.testapp.interfaces.Bindable
 import org.audienzz.mobile.testapp.view.SingleAdActivity
 
-abstract class AdHolder(parent: ViewGroup) : RecyclerView.ViewHolder(
+abstract class BaseAdHolder(parent: ViewGroup) : Bindable, RecyclerView.ViewHolder(
     LayoutInflater.from(parent.context)
         .inflate(R.layout.layout_ads_container, parent, false),
 ) {
 
     protected val adContainer: LinearLayout = itemView.findViewById(R.id.adContainer)
 
-    protected val refreshTimeSeconds = 60
-
     @get:StringRes protected abstract val titleRes: Int
 
     protected abstract fun createAds()
 
-    open fun onBind(position: Int) {
+    override fun onBind(position: Int) {
         adContainer.removeAllViews()
         addTitle()
         addTestControls()
@@ -81,7 +80,7 @@ abstract class AdHolder(parent: ViewGroup) : RecyclerView.ViewHolder(
     protected fun addBottomMargin(view: View?) {
         val pxMargin = TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP,
-            12f,
+            MARGIN_SIZE,
             adContainer.resources.displayMetrics,
         ).toInt()
         (view?.layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin = pxMargin
@@ -105,10 +104,11 @@ abstract class AdHolder(parent: ViewGroup) : RecyclerView.ViewHolder(
     }
 
     private fun addTitle() {
-        val title = TextView(adContainer.context)
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
-        title.gravity = Gravity.CENTER
-        title.text = adContainer.resources.getText(titleRes)
+        val title = TextView(adContainer.context).apply {
+            gravity = Gravity.CENTER
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, TEXT_SIZE)
+            text = adContainer.resources.getText(titleRes)
+        }
         adContainer.addView(title)
     }
 
@@ -150,7 +150,9 @@ abstract class AdHolder(parent: ViewGroup) : RecyclerView.ViewHolder(
     }
 
     companion object {
-
         private const val TAG = "AdHolder"
+        private const val MARGIN_SIZE = 12f
+        private const val TEXT_SIZE = 24f
+        const val DEFAULT_REFRESH_TIME = 60
     }
 }

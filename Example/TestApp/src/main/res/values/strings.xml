@@ -2,32 +2,32 @@
 
     <string name="app_name">Audienzz Test App</string>
 
-    <string name="gam_original_html_banner_title">GAM Original API HTML Banner</string>
-    <string name="gam_original_video_banner_title">GAM Original API Video Banner - outstream</string>
-    <string name="gam_original_multiformat_title">GAM Original API Multiformat</string>
-    <string name="gam_original_interstitial_video_title">GAM Original API Interstitial</string>
-    <string name="gam_original_rewarded_video_title">GAM Original API Rewarded Ad</string>
-    <string name="gam_original_instream_video_title">GAM Original API In-stream Video Ad</string>
-    <string name="gam_original_native_styles_title">GAM Original API Native styles Ad</string>
-    <string name="gam_original_in_app_title">GAM Original API In App Ad</string>
-    <string name="gam_original_unfilled">Unfilled Ad</string>
+    <string name="original_api_banner_title">Original API Banner</string>
+    <string name="original_api_video_banner_title">Original API Video Banner</string>
+    <string name="original_api_multiformat_title">Original API Multiformat</string>
+    <string name="original_api_interstitial_video_title">Original API Interstitial</string>
+    <string name="original_api_rewarded_video_title">Original API Rewarded Ad</string>
+    <string name="original_api_instream_video_title">Original API In-stream Video Ad</string>
+    <string name="original_api_native_styles_title">Original API Native styles Ad</string>
+    <string name="original_api_in_app_title">Original API In App Ad</string>
+    <string name="original_api_unfilled">Original API Unfilled Ad</string>
 
-    <string name="gam_render_html_banner_title">GAM Render API HTML Banner</string>
-    <string name="gam_render_video_banner_title">GAM Render API Video Banner</string>
-    <string name="gam_render_interstitial_title">GAM Render API Interstitial</string>
-    <string name="gam_render_rewarded_video_title">GAM Render API Rewarded Video</string>
-    <string name="gam_render_native_title">GAM Render API Native</string>
+    <string name="rendering_api_banner_title">Rendering API HTML Banner</string>
+    <string name="rendering_api_video_banner_title">Rendering API Video Banner</string>
+    <string name="rendering_api_interstitial_title">Rendering API Interstitial</string>
+    <string name="rendering_api_rewarded_video_title">Rendering API Rewarded Video</string>
+    <string name="rendering_api_native_title">Rendering API Native</string>
 
-    <string name="show_rewarded">Show Rewarded</string>
-    <string name="show_display_interstitial">Show Display Interstitial</string>
-    <string name="show_video_interstitial">Show Video Interstitial</string>
-    <string name="show_multiformat_interstitial">Show Multiformat Interstitial</string>
+    <string name="show_rewarded">Show Rewarded Ad</string>
+    <string name="show_display_interstitial">Show Interstitial Banner Ad</string>
+    <string name="show_video_interstitial">Show Interstitial Video Ad</string>
+    <string name="show_multiformat_interstitial">Show Multiformat Interstitial Ad</string>
 
     <string name="open_in_new_activity">Open in new activity</string>
-    <string name="show_ad_checkbox">Show AD</string>
+    <string name="show_ad_checkbox">Show Ad</string>
     <string name="hide_all">Hide all</string>
     <string name="show_all">Show all</string>
-    <string name="relaunch_app_to_apply_changes">Relaunch App to apply changes</string>
+    <string name="relaunch_app_to_apply_changes">Relaunch app to apply changes</string>
 
     <string name="simple_text">Simple text %1$d</string>
 

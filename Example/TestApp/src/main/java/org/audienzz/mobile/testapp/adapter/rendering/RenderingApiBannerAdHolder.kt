@@ -1,14 +1,16 @@
-package org.audienzz.mobile.testapp.adapter
+package org.audienzz.mobile.testapp.adapter.rendering
 
 import android.view.ViewGroup
 import org.audienzz.mobile.AudienzzAdSize
 import org.audienzz.mobile.api.rendering.AudienzzBannerView
 import org.audienzz.mobile.eventhandlers.AudienzzGamBannerEventHandler
 import org.audienzz.mobile.testapp.R
+import org.audienzz.mobile.testapp.adapter.BaseAdHolder
+import org.audienzz.mobile.testapp.constants.SizeConstants
 
-class GamRenderApiHtmlBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
+class RenderingApiBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
-    override val titleRes = R.string.gam_render_html_banner_title
+    override val titleRes = R.string.rendering_api_banner_title
 
     private var adView: AudienzzBannerView? = null
 
@@ -16,11 +18,11 @@ class GamRenderApiHtmlBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
         val eventHandler = AudienzzGamBannerEventHandler(
             adContainer.context,
             AD_UNIT_ID,
-            AudienzzAdSize(WIDTH, HEIGHT),
+            AudienzzAdSize(SizeConstants.SMALL_BANNER_WIDTH, SizeConstants.SMALL_BANNER_HEIGHT),
         )
         adView = AudienzzBannerView(adContainer.context, CONFIG_ID, eventHandler).apply {
             view.let { adContainer.addView(it) }
-            setAutoRefreshDelay(refreshTimeSeconds)
+            setAutoRefreshDelay(DEFAULT_REFRESH_TIME)
             loadAd()
         }
     }
@@ -30,10 +32,7 @@ class GamRenderApiHtmlBannerAdHolder(parent: ViewGroup) : AdHolder(parent) {
     }
 
     companion object {
-
         private const val AD_UNIT_ID = "/21808260008/prebid_oxb_320x50_banner"
         private const val CONFIG_ID = "prebid-demo-banner-320-50"
-        private const val WIDTH = 320
-        private const val HEIGHT = 50
     }
 }

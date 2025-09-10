@@ -15,7 +15,6 @@ class App : Application() {
     }
 
     companion object {
-
-        const val TAG = "TEST_APP"
+        const val TAG = "TestApp"
     }
 }

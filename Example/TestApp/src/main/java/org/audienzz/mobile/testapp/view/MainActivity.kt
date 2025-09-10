@@ -11,7 +11,6 @@ import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
-
     private lateinit var binding: ActivityMainBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,7 +35,6 @@ class MainActivity : AppCompatActivity() {
 }
 
 class TabPagerAdapter(fragmentActivity: FragmentActivity) : FragmentStateAdapter(fragmentActivity) {
-
     override fun getItemCount(): Int = 2
 
     override fun createFragment(position: Int): Fragment {

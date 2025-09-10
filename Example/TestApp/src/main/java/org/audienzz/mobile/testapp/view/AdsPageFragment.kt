@@ -13,13 +13,13 @@ import org.audienzz.mobile.api.data.AudienzzInitializationStatus
 import org.audienzz.mobile.testapp.AdPreferences
 import org.audienzz.mobile.testapp.App
 import org.audienzz.mobile.testapp.BuildConfig
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter
-import org.audienzz.mobile.testapp.adapter.BannerOriginalLazyAdapter.Companion.HOLDER_TYPE_DEFAULT
+import org.audienzz.mobile.testapp.adapter.AdsAdapter
+import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_DEFAULT
 import org.audienzz.mobile.testapp.databinding.AdsPageFragmentBinding
 
 class AdsPageFragment : Fragment() {
 
-    private lateinit var adapter: BannerOriginalLazyAdapter
+    private lateinit var adapter: AdsAdapter
     private lateinit var binding: AdsPageFragmentBinding
 
     override fun onCreateView(
@@ -41,25 +41,23 @@ class AdsPageFragment : Fragment() {
 
         binding.progressBar.isVisible = true
 
-        adapter = BannerOriginalLazyAdapter()
+        adapter = AdsAdapter()
         binding.list.adapter = adapter
 
         initSdk()
 
         binding.hideAllButton.setOnClickListener {
             AdPreferences.setAllAdTypesEnabled(requireContext(), false)
-            adapter.submitList(AdPreferences.getAllAdTypes()) {
+            adapter.submitList(AdPreferences.getAllAdTypes().toList()) {
                 binding.list.scrollToPosition(0)
             }
-            adapter.notifyDataSetChanged()
         }
 
         binding.showAllButton.setOnClickListener {
             AdPreferences.setAllAdTypesEnabled(requireContext(), true)
-            adapter.submitList(createMockData()) {
+            adapter.submitList(createMockData().toList()) {
                 binding.list.scrollToPosition(0)
             }
-            adapter.notifyDataSetChanged()
         }
 
         binding.versionTextView.text = BuildConfig.VERSION_NAME

@@ -1,19 +1,18 @@
-package org.audienzz.mobile.testapp.adapter
+package org.audienzz.mobile.testapp.adapter.original
 
 import android.view.ViewGroup
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.admanager.AdManagerAdView
 import org.audienzz.mobile.AudienzzNativeAdUnit
-import org.audienzz.mobile.AudienzzNativeDataAsset
 import org.audienzz.mobile.AudienzzNativeEventTracker
-import org.audienzz.mobile.AudienzzNativeImageAsset
-import org.audienzz.mobile.AudienzzNativeTitleAsset
 import org.audienzz.mobile.original.AudienzzAdViewHandler
 import org.audienzz.mobile.testapp.R
+import org.audienzz.mobile.testapp.adapter.BaseAdHolder
+import org.audienzz.mobile.testapp.utils.NativeAdUtils
 
-class GamOriginApiNativeStyleAdHolder(parent: ViewGroup) : AdHolder(parent) {
+class OriginalApiNativeAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
-    override val titleRes = R.string.gam_original_native_styles_title
+    override val titleRes = R.string.original_api_native_styles_title
 
     private var nativeAdUnit: AudienzzNativeAdUnit? = null
 
@@ -44,36 +43,7 @@ class GamOriginApiNativeStyleAdHolder(parent: ViewGroup) : AdHolder(parent) {
     }
 
     private fun addNativeAssets(adUnit: AudienzzNativeAdUnit?) {
-        val title = AudienzzNativeTitleAsset()
-        title.len = 90
-        title.isRequired = true
-        adUnit?.addAsset(title)
-
-        val icon = AudienzzNativeImageAsset(20, 20, 20, 20)
-        icon.imageType = AudienzzNativeImageAsset.ImageType.ICON
-        icon.isRequired = true
-        adUnit?.addAsset(icon)
-
-        val image = AudienzzNativeImageAsset(200, 200, 200, 200)
-        image.imageType = AudienzzNativeImageAsset.ImageType.MAIN
-        image.isRequired = true
-        adUnit?.addAsset(image)
-
-        val data = AudienzzNativeDataAsset()
-        data.len = 90
-        data.dataType = AudienzzNativeDataAsset.DataType.SPONSORED
-        data.isRequired = true
-        adUnit?.addAsset(data)
-
-        val body = AudienzzNativeDataAsset()
-        body.isRequired = true
-        body.dataType = AudienzzNativeDataAsset.DataType.DESC
-        adUnit?.addAsset(body)
-
-        val cta = AudienzzNativeDataAsset()
-        cta.isRequired = true
-        cta.dataType = AudienzzNativeDataAsset.DataType.CTATEXT
-        adUnit?.addAsset(cta)
+        NativeAdUtils.addNativeAssets(adUnit)
 
         val methods = ArrayList<AudienzzNativeEventTracker.EventTrackingMethod>()
         methods.add(AudienzzNativeEventTracker.EventTrackingMethod.IMAGE)
@@ -86,7 +56,6 @@ class GamOriginApiNativeStyleAdHolder(parent: ViewGroup) : AdHolder(parent) {
     }
 
     companion object {
-
         private const val AD_UNIT_ID = "/21808260008/prebid-demo-original-native-styles"
         private const val CONFIG_ID = "prebid-demo-banner-native-styles"
     }

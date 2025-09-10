@@ -22,7 +22,6 @@ import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.databinding.TargetingPageFragmentBinding
 
 class TargetingPageFragment : Fragment() {
-
     private lateinit var binding: TargetingPageFragmentBinding
     private var adUnit = AudienzzBannerAdUnit(CONFIG_ID, AD_SIZE.width, AD_SIZE.height)
 
@@ -105,13 +104,13 @@ class TargetingPageFragment : Fragment() {
             adListener = object : AdListener() {
                 override fun onAdLoaded() {
                     super.onAdLoaded()
-                    Log.d(LOG_TAG_NAME, "onAdLoaded")
+                    Log.d(TAG, "onAdLoaded")
                     AudienzzAdViewUtils.hideScrollBar(this@apply)
                 }
 
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     super.onAdFailedToLoad(error)
-                    Log.d(LOG_TAG_NAME, "onAdFailedToLoad $error")
+                    Log.d(TAG, "onAdFailedToLoad $error")
                 }
             }
         }
@@ -137,11 +136,9 @@ class TargetingPageFragment : Fragment() {
     }
 
     companion object {
+        private const val TAG = "TargetingPage"
         private const val CONFIG_ID = "15624474"
         private const val AD_UNIT_ID = "/96628199/testapp_publisher/medium_rectangle_banner"
-
-        private const val LOG_TAG_NAME = "[TargetingPage]"
-
         private val AD_SIZE = AdSize(300, 250)
     }
 }

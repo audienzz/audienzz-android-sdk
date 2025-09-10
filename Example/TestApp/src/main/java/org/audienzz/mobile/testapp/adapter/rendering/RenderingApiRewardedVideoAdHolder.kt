@@ -1,18 +1,18 @@
-package org.audienzz.mobile.testapp.adapter
+package org.audienzz.mobile.testapp.adapter.rendering
 
 import android.app.Activity
 import android.view.ViewGroup
-import org.audienzz.mobile.AudienzzReward
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.api.rendering.AudienzzRewardedAdUnit
 import org.audienzz.mobile.api.rendering.listeners.AudienzzRewardedAdUnitListener
 import org.audienzz.mobile.eventhandlers.AudienzzGamRewardedEventHandler
 import org.audienzz.mobile.testapp.R
+import org.audienzz.mobile.testapp.adapter.BaseAdHolder
 import org.audienzz.mobile.util.addOnBecameVisibleOnScreenListener
 
-class GamRenderApiRewardedVideoAdHolder(parent: ViewGroup) : AdHolder(parent) {
+class RenderingApiRewardedVideoAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
-    override val titleRes = R.string.gam_render_rewarded_video_title
+    override val titleRes = R.string.rendering_api_rewarded_video_title
 
     private var adUnit: AudienzzRewardedAdUnit? = null
 
@@ -32,8 +32,6 @@ class GamRenderApiRewardedVideoAdHolder(parent: ViewGroup) : AdHolder(parent) {
                 }
             }
 
-            override fun onAdDisplayed(rewardedAdUnit: AudienzzRewardedAdUnit?) {}
-
             override fun onAdFailed(
                 rewardedAdUnit: AudienzzRewardedAdUnit?,
                 exception: AudienzzAdException?,
@@ -42,16 +40,6 @@ class GamRenderApiRewardedVideoAdHolder(parent: ViewGroup) : AdHolder(parent) {
                     adContainer.context,
                     exception?.message.orEmpty(),
                 )
-            }
-
-            override fun onAdClicked(rewardedAdUnit: AudienzzRewardedAdUnit?) {}
-
-            override fun onAdClosed(rewardedAdUnit: AudienzzRewardedAdUnit?) {}
-
-            override fun onUserEarnedReward(
-                rewardedAdUnit: AudienzzRewardedAdUnit?,
-                reward: AudienzzReward?,
-            ) {
             }
         })
         button.addOnBecameVisibleOnScreenListener {
@@ -64,7 +52,6 @@ class GamRenderApiRewardedVideoAdHolder(parent: ViewGroup) : AdHolder(parent) {
     }
 
     companion object {
-
         private const val AD_UNIT_ID =
             "/21808260008/prebid-demo-app-original-api-video-interstitial"
         private const val CONFIG_ID = "prebid-demo-video-rewarded-320-480"

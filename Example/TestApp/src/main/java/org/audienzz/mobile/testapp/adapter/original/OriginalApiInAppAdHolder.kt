@@ -1,4 +1,4 @@
-package org.audienzz.mobile.testapp.adapter
+package org.audienzz.mobile.testapp.adapter.original
 
 import android.util.Log
 import android.view.View
@@ -16,18 +16,16 @@ import com.google.android.gms.ads.formats.OnAdManagerAdViewLoadedListener
 import com.google.android.gms.ads.nativead.NativeAd
 import com.google.android.gms.ads.nativead.NativeCustomFormatAd
 import org.audienzz.mobile.AudienzzNativeAdUnit
-import org.audienzz.mobile.AudienzzNativeDataAsset
 import org.audienzz.mobile.AudienzzNativeEventTracker
-import org.audienzz.mobile.AudienzzNativeImageAsset
-import org.audienzz.mobile.AudienzzNativeTitleAsset
 import org.audienzz.mobile.AudienzzPrebidNativeAd
 import org.audienzz.mobile.AudienzzPrebidNativeAdListener
 import org.audienzz.mobile.addentum.AudienzzAdViewUtils
 import org.audienzz.mobile.testapp.R
+import org.audienzz.mobile.testapp.adapter.BaseAdHolder
+import org.audienzz.mobile.testapp.utils.NativeAdUtils
 
-class GamOriginApiInAppAdHolder(parent: ViewGroup) : AdHolder(parent) {
-
-    override val titleRes = R.string.gam_original_in_app_title
+class OriginalApiInAppAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
+    override val titleRes = R.string.original_api_in_app_title
 
     private var adView: AdManagerAdView? = null
     private var unifiedNativeAd: NativeAd? = null
@@ -90,10 +88,10 @@ class GamOriginApiInAppAdHolder(parent: ViewGroup) : AdHolder(parent) {
         }
 
         val onCustomAdLoaded =
-            NativeCustomFormatAd.OnCustomFormatAdLoadedListener { nativeCustomTemplateAd: NativeCustomFormatAd? ->
+            NativeCustomFormatAd.OnCustomFormatAdLoadedListener { nativeCustomTemplateAd ->
                 Log.d(TAG, "Custom ad loaded")
                 AudienzzAdViewUtils.findNative(
-                    nativeCustomTemplateAd!!,
+                    nativeCustomTemplateAd,
                     object :
                         AudienzzPrebidNativeAdListener {
                         override fun onPrebidNativeLoaded(ad: AudienzzPrebidNativeAd?) {
@@ -128,36 +126,7 @@ class GamOriginApiInAppAdHolder(parent: ViewGroup) : AdHolder(parent) {
     }
 
     private fun addNativeAssets(adUnit: AudienzzNativeAdUnit?) {
-        val title = AudienzzNativeTitleAsset()
-        title.len = 90
-        title.isRequired = true
-        adUnit?.addAsset(title)
-
-        val icon = AudienzzNativeImageAsset(20, 20, 20, 20)
-        icon.imageType = AudienzzNativeImageAsset.ImageType.ICON
-        icon.isRequired = true
-        adUnit?.addAsset(icon)
-
-        val image = AudienzzNativeImageAsset(200, 200, 200, 200)
-        image.imageType = AudienzzNativeImageAsset.ImageType.MAIN
-        image.isRequired = true
-        adUnit?.addAsset(image)
-
-        val data = AudienzzNativeDataAsset()
-        data.len = 90
-        data.dataType = AudienzzNativeDataAsset.DataType.SPONSORED
-        data.isRequired = true
-        adUnit?.addAsset(data)
-
-        val body = AudienzzNativeDataAsset()
-        body.isRequired = true
-        body.dataType = AudienzzNativeDataAsset.DataType.DESC
-        adUnit?.addAsset(body)
-
-        val cta = AudienzzNativeDataAsset()
-        cta.isRequired = true
-        cta.dataType = AudienzzNativeDataAsset.DataType.CTATEXT
-        adUnit?.addAsset(cta)
+        NativeAdUtils.addNativeAssets(adUnit)
 
         val methods = ArrayList<AudienzzNativeEventTracker.EventTrackingMethod>()
         methods.add(AudienzzNativeEventTracker.EventTrackingMethod.IMAGE)
@@ -169,16 +138,15 @@ class GamOriginApiInAppAdHolder(parent: ViewGroup) : AdHolder(parent) {
             )
             adUnit?.addEventTracker(tracker)
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Failed to add event tracker", e)
             showErrorDialog(adContainer.context, e.message.orEmpty())
         }
     }
 
     companion object {
-
+        private const val TAG = "Original API Native InApp Ad"
         private const val AD_UNIT_ID = "/21808260008/apollo_custom_template_native_ad_unit"
         private const val CONFIG_ID = "prebid-demo-banner-native-styles"
         private const val CUSTOM_FORMAT_ID = "11934135"
-        private const val TAG = "GamOriginalNativeInApp"
     }
 }
