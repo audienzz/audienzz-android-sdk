@@ -37,9 +37,7 @@ object AudienzzPrebidMobile {
     internal var companyId: String = ""
 
     /** Schain object for audienzz **/
-    val AUDIENZZ_SCHAIN_OBJECT_CONFIG = JSONObject(
-        """{ "source": { "schain": [{ "asi":"audienzz.ch", "sid":"812net", "hp":1 }] } }""",
-    )
+    internal var schainObject: JSONObject? = null
 
     /**
      * Minimum refresh interval allowed. 30 seconds
@@ -267,9 +265,6 @@ object AudienzzPrebidMobile {
         customStatusEndpoint = "https://ib.adnxs.com/status"
         isShareGeoLocation = true
         enabledAssignNativeAssetId = true
-        AudienzzTargetingParams.setGlobalOrtbConfig(
-            AUDIENZZ_SCHAIN_OBJECT_CONFIG,
-        )
     }
 
     private fun getPrebidMobilePluginRendererCached(
@@ -302,7 +297,7 @@ object AudienzzPrebidMobile {
      *
      * @param context  any context (must be not null)
      * @param companyId Company ID provided for the app by Audienzz
-     * @param listener initialization listener (can be null).
+     * @param sdkInitializationListener initialization listener (can be null).
      *                 <p>
      */
     @MainThread
@@ -331,7 +326,7 @@ object AudienzzPrebidMobile {
     }
 
     @JvmStatic
-    fun addStoredBidRespnose(bidder: String, responseId: String) {
+    fun addStoredBidResponse(bidder: String, responseId: String) {
         PrebidMobile.addStoredBidResponse(bidder, responseId)
     }
 
@@ -376,6 +371,17 @@ object AudienzzPrebidMobile {
     ): Boolean = PrebidMobile.containsPluginRenderer(
         getPrebidMobilePluginRenderer(prebidMobilePluginRenderer),
     )
+
+    /**
+     * Set publisher schain object to use with ad requests
+     *
+     * @param schain
+     */
+    @JvmStatic
+    fun setSchainObject(schain: String) {
+        schainObject = JSONObject(schain)
+        AudienzzTargetingParams.setGlobalOrtbConfig(JSONObject(schain))
+    }
 
     private fun getPrebidMobilePluginRenderer(
         prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer,

@@ -327,16 +327,22 @@ object AudienzzTargetingParams {
      * Sets global OpenRTB JSON string for merging with the original request.
      * Expected format: "{"new_field": "value"}".
      * Params:
-     * ortbConfig – JSON OpenRTB string.
+     * ortbConfig – JSONObject containing OpenRTB string.
      */
     @JvmStatic
-    fun setGlobalOrtbConfig(ortbConfig: JSONObject) =
-        TargetingParams.setGlobalOrtbConfig(
+    fun setGlobalOrtbConfig(ortbConfig: JSONObject) {
+        val schainObject = AudienzzPrebidMobile.schainObject
+
+        val config: JSONObject = if (schainObject != null) {
             AudienzzUtil.mergeJsonObjects(
-                AudienzzPrebidMobile.AUDIENZZ_SCHAIN_OBJECT_CONFIG,
+                schainObject,
                 ortbConfig,
-            ).toString(),
-        )
+            )
+        } else {
+            ortbConfig
+        }
+        TargetingParams.setGlobalOrtbConfig(config.toString())
+    }
 
     /** Add a key-value global targeting */
     @JvmStatic

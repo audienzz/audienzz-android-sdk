@@ -9,6 +9,7 @@ import androidx.core.view.isVisible
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import org.audienzz.mobile.AudienzzPrebidMobile
+import org.audienzz.mobile.AudienzzPrebidMobile.setSchainObject
 import org.audienzz.mobile.api.data.AudienzzInitializationStatus
 import org.audienzz.mobile.testapp.AdPreferences
 import org.audienzz.mobile.testapp.App
@@ -76,6 +77,15 @@ class AdsPageFragment : Fragment() {
             if (status == AudienzzInitializationStatus.SUCCEEDED) {
                 adapter.submitList(createMockData())
                 binding.progressBar.isVisible = false
+                setSchainObject(
+                    """
+                        { "source": 
+                            { "schain": 
+                                [{ "asi":"audienzz.ch", "sid":"812net", "hp":1 }]
+                            } 
+                        }
+                    """.trimMargin(),
+                )
                 Log.d(App.TAG, "SDK was initialized successfully")
             } else {
                 binding.progressBar.isVisible = false
