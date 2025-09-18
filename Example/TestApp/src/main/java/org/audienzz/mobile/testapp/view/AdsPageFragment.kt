@@ -80,8 +80,17 @@ class AdsPageFragment : Fragment() {
                 setSchainObject(
                     """
                         { "source": 
-                            { "schain": 
-                                [{ "asi":"audienzz.ch", "sid":"812net", "hp":1 }]
+                            { "schain": {
+                                "ver": "1.0",
+                                "complete": 1,
+                                "nodes": [
+                                    {
+                                        "asi": "netpoint-media.de",
+                                        "sid": "np-7255",
+                                        "hp": 1
+                                    }
+                                  ]
+                                }
                             } 
                         }
                     """.trimMargin(),
