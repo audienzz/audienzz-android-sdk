@@ -1,6 +1,7 @@
 package org.audienzz.mobile.original
 
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.api.data.AudienzzBidInfo
 import org.audienzz.mobile.api.original.AudienzzPrebidAdUnit
@@ -50,6 +51,11 @@ class AudienzzMultiformatAdHandler(
             isAutorefresh = isAutorefresh,
             isRefresh = isRefresh,
         )
+        val ppid = AudienzzPrebidMobile.ppidManager?.getPpid()
+        if (ppid != null) {
+            gamRequestBuilder.setPublisherProvidedId(ppid)
+        }
+
         val request = AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(
             gamRequestBuilder,
         )

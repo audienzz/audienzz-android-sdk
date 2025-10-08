@@ -5,6 +5,7 @@ import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import com.google.android.gms.ads.rewarded.RewardedAd
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.AudienzzRewardedVideoAdUnit
 import org.audienzz.mobile.AudienzzTargetingParams
@@ -61,6 +62,11 @@ class AudienzzRewardedVideoAdHandler(
             isAutorefresh = adUnit.autoRefreshTime > 0,
             isRefresh = false,
         )
+        val ppid = AudienzzPrebidMobile.ppidManager?.getPpid()
+        if (ppid != null) {
+            gamRequestBuilder.setPublisherProvidedId(ppid)
+        }
+
         val request = AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(
             gamRequestBuilder,
         )

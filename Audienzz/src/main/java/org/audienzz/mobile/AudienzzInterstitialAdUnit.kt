@@ -3,8 +3,6 @@ package org.audienzz.mobile
 import androidx.annotation.IntRange
 import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
 import org.audienzz.mobile.event.entity.AdSubtype
-import org.prebid.mobile.AdSize
-import org.prebid.mobile.BannerParameters
 import org.prebid.mobile.InterstitialAdUnit
 import java.util.EnumSet
 
@@ -14,11 +12,10 @@ class AudienzzInterstitialAdUnit internal constructor(
 ) : AudienzzBannerBaseAdUnit(adUnit) {
 
     init {
-
-        val bannerParameters = BannerParameters()
-        val adSizes = AdSize(1, 1)
+        val bannerParameters = AudienzzBannerParameters()
+        val adSizes = AudienzzAdSize(1, 1)
         bannerParameters.adSizes = setOf(adSizes)
-        adUnit.bannerParameters = bannerParameters
+        adUnit.bannerParameters = bannerParameters.prebidBannerParameters
     }
 
     constructor(configId: String) : this(

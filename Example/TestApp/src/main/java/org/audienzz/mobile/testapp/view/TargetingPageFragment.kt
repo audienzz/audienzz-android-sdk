@@ -14,7 +14,6 @@ import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.admanager.AdManagerAdView
 import org.audienzz.mobile.AudienzzBannerAdUnit
 import org.audienzz.mobile.AudienzzBannerParameters
-import org.audienzz.mobile.AudienzzSignals
 import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.addentum.AudienzzAdViewUtils
 import org.audienzz.mobile.original.AudienzzAdViewHandler
@@ -117,9 +116,7 @@ class TargetingPageFragment : Fragment() {
 
         binding.adContainer.addView(adView)
 
-        adUnit.bannerParameters = AudienzzBannerParameters().apply {
-            api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
-        }
+        adUnit.bannerParameters = AudienzzBannerParameters()
 
         AudienzzAdViewHandler(
             adView = adView,

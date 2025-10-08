@@ -61,7 +61,7 @@ First of all, SDK needs to be initialized with context. It's done asynchronously
 is triggered with `SUCCEEDED` status, SDK is ready to use.
 
 ```kotlin
-AudienzzPrebidMobile.initializeSdk(applicationContext, COMPANY_ID) { status ->
+AudienzzPrebidMobile.initializeSdk(applicationContext, COMPANY_ID, enablePpid = false) { status ->
     if (status == AudienzzInitializationStatus.SUCCEEDED) {
         Log.d(App.TAG, "SDK was initialized successfully")
     } else {
@@ -217,6 +217,7 @@ This object contains methods to initialize the SDK and configure global settings
 
 | Name                                     | Type                                    | Description                                                                             |
 |------------------------------------------|-----------------------------------------|-----------------------------------------------------------------------------------------|
+| `ppidManager`                            | `PpidManager`                           | Read-only value - variable throught which to interact with PpidManger class             |
 | `AUTO_REFRESH_DELAY_MIN`                 | `Int`                                   | Read-only value - Minimum refresh interval allowed (30 seconds).                        |
 | `AUTO_REFRESH_DELAY_MAX`                 | `Int`                                   | Read-only value - Maximum refresh interval allowed (120 seconds).                       |
 | `SCHEME_HTTPS`                           | `String`                                | Read-only value - HTTPS scheme definition.                                              |
@@ -249,16 +250,28 @@ This object contains methods to initialize the SDK and configure global settings
 
 **Methods:**
 
-| Name                                | Parameters                                                                                               | Description                                  |
-|-------------------------------------|----------------------------------------------------------------------------------------------------------|----------------------------------------------|
-| `initializeSdk`                     | `context: Context`, `companyId: String`, `sdkInitializationListener: AudienzzSdkInitializationListener?` | Initializes the SDK.                         |
-| `addStoredBidResponse`              | `bidder: String`, `responseId: String`                                                                   | Adds a stored bid response.                  |
-| `clearStoredBidResponses`           |                                                                                                          | Clears all stored bid responses.             |
-| `checkGoogleMobileAdsCompatibility` | `googleAdsVersion: String`                                                                               | Checks compatibility with Google Mobile Ads. |
-| `registerPluginRenderer`            | `prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer`                                         | Registers a plugin renderer.                 |
-| `unregisterPluginRenderer`          | `prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer`                                         | Unregisters a plugin renderer.               |
-| `containsPluginRenderer`            | `prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer`                                         | Checks if a plugin renderer is registered.   |
+| Name                                | Parameters                                                                                                                               | Description                                                                                                                                                                                                                                                                                   |
+|-------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `initializeSdk`                     | `context: Context`, `companyId: String`, ` enablePpid: Boolean = false`, `sdkInitializationListener: AudienzzSdkInitializationListener?` | Initializes the SDK. When enablePPID is true - SDK will automatically generate unique identifier, store it in Shared Preferences and add it to all Google Ad Manager requests as a Publisher Provided identifier. On additional methods to work with PPID look at [PpidManager](#ppidmanager) |
+| `addStoredBidResponse`              | `bidder: String`, `responseId: String`                                                                                                   | Adds a stored bid response.                                                                                                                                                                                                                                                                   |
+| `clearStoredBidResponses`           |                                                                                                                                          | Clears all stored bid responses.                                                                                                                                                                                                                                                              |
+| `checkGoogleMobileAdsCompatibility` | `googleAdsVersion: String`                                                                                                               | Checks compatibility with Google Mobile Ads.                                                                                                                                                                                                                                                  |
+| `registerPluginRenderer`            | `prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer`                                                                         | Registers a plugin renderer.                                                                                                                                                                                                                                                                  |
+| `unregisterPluginRenderer`          | `prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer`                                                                         | Unregisters a plugin renderer.                                                                                                                                                                                                                                                                |
+| `containsPluginRenderer`            | `prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer`                                                                         | Checks if a plugin renderer is registered.                                                                                                                                                                                                                                                    |
+| `setSchainObject`                   | `schain: String`                                                                                                                         | Method used to set Schain object for all ad requests. For example on usage refer to [AdsPageFragment](Example/TestApp/src/main/java/org/audienzz/mobile/testapp/view/AdsPageFragment.kt)                                                                                                      |
 
+### `PpidManager`
+
+Available through `AudienzzPrebidMobile.ppidManager` public variable.
+
+**Methods:**
+
+| Name                      | Parameters                        | Description                                                                                                                              |
+|---------------------------|-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `isAutomaticPpidEnabled`  |                                   | Used to get current status of automatic PPID usage (if true - PPID is generated and used with all requests, if false - PPID is not used) |
+| `setAutomaticPpidEnabled` | `isAutomaticPpidEnabled: Boolean` | Used to enable or disable automatic PPID usage                                                                                           |
+| `getPpid`                 |                                   | Used to obtain current PPID if automaticPpid is enabled                                                                                  |
 
 ### `AudienzzAdViewHandler`
 

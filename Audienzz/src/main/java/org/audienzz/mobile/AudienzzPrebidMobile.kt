@@ -18,6 +18,7 @@ import org.audienzz.mobile.rendering.bidding.listeners.AudienzzDisplayVideoListe
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzDisplayViewListener
 import org.audienzz.mobile.rendering.listeners.AudienzzSdkInitializationListener
 import org.audienzz.mobile.util.CurrentActivityTracker
+import org.audienzz.mobile.util.PpidManager
 import org.json.JSONObject
 import org.prebid.mobile.PrebidMobile
 import org.prebid.mobile.PrebidMobile.LogLevel
@@ -33,6 +34,8 @@ import org.prebid.mobile.rendering.bidding.listeners.DisplayViewListener
 import org.prebid.mobile.rendering.listeners.SdkInitializationListener
 
 object AudienzzPrebidMobile {
+    val ppidManager: PpidManager?
+        get() = MainComponent.ppidManager
 
     internal var companyId: String = ""
 
@@ -297,6 +300,8 @@ object AudienzzPrebidMobile {
      *
      * @param context  any context (must be not null)
      * @param companyId Company ID provided for the app by Audienzz
+     * @param enablePpid Controls if unique PPID would be generated for users and used along with
+     * ad requests
      * @param sdkInitializationListener initialization listener (can be null).
      *                 <p>
      */
@@ -305,6 +310,7 @@ object AudienzzPrebidMobile {
     fun initializeSdk(
         context: Context,
         companyId: String,
+        enablePpid: Boolean = false,
         sdkInitializationListener: AudienzzSdkInitializationListener?,
     ) {
         this.companyId = companyId
@@ -313,6 +319,7 @@ object AudienzzPrebidMobile {
                 sdkInitializationListener.onInitializationComplete(
                     AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
                 )
+                ppidManager?.setAutomaticPpidEnabled(enablePpid)
             }
         }
         registerActivityCallbacks(context)

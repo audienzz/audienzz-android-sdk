@@ -6,6 +6,7 @@ import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import com.google.android.gms.ads.admanager.AdManagerInterstitialAd
 import org.audienzz.mobile.AudienzzInterstitialAdUnit
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.event.adClick
@@ -60,6 +61,11 @@ class AudienzzInterstitialAdHandler(
             isAutorefresh = adUnit.autoRefreshTime > 0,
             isRefresh = false,
         )
+        val ppid = AudienzzPrebidMobile.ppidManager?.getPpid()
+        if (ppid != null) {
+            gamRequestBuilder.setPublisherProvidedId(ppid)
+        }
+
         val request =
             AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(
                 gamRequestBuilder,

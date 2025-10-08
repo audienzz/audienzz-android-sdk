@@ -73,6 +73,7 @@ class AdsPageFragment : Fragment() {
         AudienzzPrebidMobile.initializeSdk(
             requireContext().applicationContext,
             "TestCompany",
+            true,
         ) { status ->
             if (status == AudienzzInitializationStatus.SUCCEEDED) {
                 adapter.submitList(createMockData())
