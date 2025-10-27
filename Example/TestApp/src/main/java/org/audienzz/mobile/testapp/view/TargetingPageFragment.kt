@@ -41,7 +41,12 @@ class TargetingPageFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        applyStoreUrlForTargeting()
         setupClickListeners()
+    }
+
+    private fun applyStoreUrlForTargeting() {
+        AudienzzTargetingParams.storeUrl = STORE_URL;
     }
 
     private fun setupClickListeners() {
@@ -137,5 +142,6 @@ class TargetingPageFragment : Fragment() {
         private const val CONFIG_ID = "15624474"
         private const val AD_UNIT_ID = "/96628199/testapp_publisher/medium_rectangle_banner"
         private val AD_SIZE = AdSize(300, 250)
+        private val STORE_URL = "https://play.google.com/store/apps/details?id=com.example.testapp"
     }
 }
