@@ -424,6 +424,133 @@ You can find more examples of practical implementation here:
 
 [Examples](Example/TestApp/src/main/java/org/audienzz/mobile/testapp/adapter)
 
+Remote Configuration Integration
+========
+
+The SDK supports a simplified integration using remote configuration. This allows you to manage ad units (GAM IDs, Prebid Config IDs, sizes, etc.) from the backend, requiring only a simple configuration ID in your app.
+
+### Initialize SDK with Remote Configuration
+
+Before using remote configuration ads, ensure the SDK is properly initialized:
+
+```kotlin
+// 1. Configure remote URL and publisher ID
+RemoteConfigManager.initialize(
+    publisherId = "YOUR_PUBLISHER_ID", // Will be provided for you
+    remoteUrl = "https://dev-api.adnz.co/api/ws-sdk-config/public/v1/" // Audienzz remove config URL
+)
+
+// 2. Initialize SDK with remote configuration support
+AudienzzPrebidMobile.initializeRemoteSdk(
+    context = applicationContext,
+    publisherId = "YOUR_PUBLISHER_ID",
+    enablePpid = false
+) { status ->
+    if (status == AudienzzInitializationStatus.SUCCEEDED) {
+        Log.d(TAG, "SDK was initialized successfully with remote config")
+    } else {
+        Log.e(TAG, "Error during SDK initialization: $status")
+    }
+}
+```
+
+### Banner Ad (Remote Config)
+
+Use `AudienzzRemoteBannerView` to load a banner defined by a remote configuration ID.
+
+```kotlin
+// 1. Create the remote banner view with the configuration ID
+val remoteBannerView = AudienzzRemoteBannerView(
+    context = context,
+    adConfigId = "YOUR_CONFIG_ID"
+)
+
+// 2. Add the view to your layout
+containerLayout.addView(remoteBannerView)
+
+// 3. Set an ad listener (optional)
+remoteBannerView.setAdListener(object : AdListener() {
+    override fun onAdLoaded() {
+        Log.d(TAG, "Remote banner loaded successfully")
+    }
+
+    override fun onAdFailedToLoad(error: LoadAdError) {
+        Log.e(TAG, "Remote banner failed to load: ${error.message}")
+    }
+})
+
+// 4. Load the ad
+remoteBannerView.loadAd()
+```
+
+#### Fixed Size Banner
+To request a specific fixed size for your banner, you can set the layout parameters of the `AudienzzRemoteBannerView` before calling `loadAd()`. If the remote configuration contains matching sizes, they will be used:
+
+```kotlin
+remoteBannerView.layoutParams = FrameLayout.LayoutParams(320.dpToPx(), 50.dpToPx(), Gravity.CENTER)
+remoteBannerView.loadAd()
+```
+
+#### Adaptive Banner
+If adaptive banners are enabled in the remote configuration, the SDK handles the sizing automatically. By default, the `AudienzzRemoteBannerView` uses `MATCH_PARENT` for width and `WRAP_CONTENT` for height. The SDK will calculate the appropriate adaptive height based on the available width and the configuration fetched from the backend:
+
+```kotlin
+// Default behavior is adaptive if configured in the backend
+remoteBannerView.loadAd()
+```
+
+**Lifecycle Management:**
+Remember to handle lifecycle events properly:
+
+```kotlin
+override fun onResume() {
+    super.onResume()
+    remoteBannerView.onResume()
+}
+
+override fun onPause() {
+    super.onPause()
+    remoteBannerView.onPause()
+}
+
+override fun onDestroy() {
+    super.onDestroy()
+    remoteBannerView.destroy()
+}
+```
+
+### Interstitial Ad (Remote Config)
+
+Use `AudienzzRemoteConfigInterstitial` to load an interstitial defined by a remote configuration ID.
+
+```kotlin
+// 1. Create the remote interstitial with the configuration ID
+val remoteInterstitial = AudienzzRemoteConfigInterstitial(
+    context = context,
+    adConfigId = "YOUR_CONFIG_ID"
+)
+
+// 2. Set a listener (optional)
+remoteInterstitial.setListener(object : AudienzzRemoteConfigInterstitial.Listener {
+    override fun onAdLoaded() {
+        Log.d(TAG, "Remote interstitial loaded successfully")
+        // Show the ad when ready
+        remoteInterstitial.show()
+    }
+
+    override fun onAdFailedToLoad(error: String) {
+        Log.e(TAG, "Remote interstitial failed to load: $error")
+    }
+
+    override fun onAdClosed() {
+        Log.d(TAG, "Remote interstitial closed")
+    }
+})
+
+// 3. Load the ad
+remoteInterstitial.load()
+```
+
 Troubleshooting
 ========
 

@@ -62,7 +62,7 @@ class CustomTargetingManager {
             }
         }
 
-        return keywordPairs.joinToString(", ")
+        return keywordPairs.joinToString(",")
     }
 
     /** For GAM requests - apply global targeting to a target AdManagerAdRequest.Builder */

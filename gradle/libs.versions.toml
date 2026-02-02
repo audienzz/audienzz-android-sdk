@@ -57,6 +57,7 @@ kotlin-atomic = { module = "org.jetbrains.kotlinx:atomicfu", version.ref = "kotl
 # storage
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 # network
 retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
 retrofit-json-converter = { module = "com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter", version.ref = "retrofit-json-converter" }
@@ -72,6 +73,7 @@ test-kotlin-coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-te
 detekt-api = { module = "io.gitlab.arturbosch.detekt:detekt-api", version.ref = "detekt" }
 detekt-cli = { module = "io.gitlab.arturbosch.detekt:detekt-cli", version.ref = "detekt" }
 detekt-formatting = { module = "io.gitlab.arturbosch.detekt:detekt-formatting", version.ref = "detekt" }
+core-ktx = { module = "androidx.core:core-ktx", version = "1.13.1" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "gradle-android" }

@@ -9,6 +9,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import okhttp3.logging.HttpLoggingInterceptor.Level
 import org.audienzz.BuildConfig
+import org.audienzz.mobile.api.config.RemoteConfigApi
 import org.audienzz.mobile.event.network.EventApi
 import retrofit2.Converter.Factory
 import retrofit2.Retrofit
@@ -54,4 +55,15 @@ internal class NetworkModule {
         .baseUrl(BuildConfig.EVENTS_BASE_URL)
         .build()
         .create(EventApi::class.java)
+
+    @Provides
+    fun provideRemoteConfigApi(
+        converterFactory: Factory,
+        okHttpClient: OkHttpClient,
+    ): RemoteConfigApi = Retrofit.Builder()
+        .addConverterFactory(converterFactory)
+        .client(okHttpClient)
+        .baseUrl("https://dev-api.adnz.co/api/ws-sdk-config/public/v1/")
+        .build()
+        .create(RemoteConfigApi::class.java)
 }

@@ -4,6 +4,14 @@ import android.app.Application
 import android.content.Context
 import android.view.View
 import androidx.annotation.MainThread
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.audienzz.mobile.api.config.AndroidOrtbConfig
+import org.audienzz.mobile.api.config.OrtbConfig
 import org.audienzz.mobile.api.data.AudienzzInitializationStatus
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.api.rendering.AudienzzPrebidMobileInterstitialControllerInterface
@@ -263,6 +271,12 @@ object AudienzzPrebidMobile {
     private val PLUGIN_RENDERER_CACHE =
         mutableMapOf<AudienzzPrebidMobilePluginRenderer, PrebidMobilePluginRenderer>()
 
+    private val SCOPE = CoroutineScope(
+        Dispatchers.Main + SupervisorJob() + CoroutineExceptionHandler { _, throwable ->
+            android.util.Log.e("AudienzzPrebidMobile", "CoroutineScope exception", throwable)
+        },
+    )
+
     init {
         prebidServerAccountId = "3927"
         customStatusEndpoint = "https://ib.adnxs.com/status"
@@ -311,6 +325,7 @@ object AudienzzPrebidMobile {
         context: Context,
         companyId: String,
         enablePpid: Boolean = false,
+        prebidServerUrl: String? = null,
         sdkInitializationListener: AudienzzSdkInitializationListener?,
     ) {
         this.companyId = companyId
@@ -324,7 +339,98 @@ object AudienzzPrebidMobile {
         }
         registerActivityCallbacks(context)
         MainComponent.init(context)
-        PrebidMobile.initializeSdk(context, audienzzHost.hostUrl, listener)
+        PrebidMobile.initializeSdk(context, prebidServerUrl ?: audienzzHost.hostUrl, listener)
+    }
+
+    /**
+     * Initializes the SDK with remote configuration support.
+     * This method fetches ad configurations from the backend API using the provided publisher ID.
+     *
+     * @param context  any context (must be not null)
+     * @param publisherId Publisher ID provided by Audienzz for remote configuration
+     * @param enablePpid Controls if unique PPID would be generated for users and used along with
+     * ad requests
+     * @param sdkInitializationListener initialization listener (can be null)
+     */
+    @MainThread
+    @JvmStatic
+    fun initializeRemoteSdk(
+        context: Context,
+        publisherId: String,
+        enablePpid: Boolean = false,
+        sdkInitializationListener: AudienzzSdkInitializationListener?,
+    ) {
+        registerActivityCallbacks(context)
+        MainComponent.init(context)
+
+        MainComponent.remoteConfigManager?.let { manager ->
+            manager.initialize(publisherId)
+
+            SCOPE.launch {
+                val publisherConfig = withContext(Dispatchers.IO) {
+                    manager.getPublisherConfig(publisherId)
+                }
+
+                companyId = publisherConfig?.ortbConfig?.schainConfig?.sellerId ?: "1"
+
+                val prebidServerUrl =
+                    publisherConfig?.prebidServerConfig?.url ?: audienzzHost.hostUrl
+                android.util.Log.d(
+                    "AudienzzPrebidMobile",
+                    "Initializing Prebid with URL: $prebidServerUrl",
+                )
+
+                if (publisherConfig != null) {
+                    PrebidMobile.setPrebidServerAccountId(
+                        publisherConfig.prebidServerConfig.accountId.toString(),
+                    )
+
+                    publisherConfig.ortbConfig?.let { configureOrtb(it) }
+                    publisherConfig.androidConfig?.ortbConfig?.let { configureAndroidOrtb(it) }
+                }
+
+                val listener = sdkInitializationListener?.let {
+                    SdkInitializationListener { status ->
+                        sdkInitializationListener.onInitializationComplete(
+                            AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
+                        )
+                        ppidManager?.setAutomaticPpidEnabled(enablePpid)
+                    }
+                }
+
+                PrebidMobile.initializeSdk(context, prebidServerUrl, listener)
+            }
+        }
+    }
+
+    private fun configureOrtb(ortb: OrtbConfig) {
+        AudienzzTargetingParams.publisherName = ortb.publisherName
+        ortb.domain?.let { AudienzzTargetingParams.domain = it }
+        ortb.schainConfig?.let { schain ->
+            setSchainObject(
+                """
+                    { "source": 
+                        { "schain": {
+                            "ver": "1.0",
+                            "complete": 1,
+                            "nodes": [
+                                {
+                                    "asi": "${schain.advertisingSystemDomain.orEmpty()}",
+                                    "sid": "${schain.sellerId.orEmpty()}",
+                                    "hp": 1
+                                }
+                            ]
+                            }
+                        } 
+                    }
+                """.trimMargin(),
+            )
+        }
+    }
+
+    private fun configureAndroidOrtb(androidOrtb: AndroidOrtbConfig) {
+        AudienzzTargetingParams.bundleName = androidOrtb.bundleName
+        androidOrtb.storeUrl?.let { AudienzzTargetingParams.storeUrl = it }
     }
 
     private fun registerActivityCallbacks(context: Context) {

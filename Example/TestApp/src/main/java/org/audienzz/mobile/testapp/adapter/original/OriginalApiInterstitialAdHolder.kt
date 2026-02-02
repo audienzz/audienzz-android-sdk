@@ -216,13 +216,13 @@ class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) 
     companion object {
         private const val TAG = "Original API InterstitialAd"
         private const val AD_UNIT_ID_DISPLAY =
-            "/96628199/de_audienzz.ch_v2/de_audienzz.ch_320_adnz_wideboard_1"
+            "/96628199/de_audienzz.ch_v2/interstitial"
         private const val AD_UNIT_ID_VIDEO =
-            "/96628199/de_audienzz.ch_v2/de_audienzz.ch_320_adnz_wideboard_1"
+            "/96628199/de_audienzz.ch_v2/interstitial"
         private const val AD_UNIT_ID_MULTIFORMAT =
-            "/96628199/de_audienzz.ch_v2/de_audienzz.ch_320_adnz_wideboard_1"
-        private const val CONFIG_ID_BANNER = "34400101"
-        private const val CONFIG_ID_VIDEO = "34400101"
+            "/96628199/de_audienzz.ch_v2/interstitial"
+        private const val CONFIG_ID_BANNER = "36544556"
+        private const val CONFIG_ID_VIDEO = "36544556"
         private const val FALLBACK_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712"
         private const val DEFAULT_MIN_WIDTH = 80
         private const val DEFAULT_MIN_HEIGHT = 60

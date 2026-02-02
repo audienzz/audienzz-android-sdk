@@ -17,6 +17,7 @@ import org.audienzz.mobile.testapp.BuildConfig
 import org.audienzz.mobile.testapp.adapter.AdsAdapter
 import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_DEFAULT
 import org.audienzz.mobile.testapp.databinding.AdsPageFragmentBinding
+import org.audienzz.mobile.util.remote.RemoteConfigManager
 
 class AdsPageFragment : Fragment() {
 
@@ -27,7 +28,7 @@ class AdsPageFragment : Fragment() {
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?,
-    ): View? {
+    ): View {
         binding = DataBindingUtil.inflate(
             inflater,
             org.audienzz.mobile.testapp.R.layout.ads_page_fragment,
@@ -70,37 +71,60 @@ class AdsPageFragment : Fragment() {
             adapter.submitList(createMockData())
             return
         }
-        AudienzzPrebidMobile.initializeSdk(
-            requireContext().applicationContext,
-            "TestCompany",
-            true,
-        ) { status ->
-            if (status == AudienzzInitializationStatus.SUCCEEDED) {
-                adapter.submitList(createMockData())
-                binding.progressBar.isVisible = false
-                setSchainObject(
-                    """
-                        { "source": 
-                            { "schain": {
-                                "ver": "1.0",
-                                "complete": 1,
-                                "nodes": [
-                                    {
-                                        "asi": "netpoint-media.de",
-                                        "sid": "np-7255",
-                                        "hp": 1
-                                    }
-                                  ]
-                                }
-                            } 
-                        }
-                    """.trimMargin(),
-                )
-                Log.d(App.TAG, "SDK was initialized successfully")
-            } else {
-                binding.progressBar.isVisible = false
-                Log.e(App.TAG, "Error during SDK initialization: $status")
+
+        val useRemoteConfiguration = true
+
+        if (useRemoteConfiguration) {
+            RemoteConfigManager.initialize(
+                publisherId = PUBLISHER_ID,
+                remoteUrl = "https://dev-api.adnz.co/api/ws-sdk-config/public/v1"
+            )
+
+            AudienzzPrebidMobile.initializeRemoteSdk(
+                requireContext().applicationContext,
+                PUBLISHER_ID,
+                true,
+            ) { status ->
+                AudienzzPrebidMobile.isPbsDebug = true
+                handleInitializationStatus(status)
             }
+        } else {
+            AudienzzPrebidMobile.initializeSdk(
+                requireContext().applicationContext,
+                "TestCompany",
+                true,
+            ) { status ->
+                handleInitializationStatus(status)
+            }
+        }
+    }
+
+    private fun handleInitializationStatus(status: AudienzzInitializationStatus) {
+        if (status == AudienzzInitializationStatus.SUCCEEDED) {
+            adapter.submitList(createMockData())
+            binding.progressBar.isVisible = false
+            setSchainObject(
+                """
+                    { "source": 
+                        { "schain": {
+                            "ver": "1.0",
+                            "complete": 1,
+                            "nodes": [
+                                {
+                                    "asi": "netpoint-media.de",
+                                    "sid": "np-7255",
+                                    "hp": 1
+                                }
+                              ]
+                            }
+                        } 
+                    }
+                """.trimMargin(),
+            )
+            Log.d(App.TAG, "SDK was initialized successfully")
+        } else {
+            binding.progressBar.isVisible = false
+            Log.e(App.TAG, "Error during SDK initialization: $status")
         }
     }
 
@@ -111,5 +135,9 @@ class AdsPageFragment : Fragment() {
             addAll(List(50) { HOLDER_TYPE_DEFAULT })
             addAll(enabledAdTypes)
         }
+    }
+
+    companion object {
+        private const val PUBLISHER_ID = "81"
     }
 }
