@@ -1,10 +1,16 @@
+import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import com.vanniktech.maven.publish.SonatypeHost
+
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.allopen)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.ksp)
+    alias(libs.plugins.maven.publish)
+    alias(libs.plugins.dokka)
     `maven-publish`
+    `signing`
 }
 
 ksp {
@@ -14,14 +20,7 @@ ksp {
 android {
     compileSdk = libs.versions.sdk.compile.get().toInt()
     buildToolsVersion = libs.versions.build.tools.version.get()
-    version = getVersionName("0.0.0")
-
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-            withJavadocJar()
-        }
-    }
+    version = "0.0.12"
 
     defaultConfig {
         namespace = "org.audienzz"
@@ -29,7 +28,7 @@ android {
         buildConfigField(
             "String",
             "EVENTS_BASE_URL",
-            "\"https://dev-api.adnz.co/api/ws-event-ingester/\""
+            "\"https://dev-api.adnz.co/api/ws-event-ingester/\"",
         )
     }
 
@@ -51,14 +50,8 @@ android {
 
 afterEvaluate {
     publishing {
-        publications {
-            register<MavenPublication>("release") {
-                afterEvaluate {
-                    from(components["release"])
-                }
-            }
-        }
         repositories.maven {
+            name = "Gitlab"
             val ciApiUrl = System.getenv("CI_API_V4_URL")
             val projectId = System.getenv("CI_PROJECT_ID")
             url = uri("$ciApiUrl/projects/$projectId/packages/maven")
@@ -79,13 +72,11 @@ fun getVersionName(baseVersion: String): String {
     return "$baseVersion$postfix"
 }
 
-fun getBuildNumber(): String {
-    return System.getenv("CI_PIPELINE_ID") ?: "snapshot"
-}
+fun getBuildNumber(): String =
+    System.getenv("CI_PIPELINE_ID") ?: "snapshot"
 
-fun getCurrentBranchNameOrLocal(): String {
-    return System.getenv("CI_COMMIT_REF_NAME") ?: "local"
-}
+fun getCurrentBranchNameOrLocal(): String =
+    System.getenv("CI_COMMIT_REF_NAME") ?: "local"
 
 tasks.withType(Test::class) {
     testLogging {
@@ -114,6 +105,7 @@ dependencies {
 
     // Storage
     implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
     ksp(libs.room.compiler)
 
     // Network
@@ -128,4 +120,43 @@ dependencies {
 
     // Lint
     detektPlugins(libs.detekt.formatting)
+
+    implementation(libs.core.ktx)
+}
+
+signing {
+    useGpgCmd()
+
+    // sign(publishing.publications.named("maven").get())
+}
+
+mavenPublishing {
+    configure(AndroidSingleVariantLibrary())
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
+    signAllPublications()
+    coordinates("com.audienzz", "sdk", version.toString())
+    pom {
+        name.set("Audienzz")
+        description.set("Android implementation of the Audienzz SDK")
+        inceptionYear.set("2025")
+        url.set("https://github.com/audienzz/audienzz-android-sdk/blob/main/README.md")
+        licenses {
+            license {
+                name.set("The Apache License, Version 2.0")
+                url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+            }
+        }
+        developers {
+            developer {
+                id.set("mirko.mikulic@audienzz.ch")
+                name.set("Mirko Mikulic")
+                url.set("https://github.com/audienzz")
+            }
+        }
+        scm {
+            connection.set("scm:git:git://github.com/audienzz/audienzz-android-sdk.git")
+            developerConnection.set("scm:git:ssh://github.com/audienzz/audienzz-android-sdk.git")
+            url.set("https://github.com/audienzz/audienzz-android-sdk")
+        }
+    }
 }

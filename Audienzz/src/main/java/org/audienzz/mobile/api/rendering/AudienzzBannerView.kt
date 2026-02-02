@@ -57,6 +57,12 @@ class AudienzzBannerView internal constructor(
             prebidBannerView.pbAdSlot = value
         }
 
+    var impOrtbConfig: String?
+        get() = prebidBannerView.impOrtbConfig
+        set(value) {
+            prebidBannerView.impOrtbConfig = value
+        }
+
     val bidResponse: AudienzzBidResponse? =
         prebidBannerView.bidResponse?.let { AudienzzBidResponse(it) }
 
@@ -135,6 +141,11 @@ class AudienzzBannerView internal constructor(
 
     @Suppress("SpreadOperator")
     fun addAdditionalSizes(vararg sizes: AudienzzAdSize) {
+        prebidBannerView.addAdditionalSizes(*sizes.map { it.adSize }.toTypedArray())
+    }
+
+    @Suppress("SpreadOperator")
+    fun addAdditionalSizes(sizes: List<AudienzzAdSize>) {
         prebidBannerView.addAdditionalSizes(*sizes.map { it.adSize }.toTypedArray())
     }
 

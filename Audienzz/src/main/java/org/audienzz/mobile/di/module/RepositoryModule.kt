@@ -6,6 +6,8 @@ import org.audienzz.mobile.event.repository.local.LocalEventRepository
 import org.audienzz.mobile.event.repository.local.LocalEventRepositoryImpl
 import org.audienzz.mobile.event.repository.remote.RemoteEventRepository
 import org.audienzz.mobile.event.repository.remote.RemoteEventRepositoryImpl
+import org.audienzz.mobile.repository.RemoteConfigRepository
+import org.audienzz.mobile.repository.RemoteConfigRepositoryImpl
 
 @Module
 internal interface RepositoryModule {
@@ -15,4 +17,7 @@ internal interface RepositoryModule {
 
     @Binds
     fun bindRemoteEventRepository(repository: RemoteEventRepositoryImpl): RemoteEventRepository
+
+    @Binds
+    fun bindRemoteConfigRepository(repository: RemoteConfigRepositoryImpl): RemoteConfigRepository
 }

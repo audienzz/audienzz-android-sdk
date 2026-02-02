@@ -11,6 +11,7 @@
     <string name="original_api_native_styles_title">Original API Native styles Ad</string>
     <string name="original_api_in_app_title">Original API In App Ad</string>
     <string name="original_api_unfilled">Original API Unfilled Ad</string>
+    <string name="remote_config_banner_title">Remote Config API Banner</string>
 
     <string name="rendering_api_banner_title">Rendering API HTML Banner</string>
     <string name="rendering_api_video_banner_title">Rendering API Video Banner</string>
@@ -46,5 +47,7 @@
     <string name="value">Value</string>
     <string name="key">Key</string>
     <string name="add_key_value_pair">Add Key-Value Pair</string>
+    <string name="lorem_ipsum">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut urna justo, blandit scelerisque est vel, molestie pretium purus. Cras tincidunt nulla nec massa sagittis dictum. Maecenas ultricies orci id purus porta fringilla. Quisque vel tincidunt mi. Curabitur porttitor eu massa a iaculis. Praesent interdum mollis augue eget ultricies. Ut consequat in ex non congue. In non tristique lectus, vitae maximus ante. Nunc rutrum, magna nec porta rutrum, ligula turpis porttitor elit, sed finibus ligula dui fringilla neque. Suspendisse vestibulum consequat nisl, non euismod risus mattis a. In eget est ante. Mauris et felis nec elit accumsan gravida. Donec dictum ex diam. Proin fringilla interdum lectus quis suscipit. Maecenas ullamcorper risus vel arcu congue, quis luctus nibh accumsan.</string>
+    <string name="load_interstitial">Load Interstitial</string>
 
 </resources>

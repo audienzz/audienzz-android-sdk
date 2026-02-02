@@ -15,8 +15,21 @@ internal class DatabaseModule {
     @Provides
     fun provideDatabase(context: Context): AudienzzDatabase =
         Room.databaseBuilder(context, AudienzzDatabase::class.java, "audienzz")
+            .fallbackToDestructiveMigration()
             .build()
 
     @Provides
     fun provideEventDao(database: AudienzzDatabase): EventDao = database.eventDao()
+
+    @Provides
+    fun provideRemoteConfigDao(
+        database: AudienzzDatabase,
+    ): org.audienzz.mobile.event.database.dao.RemoteConfigDao =
+        database.remoteConfigDao()
+
+    @Provides
+    fun providePublisherConfigDao(
+        database: AudienzzDatabase,
+    ): org.audienzz.mobile.event.database.dao.PublisherConfigDao =
+        database.publisherConfigDao()
 }

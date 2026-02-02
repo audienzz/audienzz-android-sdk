@@ -2,7 +2,12 @@ package org.audienzz.mobile.testapp.adapter.original
 
 import android.util.Log
 import android.view.ViewGroup
+import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.core.view.doOnNextLayout
+import androidx.core.view.isVisible
 import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.LoadAdError
@@ -68,13 +73,23 @@ class OriginalApiBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
         adUnit: AudienzzBannerAdUnit,
         adaptiveSize: Boolean = false,
     ) {
-        val adView = AdManagerAdView(adContainer.context)
+        val context = adContainer.context
+
+        val adLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        val adView = AdManagerAdView(context)
         if (adaptiveSize) {
             adView.doOnNextLayout {
                 adView.setAdSizes(
                     AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(
-                        adContainer.context,
-                        adContainer.resources.pxToDp(it.width),
+                        context,
+                        context.resources.pxToDp(it.width),
                     ),
                 )
             }
@@ -83,23 +98,35 @@ class OriginalApiBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
         adView.setAdSizes(AdSize(width, height))
         applyAdCallback(adView)
 
-        adContainer.addView(adView)
-        addBottomMargin(adView)
+        val errorTextView = TextView(context).apply {
+            isVisible = false
+            setTextColor(ContextCompat.getColor(context, android.R.color.holo_red_dark))
+            textSize = 24f
+            setPadding(0, 8, 0, 0)
+        }
 
-        val parameters = AudienzzBannerParameters()
-        parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
+        adLayout.addView(adView)
+        adLayout.addView(errorTextView)
+
+        adContainer.addView(adLayout)
+        addBottomMargin(adLayout)
+
+        val parameters = AudienzzBannerParameters().apply {
+            api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
+        }
         adUnit.bannerParameters = parameters
         adUnit.setAutoRefreshInterval(DEFAULT_REFRESH_TIME)
 
         AudienzzAdViewHandler(
             adView = adView,
             adUnit = adUnit,
-        ).load(
-            callback = { request, resultCode ->
-                showFetchErrorDialog(adContainer.context, resultCode)
-                adView.loadAd(request)
-            },
-        )
+        ).load { request, resultCode ->
+            errorTextView.apply {
+                isVisible = true
+                text = "Ad fetch error: $resultCode"
+            }
+            adView.loadAd(request)
+        }
     }
 
     private fun applyAdCallback(adView: AdManagerAdView) {
@@ -160,10 +187,10 @@ class OriginalApiBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
         private const val AD_UNIT_ID_320_50 = "ca-app-pub-3940256099942544/2934735716"
         private const val CONFIG_ID_320_50 = "33994718"
         private const val AD_UNIT_ID_300_250 =
-            "/96628199/de_audienzz.ch_v2/de_audienzz.ch_320_adnz_wideboard_1"
-        private const val CONFIG_ID_300_250 = "33994718"
+            "/96628199/de_audienzz.ch_v2/300x250"
+        private const val CONFIG_ID_300_250 = "36544278"
         private const val AD_UNIT_ID_MULTISIZE =
-            "ca-app-pub-3940256099942544/2435281174"
-        private const val CONFIG_ID_MULTISIZE = "33994718"
+            "/96628199/de_audienzz.ch_v2/multi-size"
+        private const val CONFIG_ID_MULTISIZE = "15624474"
     }
 }

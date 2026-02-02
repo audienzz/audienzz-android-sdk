@@ -10,6 +10,7 @@ import org.audienzz.mobile.di.module.NetworkModule
 import org.audienzz.mobile.di.module.RepositoryModule
 import org.audienzz.mobile.di.module.UtilModule
 import org.audienzz.mobile.event.EventLogger
+import org.audienzz.mobile.manager.RemoteConfigManager
 import org.audienzz.mobile.util.PpidManager
 import javax.inject.Singleton
 
@@ -27,6 +28,7 @@ internal interface MainComponent {
 
     fun getEventLogger(): EventLogger
     fun getPpidManager(): PpidManager
+    fun getRemoteConfigManager(): RemoteConfigManager
 
     @Component.Builder
     interface Builder {
@@ -52,6 +54,13 @@ internal interface MainComponent {
 
         val ppidManager: PpidManager?
             get() = instance?.getPpidManager().also {
+                if (it == null) {
+                    Log.e(TAG, "MainComponent is not initialized")
+                }
+            }
+
+        val remoteConfigManager: RemoteConfigManager?
+            get() = instance?.getRemoteConfigManager().also {
                 if (it == null) {
                     Log.e(TAG, "MainComponent is not initialized")
                 }
