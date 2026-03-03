@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity() {
                 0 -> "Ads page"
                 1 -> "Targeting page"
                 2 -> "Remote Config"
+                3 -> "Sticky Ad"
                 else -> "Tab ${position + 1}"
             }
         }.attach()
@@ -36,13 +37,14 @@ class MainActivity : AppCompatActivity() {
 }
 
 class TabPagerAdapter(fragmentActivity: FragmentActivity) : FragmentStateAdapter(fragmentActivity) {
-    override fun getItemCount(): Int = 3
+    override fun getItemCount(): Int = 4
 
     override fun createFragment(position: Int): Fragment {
         return when (position) {
             0 -> AdsPageFragment()
             1 -> TargetingPageFragment()
             2 -> RemoteConfigFragment()
+            3 -> StickyAdFragment()
             else -> AdsPageFragment()
         }
     }
