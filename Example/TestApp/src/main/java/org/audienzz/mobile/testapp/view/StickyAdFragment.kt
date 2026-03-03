@@ -21,8 +21,8 @@ import org.audienzz.mobile.testapp.constants.SizeConstants
 
 class StickyAdFragment : Fragment() {
 
-    private var stickyWrapper: AudienzzStickyAdWrapperView? = null
-    private var adUnit: AudienzzBannerAdUnit? = null
+    private val stickyWrappers = mutableListOf<AudienzzStickyAdWrapperView>()
+    private val adUnits = mutableListOf<AudienzzBannerAdUnit>()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -34,10 +34,16 @@ class StickyAdFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         val scrollView = view.findViewById<NestedScrollView>(R.id.stickyNestedScrollView)
-        val adContainer = view.findViewById<FrameLayout>(R.id.stickyAdContainer)
+        val adContainers = listOf(
+            view.findViewById<FrameLayout>(R.id.stickyAdContainer1),
+            view.findViewById<FrameLayout>(R.id.stickyAdContainer2),
+            view.findViewById<FrameLayout>(R.id.stickyAdContainer3),
+            view.findViewById<FrameLayout>(R.id.stickyAdContainer4),
+            view.findViewById<FrameLayout>(R.id.stickyAdContainer5),
+        )
 
         if (AudienzzPrebidMobile.isSdkInitialized) {
-            setupStickyBannerAd(scrollView, adContainer)
+            setupStickyBannerAds(scrollView, adContainers)
         } else {
             AudienzzPrebidMobile.initializeRemoteSdk(
                 requireContext().applicationContext,
@@ -45,24 +51,29 @@ class StickyAdFragment : Fragment() {
                 true,
             ) { status ->
                 if (status == AudienzzInitializationStatus.SUCCEEDED) {
-                    setupStickyBannerAd(scrollView, adContainer)
+                    setupStickyBannerAds(scrollView, adContainers)
                 }
             }
         }
     }
 
-    private fun setupStickyBannerAd(
+    private fun setupStickyBannerAds(
         scrollView: NestedScrollView,
-        adContainer: FrameLayout,
+        adContainers: List<FrameLayout>,
     ) {
+        adContainers.forEach { container ->
+            setupStickyBannerAd(scrollView, container)
+        }
+    }
+
+    private fun setupStickyBannerAd(scrollView: NestedScrollView, adContainer: FrameLayout) {
         val context = adContainer.context
 
         val bannerAdUnit = AudienzzBannerAdUnit(
             CONFIG_ID,
             SizeConstants.SMALL_BANNER_WIDTH,
             SizeConstants.SMALL_BANNER_HEIGHT,
-        )
-        adUnit = bannerAdUnit
+        ).also { adUnits += it }
 
         val adView = AdManagerAdView(context).apply {
             adUnitId = AD_UNIT_ID
@@ -72,8 +83,11 @@ class StickyAdFragment : Fragment() {
         val wrapper = AudienzzStickyAdWrapperView(
             context = context,
             maxHeightDp = MAX_HEIGHT_DP,
-        )
-        wrapper.setAdView(adView)
+        ).apply {
+            isVisibilityGateEnabled = false
+            setAdView(adView)
+        }
+
         adContainer.addView(
             wrapper,
             FrameLayout.LayoutParams(
@@ -82,7 +96,7 @@ class StickyAdFragment : Fragment() {
             ),
         )
         wrapper.attachToScrollView(scrollView)
-        stickyWrapper = wrapper
+        stickyWrappers += wrapper
 
         val parameters = AudienzzBannerParameters().apply {
             api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
@@ -90,19 +104,15 @@ class StickyAdFragment : Fragment() {
         bannerAdUnit.bannerParameters = parameters
         bannerAdUnit.setAutoRefreshInterval(DEFAULT_REFRESH_SECONDS)
 
-        AudienzzAdViewHandler(
-            adView = adView,
-            adUnit = bannerAdUnit,
-        ).load { request, _ ->
-            adView.loadAd(request)
-        }
+        AudienzzAdViewHandler(adView = adView, adUnit = bannerAdUnit)
+            .load { request, _ -> adView.loadAd(request) }
     }
 
     override fun onDestroyView() {
-        stickyWrapper?.detachFromScrollView()
-        adUnit?.stopAutoRefresh()
-        stickyWrapper = null
-        adUnit = null
+        stickyWrappers.forEach { it.detachFromScrollView() }
+        stickyWrappers.clear()
+        adUnits.forEach { it.stopAutoRefresh() }
+        adUnits.clear()
         super.onDestroyView()
     }
 

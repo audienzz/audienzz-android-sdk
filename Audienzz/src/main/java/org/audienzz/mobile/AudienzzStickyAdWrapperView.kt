@@ -9,6 +9,7 @@ import android.view.ViewParent
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import androidx.core.widget.NestedScrollView
+import java.util.WeakHashMap
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -70,13 +71,53 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
             updatePosition()
         }
 
+    /**
+     * Optional performance gate: when enabled, skips sticky calculations while the wrapper
+     * is far outside the visible viewport. Disabled by default.
+     */
+    var isVisibilityGateEnabled: Boolean = false
+
     private var adView: View? = null
     private var adViewLayoutListener: View.OnLayoutChangeListener? = null
     private var scrollViewRef: ViewGroup? = null
-    private var nestedScrollViewRef: NestedScrollView? = null
-    private var platformScrollViewRef: android.widget.ScrollView? = null
+    private var attachedNestedScrollView: NestedScrollView? = null
     private var scrollChangedListener: ViewTreeObserver.OnScrollChangedListener? = null
+    private var globalLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
+    private var cachedTopInContent: Int = Int.MIN_VALUE
+    private var isSettleTickerRunning = false
+    private var lastTickerScrollY = Int.MIN_VALUE
+    private var stableTickerFrames = 0
     private val tempRect = Rect()
+    private val settleTicker = object : Runnable {
+        override fun run() {
+            val scrollView = scrollViewRef ?: run {
+                stopSettleTicker()
+                return
+            }
+
+            updatePosition()
+
+            // Read scrollY AFTER updatePosition() so the stability check uses
+            // the same value that was just consumed, rather than the value from
+            // the previous Choreographer frame (the ticker runs in the Animation
+            // phase, before computeScroll() updates scrollY in the Traversal
+            // phase, so reading before updatePosition() would always be 1 frame
+            // stale and cause premature stable-frame counts during fling).
+            val currentY = scrollView.scrollY
+            if (currentY != lastTickerScrollY) {
+                lastTickerScrollY = currentY
+                stableTickerFrames = 0
+            } else {
+                stableTickerFrames += 1
+            }
+
+            if (stableTickerFrames >= 8) {
+                stopSettleTicker()
+            } else {
+                postOnAnimation(this)
+            }
+        }
+    }
 
     // MARK: - Public API
 
@@ -88,6 +129,7 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
         removeAllViews()
         adView = view
         val layoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            refreshTopCache()
             updatePosition()
         }
         adViewLayoutListener = layoutListener
@@ -99,10 +141,10 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
     public fun attachToScrollView(scrollView: NestedScrollView) {
         detachFromScrollView()
         scrollViewRef = scrollView
-        nestedScrollViewRef = scrollView
-        scrollView.setOnScrollChangeListener { _: NestedScrollView, _: Int, _: Int, _: Int, _: Int ->
-            updatePosition()
-        }
+        attachedNestedScrollView = scrollView
+        addGlobalLayoutListener()
+        refreshTopCache()
+        registerNestedWrapper(scrollView, this)
         updatePosition()
     }
 
@@ -110,10 +152,12 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
     public fun attachToScrollView(scrollView: android.widget.ScrollView) {
         detachFromScrollView()
         scrollViewRef = scrollView
-        platformScrollViewRef = scrollView
+        addGlobalLayoutListener()
+        refreshTopCache()
 
         val listener = ViewTreeObserver.OnScrollChangedListener {
             updatePosition()
+            startSettleTicker()
         }
         scrollChangedListener = listener
         scrollView.viewTreeObserver.addOnScrollChangedListener(listener)
@@ -122,20 +166,19 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
 
     /** Detaches from the current scroll view, stopping scroll-driven updates. */
     public fun detachFromScrollView() {
-        nestedScrollViewRef?.setOnScrollChangeListener(null as NestedScrollView.OnScrollChangeListener?)
-        nestedScrollViewRef = null
+        attachedNestedScrollView?.let { nested ->
+            unregisterNestedWrapper(nested, this)
+        }
+        attachedNestedScrollView = null
 
         scrollChangedListener?.let {
-            platformScrollViewRef?.viewTreeObserver?.removeOnScrollChangedListener(it)
+            scrollViewRef?.viewTreeObserver?.removeOnScrollChangedListener(it)
         }
         scrollChangedListener = null
-        platformScrollViewRef = null
+        removeGlobalLayoutListener()
         scrollViewRef = null
-
-        adViewLayoutListener?.let { listener ->
-            adView?.removeOnLayoutChangeListener(listener)
-        }
-        adViewLayoutListener = null
+        cachedTopInContent = Int.MIN_VALUE
+        stopSettleTicker()
     }
 
     // MARK: - Overrides
@@ -150,10 +193,17 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
+        if (changed) {
+            refreshTopCache()
+        }
         updatePosition()
     }
 
     override fun onDetachedFromWindow() {
+        adViewLayoutListener?.let { listener ->
+            adView?.removeOnLayoutChangeListener(listener)
+        }
+        adViewLayoutListener = null
         super.onDetachedFromWindow()
         detachFromScrollView()
     }
@@ -172,9 +222,16 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
         val childHeight = child.height.takeIf { it > 0 } ?: maxHeight
         val maxTop = max(0, maxHeight - childHeight).toFloat()
 
-        // Flutter-equivalent formula: wrapperTop = contentTop - scrollY.
-        val wrapperTop = computeTopInContent(scrollView) - scrollView.scrollY
+        // Use one consistent coordinate system for both drag and fling.
+        val wrapperTop = resolveTopInContent(scrollView) - scrollView.scrollY
         val wrapperBottom = wrapperTop + height
+
+        if (isVisibilityGateEnabled) {
+            val viewportHeight = scrollView.height
+            if (wrapperBottom < -viewportHeight || wrapperTop > viewportHeight * 2) {
+                return
+            }
+        }
 
         val newTop = when {
             wrapperTop >= topOffset -> 0f
@@ -196,6 +253,55 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
         return tempRect.top
     }
 
+    private fun resolveTopInContent(scrollView: ViewGroup): Int {
+        if (cachedTopInContent == Int.MIN_VALUE) {
+            cachedTopInContent = computeTopInContent(scrollView)
+        }
+        return cachedTopInContent
+    }
+
+    private fun refreshTopCache() {
+        val scrollView = scrollViewRef ?: return
+        cachedTopInContent = computeTopInContent(scrollView)
+    }
+
+    private fun addGlobalLayoutListener() {
+        if (globalLayoutListener != null) return
+        val listener = ViewTreeObserver.OnGlobalLayoutListener {
+            refreshTopCache()
+            updatePosition()
+        }
+        globalLayoutListener = listener
+        viewTreeObserver.addOnGlobalLayoutListener(listener)
+    }
+
+    private fun removeGlobalLayoutListener() {
+        val listener = globalLayoutListener ?: return
+        if (viewTreeObserver.isAlive) {
+            viewTreeObserver.removeOnGlobalLayoutListener(listener)
+        }
+        globalLayoutListener = null
+    }
+
+    private fun startSettleTicker() {
+        // Always reset the stable-frame counter on each scroll event so that
+        // a briefly-unchanged integer scrollY during fling deceleration does
+        // not cause the ticker to stop prematurely (Bug: ticker ran in the
+        // Animation phase before computeScroll() updated scrollY, causing
+        // stableTickerFrames to increment even while the fling was active).
+        stableTickerFrames = 0
+        lastTickerScrollY = Int.MIN_VALUE
+        if (isSettleTickerRunning) return
+        isSettleTickerRunning = true
+        postOnAnimation(settleTicker)
+    }
+
+    private fun stopSettleTicker() {
+        if (!isSettleTickerRunning) return
+        isSettleTickerRunning = false
+        removeCallbacks(settleTicker)
+    }
+
     private fun isDescendantOf(ancestor: ViewGroup): Boolean {
         var current: ViewParent? = parent
         while (current != null) {
@@ -210,5 +316,37 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
 
     public companion object {
         private const val DEFAULT_MAX_HEIGHT_DP = 600
+
+        private val nestedWrappers:
+            WeakHashMap<NestedScrollView, MutableSet<AudienzzStickyAdWrapperView>> = WeakHashMap()
+
+        private fun registerNestedWrapper(
+            scrollView: NestedScrollView,
+            wrapper: AudienzzStickyAdWrapperView,
+        ) {
+            val wrappers = nestedWrappers.getOrPut(scrollView) { mutableSetOf() }
+            wrappers.add(wrapper)
+
+            scrollView.setOnScrollChangeListener { _: NestedScrollView, _: Int, _: Int, _: Int, _: Int ->
+                val current = nestedWrappers[scrollView] ?: return@setOnScrollChangeListener
+                if (current.isEmpty()) return@setOnScrollChangeListener
+                current.forEach {
+                    it.updatePosition()
+                    it.startSettleTicker()
+                }
+            }
+        }
+
+        private fun unregisterNestedWrapper(
+            scrollView: NestedScrollView,
+            wrapper: AudienzzStickyAdWrapperView,
+        ) {
+            val wrappers = nestedWrappers[scrollView] ?: return
+            wrappers.remove(wrapper)
+            if (wrappers.isEmpty()) {
+                scrollView.setOnScrollChangeListener(null as NestedScrollView.OnScrollChangeListener?)
+                nestedWrappers.remove(scrollView)
+            }
+        }
     }
 }
