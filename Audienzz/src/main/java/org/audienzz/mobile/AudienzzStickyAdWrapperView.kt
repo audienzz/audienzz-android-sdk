@@ -2,8 +2,10 @@ package org.audienzz.mobile
 
 import android.content.Context
 import android.util.AttributeSet
+import android.graphics.Rect
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewParent
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import androidx.core.widget.NestedScrollView
@@ -69,43 +71,71 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
         }
 
     private var adView: View? = null
+    private var adViewLayoutListener: View.OnLayoutChangeListener? = null
     private var scrollViewRef: ViewGroup? = null
+    private var nestedScrollViewRef: NestedScrollView? = null
+    private var platformScrollViewRef: android.widget.ScrollView? = null
     private var scrollChangedListener: ViewTreeObserver.OnScrollChangedListener? = null
-
-    // Cached Y position of this wrapper within the scroll view's content space.
-    // Recomputed after each layout pass so it stays correct as the page reflows.
-    // Using sv.scrollY + this offset avoids calling getLocationInWindow() on every
-    // scroll frame — getLocationInWindow traverses the whole hierarchy and can lag
-    // behind the logical scroll state during flings, producing a visible "shift"
-    // when the finger is released.
-    private var wrapperScrollTop = 0
+    private val tempRect = Rect()
 
     // MARK: - Public API
 
     /** Sets the ad view to be made sticky. Replaces any previously set ad view. */
     public fun setAdView(view: View) {
+        adViewLayoutListener?.let { listener ->
+            adView?.removeOnLayoutChangeListener(listener)
+        }
         removeAllViews()
         adView = view
+        val layoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            updatePosition()
+        }
+        adViewLayoutListener = layoutListener
+        view.addOnLayoutChangeListener(layoutListener)
         addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
     }
 
     /** Attaches sticky scroll tracking to a [NestedScrollView]. */
     public fun attachToScrollView(scrollView: NestedScrollView) {
-        attachScrollListener(scrollView)
+        detachFromScrollView()
+        scrollViewRef = scrollView
+        nestedScrollViewRef = scrollView
+        scrollView.setOnScrollChangeListener { _: NestedScrollView, _: Int, _: Int, _: Int, _: Int ->
+            updatePosition()
+        }
+        updatePosition()
     }
 
     /** Attaches sticky scroll tracking to a [android.widget.ScrollView]. */
     public fun attachToScrollView(scrollView: android.widget.ScrollView) {
-        attachScrollListener(scrollView)
+        detachFromScrollView()
+        scrollViewRef = scrollView
+        platformScrollViewRef = scrollView
+
+        val listener = ViewTreeObserver.OnScrollChangedListener {
+            updatePosition()
+        }
+        scrollChangedListener = listener
+        scrollView.viewTreeObserver.addOnScrollChangedListener(listener)
+        updatePosition()
     }
 
     /** Detaches from the current scroll view, stopping scroll-driven updates. */
     public fun detachFromScrollView() {
+        nestedScrollViewRef?.setOnScrollChangeListener(null as NestedScrollView.OnScrollChangeListener?)
+        nestedScrollViewRef = null
+
         scrollChangedListener?.let {
-            scrollViewRef?.viewTreeObserver?.removeOnScrollChangedListener(it)
+            platformScrollViewRef?.viewTreeObserver?.removeOnScrollChangedListener(it)
         }
         scrollChangedListener = null
+        platformScrollViewRef = null
         scrollViewRef = null
+
+        adViewLayoutListener?.let { listener ->
+            adView?.removeOnLayoutChangeListener(listener)
+        }
+        adViewLayoutListener = null
     }
 
     // MARK: - Overrides
@@ -120,9 +150,7 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
-        if (changed) {
-            wrapperScrollTop = computeTopInScrollContent()
-        }
+        updatePosition()
     }
 
     override fun onDetachedFromWindow() {
@@ -132,50 +160,20 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
 
     // MARK: - Private
 
-    private fun attachScrollListener(scrollView: ViewGroup) {
-        detachFromScrollView()
-        scrollViewRef = scrollView
-        val listener = ViewTreeObserver.OnScrollChangedListener { updatePosition() }
-        scrollChangedListener = listener
-        scrollView.viewTreeObserver.addOnScrollChangedListener(listener)
-    }
-
-    /**
-     * Computes this wrapper's Y position within the scroll view's content coordinate space.
-     * Called in [onLayout] so it reflects the latest layout state.
-     *
-     * Uses [getLocationInWindow] for accuracy across arbitrary nesting depths, then
-     * adds the current [scrollY] to convert from viewport-relative to content-relative.
-     * This snapshot is stable between layout changes and lets [updatePosition] read only
-     * `sv.scrollY` — a single integer — instead of calling [getLocationInWindow] on
-     * every scroll frame.
-     */
-    private fun computeTopInScrollContent(): Int {
-        val sv = scrollViewRef ?: return 0
-        val wrapperLoc = IntArray(2)
-        val svLoc = IntArray(2)
-        getLocationInWindow(wrapperLoc)
-        sv.getLocationInWindow(svLoc)
-        // (wrapperLoc[1] - svLoc[1]) is the wrapper's current Y relative to the visible
-        // top of the scroll view.  Adding scrollY converts that to content-space Y.
-        return (wrapperLoc[1] - svLoc[1]) + sv.scrollY
-    }
-
     private fun updatePosition() {
         if (!isStickyEnabled) {
             adView?.translationY = 0f
             return
         }
-        val sv = scrollViewRef ?: return
+        val scrollView = scrollViewRef ?: return
         val child = adView ?: return
 
         val topOffset = stickyTopOffset ?: 0
-        val childHeight = child.height.takeIf { it > 0 } ?: height
+        val childHeight = child.height.takeIf { it > 0 } ?: maxHeight
         val maxTop = max(0, maxHeight - childHeight).toFloat()
 
-        // Derive wrapper-top-in-viewport purely from the cached content offset and
-        // the current scroll value — no per-frame window traversal needed.
-        val wrapperTop = wrapperScrollTop - sv.scrollY
+        // Flutter-equivalent formula: wrapperTop = contentTop - scrollY.
+        val wrapperTop = computeTopInContent(scrollView) - scrollView.scrollY
         val wrapperBottom = wrapperTop + height
 
         val newTop = when {
@@ -187,6 +185,24 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
         if (abs(newTop - child.translationY) > 0.5f) {
             child.translationY = newTop
         }
+    }
+
+    private fun computeTopInContent(scrollView: ViewGroup): Int {
+        if (!isDescendantOf(scrollView)) {
+            return top + scrollView.scrollY
+        }
+        tempRect.set(0, 0, width, height)
+        scrollView.offsetDescendantRectToMyCoords(this, tempRect)
+        return tempRect.top
+    }
+
+    private fun isDescendantOf(ancestor: ViewGroup): Boolean {
+        var current: ViewParent? = parent
+        while (current != null) {
+            if (current === ancestor) return true
+            current = current.parent
+        }
+        return false
     }
 
     private fun dpToPx(dp: Int): Int =

@@ -74,7 +74,6 @@ class StickyAdFragment : Fragment() {
             maxHeightDp = MAX_HEIGHT_DP,
         )
         wrapper.setAdView(adView)
-        wrapper.attachToScrollView(scrollView)
         adContainer.addView(
             wrapper,
             FrameLayout.LayoutParams(
@@ -82,6 +81,7 @@ class StickyAdFragment : Fragment() {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
             ),
         )
+        wrapper.attachToScrollView(scrollView)
         stickyWrapper = wrapper
 
         val parameters = AudienzzBannerParameters().apply {
