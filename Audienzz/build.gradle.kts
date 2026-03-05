@@ -48,6 +48,10 @@ android {
     lint.checkDependencies = true
 }
 
+configurations.configureEach {
+    exclude(group = "com.applovin")
+}
+
 afterEvaluate {
     publishing {
         repositories.maven {
