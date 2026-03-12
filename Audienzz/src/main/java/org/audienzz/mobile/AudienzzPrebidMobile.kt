@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.view.View
 import androidx.annotation.MainThread
+import com.google.android.gms.ads.MobileAds
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -329,16 +330,15 @@ object AudienzzPrebidMobile {
         sdkInitializationListener: AudienzzSdkInitializationListener?,
     ) {
         this.companyId = companyId
-        val listener = sdkInitializationListener?.let {
-            SdkInitializationListener { status ->
-                sdkInitializationListener.onInitializationComplete(
-                    AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
-                )
-                ppidManager?.setAutomaticPpidEnabled(enablePpid)
-            }
+        val listener = SdkInitializationListener { status ->
+            sdkInitializationListener?.onInitializationComplete(
+                AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
+            )
+            ppidManager?.setAutomaticPpidEnabled(enablePpid)
         }
         registerActivityCallbacks(context)
         MainComponent.init(context)
+        MobileAds.initialize(context) { MobileAds.setAppVolume(0f) }
         PrebidMobile.initializeSdk(context, prebidServerUrl ?: audienzzHost.hostUrl, listener)
     }
 
@@ -389,15 +389,14 @@ object AudienzzPrebidMobile {
                     publisherConfig.androidConfig?.ortbConfig?.let { configureAndroidOrtb(it) }
                 }
 
-                val listener = sdkInitializationListener?.let {
-                    SdkInitializationListener { status ->
-                        sdkInitializationListener.onInitializationComplete(
-                            AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
-                        )
-                        ppidManager?.setAutomaticPpidEnabled(enablePpid)
-                    }
+                val listener = SdkInitializationListener { status ->
+                    sdkInitializationListener?.onInitializationComplete(
+                        AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
+                    )
+                    ppidManager?.setAutomaticPpidEnabled(enablePpid)
                 }
 
+                MobileAds.initialize(context) { MobileAds.setAppVolume(0f) }
                 PrebidMobile.initializeSdk(context, prebidServerUrl, listener)
             }
         }
