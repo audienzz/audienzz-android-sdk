@@ -2,7 +2,10 @@ package org.audienzz.mobile.api.rendering
 
 import android.content.Context
 import android.util.AttributeSet
+import android.util.Log
 import android.view.View
+import android.view.ViewTreeObserver
+import android.webkit.WebView
 import android.widget.FrameLayout
 import org.audienzz.mobile.AudienzzAdSize
 import org.audienzz.mobile.api.data.AudienzzAdPosition
@@ -15,7 +18,9 @@ import org.audienzz.mobile.rendering.bidding.data.bid.AudienzzBid
 import org.audienzz.mobile.rendering.bidding.data.bid.AudienzzBidResponse
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzBannerEventHandler
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzBannerEventListener
-import org.audienzz.mobile.util.addOnBecameVisibleOnScreenListener
+import org.audienzz.mobile.util.addContinuousVisibilityListener
+import org.audienzz.mobile.util.addOnBecameVisibleOnScreenListenerWithMargin
+import org.audienzz.mobile.util.dpToPx
 import org.prebid.mobile.AdSize
 import org.prebid.mobile.api.exceptions.AdException
 import org.prebid.mobile.api.rendering.BannerView
@@ -67,6 +72,113 @@ class AudienzzBannerView internal constructor(
         prebidBannerView.bidResponse?.let { AudienzzBidResponse(it) }
 
     /**
+     * When true, pauses Prebid autorefresh and ad playback while the banner is off-screen,
+     * and resumes both when it returns to the viewport.
+     *
+     * Default: false (opt-in). Publishers should enable once smart refresh behaviour is verified.
+     */
+    var smartRefresh: Boolean = false
+        set(value) {
+            field = value
+            if (value && prebidBannerView.isAttachedToWindow) {
+                attachSmartRefreshListener()
+            } else if (!value) {
+                detachSmartRefreshListener()
+            }
+        }
+
+    /**
+     * Distance in dp below the screen bottom at which the Prebid bid request is triggered
+     * before the view scrolls fully into the viewport. 0 = disabled (fire at viewport edge).
+     *
+     * Example: 150 starts the auction ~150dp before the ad enters view.
+     */
+    var prefetchMarginTopDp: Int = 0
+
+    private var scrollListener: ViewTreeObserver.OnScrollChangedListener? = null
+
+    /**
+     * Saved autorefresh delay (in seconds) when smart refresh pauses the timer.
+     * Null means refresh is not currently paused by us.
+     */
+    private var pausedRefreshDelaySec: Int? = null
+
+    init {
+        prebidBannerView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                if (smartRefresh) attachSmartRefreshListener()
+            }
+
+            override fun onViewDetachedFromWindow(v: View) {
+                detachSmartRefreshListener()
+            }
+        })
+    }
+
+    private fun attachSmartRefreshListener() {
+        if (scrollListener != null) return
+        Log.d(TAG, "[SmartRefresh] Listener attached to BannerView")
+        scrollListener = prebidBannerView.addContinuousVisibilityListener(
+            onBecameVisible = ::onBecameVisible,
+            onBecameHidden = ::onBecameHidden,
+        )
+    }
+
+    private fun detachSmartRefreshListener() {
+        scrollListener?.let {
+            if (prebidBannerView.isAttachedToWindow) {
+                prebidBannerView.viewTreeObserver.removeOnScrollChangedListener(it)
+            }
+            scrollListener = null
+            Log.d(TAG, "[SmartRefresh] Listener detached from BannerView")
+        }
+    }
+
+    private fun onBecameVisible() {
+        Log.d(TAG, "[SmartRefresh] → VISIBLE: resumeAutoRefresh + resumeAdPlayback")
+        val delay = pausedRefreshDelaySec
+        if (delay != null) {
+            pausedRefreshDelaySec = null
+            prebidBannerView.setAutoRefreshDelay(delay)
+            Log.d(TAG, "[SmartRefresh] Restored autoRefreshDelay=$delay sec")
+        }
+        resumeAdPlayback()
+    }
+
+    private fun onBecameHidden() {
+        Log.d(TAG, "[SmartRefresh] → HIDDEN: stopAutoRefresh + pauseAdPlayback")
+        val currentDelayMs = prebidBannerView.autoRefreshDelayInMs
+        if (currentDelayMs > 0 && pausedRefreshDelaySec == null) {
+            pausedRefreshDelaySec = currentDelayMs / 1000
+            prebidBannerView.stopRefresh()
+            Log.d(TAG, "[SmartRefresh] Saved autoRefreshDelay=${pausedRefreshDelaySec}sec and stopped refresh")
+        }
+        pauseAdPlayback()
+    }
+
+    private fun pauseAdPlayback() {
+        var webViewCount = 0
+        for (i in 0 until prebidBannerView.childCount) {
+            (prebidBannerView.getChildAt(i) as? WebView)?.let {
+                it.onPause()
+                webViewCount++
+            }
+        }
+        Log.d(TAG, "[SmartRefresh] pauseAdPlayback: paused $webViewCount WebView(s)")
+    }
+
+    private fun resumeAdPlayback() {
+        var webViewCount = 0
+        for (i in 0 until prebidBannerView.childCount) {
+            (prebidBannerView.getChildAt(i) as? WebView)?.let {
+                it.onResume()
+                webViewCount++
+            }
+        }
+        Log.d(TAG, "[SmartRefresh] resumeAdPlayback: resumed $webViewCount WebView(s)")
+    }
+
+    /**
      * Instantiates an BannerView with the ad details as an attribute.
      *
      * @param attrs includes:
@@ -109,11 +221,14 @@ class AudienzzBannerView internal constructor(
     /**
      * Executes ad loading if no request is running.
      *
-     * @param lazyLoad allows to postpone loadAd call until view is visible
+     * @param lazyLoad allows to postpone loadAd call until view is visible on screen.
+     * When combined with [prefetchMarginTopDp] > 0, the bid request fires before the view
+     * fully enters the viewport, reducing latency for the user.
      */
     fun loadAd(lazyLoad: Boolean = false) {
         if (lazyLoad) {
-            prebidBannerView.addOnBecameVisibleOnScreenListener {
+            val marginPx = prebidBannerView.resources.dpToPx(prefetchMarginTopDp)
+            prebidBannerView.addOnBecameVisibleOnScreenListenerWithMargin(marginPx) {
                 prebidBannerView.loadAd()
             }
         } else {
@@ -173,6 +288,8 @@ class AudienzzBannerView internal constructor(
     }
 
     companion object {
+
+        private const val TAG = "AudienzzBannerView"
 
         private fun getBannerEventHandler(eventHandler: AudienzzBannerEventHandler) =
             object : BannerEventHandler {

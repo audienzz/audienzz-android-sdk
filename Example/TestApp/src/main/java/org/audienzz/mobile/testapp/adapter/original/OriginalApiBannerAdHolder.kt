@@ -120,12 +120,15 @@ class OriginalApiBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
         AudienzzAdViewHandler(
             adView = adView,
             adUnit = adUnit,
-        ).load { request, resultCode ->
-            errorTextView.apply {
-                isVisible = true
-                text = "Ad fetch error: $resultCode"
+        ).apply {
+            enableSmartRefresh()               // Phase 1: pause refresh + playback when off-screen
+            load(prefetchMarginTopDp = 150) { request, resultCode ->    // Phase 2: start bid 150dp early
+                errorTextView.apply {
+                    isVisible = true
+                    text = "Ad fetch error: $resultCode"
+                }
+                adView.loadAd(request)
             }
-            adView.loadAd(request)
         }
     }
 

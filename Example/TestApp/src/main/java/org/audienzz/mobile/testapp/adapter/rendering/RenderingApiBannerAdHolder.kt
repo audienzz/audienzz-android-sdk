@@ -23,7 +23,9 @@ class RenderingApiBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
         adView = AudienzzBannerView(adContainer.context, CONFIG_ID, eventHandler).apply {
             view.let { adContainer.addView(it) }
             setAutoRefreshDelay(DEFAULT_REFRESH_TIME)
-            loadAd()
+            smartRefresh = true          // Phase 1: pause refresh + playback when off-screen
+            prefetchMarginTopDp = 150    // Phase 2: start bid 150dp before entering viewport
+            loadAd(lazyLoad = true)
         }
     }
 
