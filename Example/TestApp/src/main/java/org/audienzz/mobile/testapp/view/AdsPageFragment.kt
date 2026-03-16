@@ -10,6 +10,7 @@ import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzPrebidMobile.setSchainObject
+import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.api.data.AudienzzInitializationStatus
 import org.audienzz.mobile.testapp.AdPreferences
 import org.audienzz.mobile.testapp.App
@@ -67,6 +68,7 @@ class AdsPageFragment : Fragment() {
 
     private fun initSdk() {
         if (AudienzzPrebidMobile.isSdkInitialized) {
+            AudienzzTargetingParams.isSubjectToGDPR = true
             binding.progressBar.isVisible = false
             adapter.submitList(createMockData())
             return
@@ -101,6 +103,7 @@ class AdsPageFragment : Fragment() {
 
     private fun handleInitializationStatus(status: AudienzzInitializationStatus) {
         if (status == AudienzzInitializationStatus.SUCCEEDED) {
+            AudienzzTargetingParams.isSubjectToGDPR = true
             adapter.submitList(createMockData())
             binding.progressBar.isVisible = false
             setSchainObject(
