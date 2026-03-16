@@ -9,12 +9,27 @@ data class PublisherConfig(
     val id: Int,
     @SerialName("prebidServer")
     val prebidServerConfig: PrebidServerConfig,
+    @SerialName("gamConfig")
+    val gamConfig: GamConfig? = null,
     @SerialName("ortb")
     val ortbConfig: OrtbConfig? = null,
     @SerialName("android")
     val androidConfig: AndroidConfig? = null,
     @SerialName("ios")
     val iosConfig: IosConfig? = null,
+)
+
+/**
+ * Google Mobile Ads global configuration, sourced from the backend publisher config.
+ */
+@Serializable
+data class GamConfig(
+    /**
+     * Global app volume for GMA ad audio. Range: 0.0 (muted) – 1.0 (full volume).
+     * Defaults to 0.0 (muted) if absent.
+     */
+    @SerialName("setAppVolume")
+    val appVolume: Float? = 0f,
 )
 
 @Serializable

@@ -3,6 +3,7 @@ package org.audienzz.mobile
 import android.app.Application
 import android.content.Context
 import android.view.View
+import androidx.annotation.FloatRange
 import androidx.annotation.MainThread
 import com.google.android.gms.ads.MobileAds
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -12,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.audienzz.mobile.api.config.AndroidOrtbConfig
+import org.audienzz.mobile.api.config.GamConfig
 import org.audienzz.mobile.api.config.OrtbConfig
 import org.audienzz.mobile.api.data.AudienzzInitializationStatus
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
@@ -267,6 +269,8 @@ object AudienzzPrebidMobile {
             PrebidMobile.setCreativeFactoryTimeout(value)
         }
 
+    private const val TAG = "AudienzzPrebidMobile"
+
     internal val CURRENT_ACTIVITY_TRACKER = CurrentActivityTracker()
 
     private val PLUGIN_RENDERER_CACHE =
@@ -274,7 +278,7 @@ object AudienzzPrebidMobile {
 
     private val SCOPE = CoroutineScope(
         Dispatchers.Main + SupervisorJob() + CoroutineExceptionHandler { _, throwable ->
-            android.util.Log.e("AudienzzPrebidMobile", "CoroutineScope exception", throwable)
+            android.util.Log.e(TAG, "CoroutineScope exception", throwable)
         },
     )
 
@@ -317,6 +321,8 @@ object AudienzzPrebidMobile {
      * @param companyId Company ID provided for the app by Audienzz
      * @param enablePpid Controls if unique PPID would be generated for users and used along with
      * ad requests
+     * @param appVolume Global GMA ad audio level. Range: 0.0 (muted) – 1.0 (full device volume).
+     *                  Defaults to 0.0 (muted). Can be overridden at any time via [setAppVolume].
      * @param sdkInitializationListener initialization listener (can be null).
      *                 <p>
      */
@@ -327,6 +333,7 @@ object AudienzzPrebidMobile {
         companyId: String,
         enablePpid: Boolean = false,
         prebidServerUrl: String? = null,
+        @FloatRange(from = 0.0, to = 1.0) appVolume: Float = 0f,
         sdkInitializationListener: AudienzzSdkInitializationListener?,
     ) {
         this.companyId = companyId
@@ -338,7 +345,7 @@ object AudienzzPrebidMobile {
         }
         registerActivityCallbacks(context)
         MainComponent.init(context)
-        MobileAds.initialize(context) { MobileAds.setAppVolume(0f) }
+        configureGam(context, GamConfig(appVolume = appVolume))
         PrebidMobile.initializeSdk(context, prebidServerUrl ?: audienzzHost.hostUrl, listener)
     }
 
@@ -375,10 +382,7 @@ object AudienzzPrebidMobile {
 
                 val prebidServerUrl =
                     publisherConfig?.prebidServerConfig?.url ?: audienzzHost.hostUrl
-                android.util.Log.d(
-                    "AudienzzPrebidMobile",
-                    "Initializing Prebid with URL: $prebidServerUrl",
-                )
+                android.util.Log.d(TAG, "Initializing Prebid with URL: $prebidServerUrl")
 
                 if (publisherConfig != null) {
                     PrebidMobile.setPrebidServerAccountId(
@@ -396,7 +400,7 @@ object AudienzzPrebidMobile {
                     ppidManager?.setAutomaticPpidEnabled(enablePpid)
                 }
 
-                MobileAds.initialize(context) { MobileAds.setAppVolume(0f) }
+                configureGam(context, publisherConfig?.gamConfig)
                 PrebidMobile.initializeSdk(context, prebidServerUrl, listener)
             }
         }
@@ -432,6 +436,19 @@ object AudienzzPrebidMobile {
         androidOrtb.storeUrl?.let { AudienzzTargetingParams.storeUrl = it }
     }
 
+    /**
+     * Initializes GMA and applies the app volume from [gamConfig].
+     * If [gamConfig] is null or its [GamConfig.appVolume] is absent, defaults to 0.0 (muted).
+     * The volume is clamped to the valid GMA range [0.0, 1.0].
+     */
+    private fun configureGam(context: Context, gamConfig: GamConfig?) {
+        val volume = (gamConfig?.appVolume ?: 0f).coerceIn(0f, 1f)
+        MobileAds.initialize(context) {
+            MobileAds.setAppVolume(volume)
+            android.util.Log.d(TAG, "GMA app volume set to $volume")
+        }
+    }
+
     private fun registerActivityCallbacks(context: Context) {
         (context.applicationContext as? Application)
             ?.registerActivityLifecycleCallbacks(CURRENT_ACTIVITY_TRACKER)
@@ -456,6 +473,26 @@ object AudienzzPrebidMobile {
     @JvmStatic
     fun checkGoogleMobileAdsCompatibility(googleAdsVersion: String) {
         PrebidMobile.checkGoogleMobileAdsCompatibility(googleAdsVersion)
+    }
+
+    /**
+     * Sets the global app volume for Google Mobile Ads ad audio.
+     *
+     * Can be called at any time after SDK initialization to update the volume mid-session.
+     * The value set here takes precedence over the backend [GamConfig.appVolume] for the
+     * remainder of the session.
+     *
+     * @param volume Audio level in range [0.0, 1.0]. 0.0 = muted, 1.0 = full device volume.
+     *               Values outside the range are clamped automatically.
+     */
+    @JvmStatic
+    fun setAppVolume(@FloatRange(from = 0.0, to = 1.0) volume: Float) {
+        val clamped = volume.coerceIn(0f, 1f)
+        if (clamped != volume) {
+            android.util.Log.w(TAG, "setAppVolume: $volume is out of [0.0, 1.0], clamped to $clamped")
+        }
+        MobileAds.setAppVolume(clamped)
+        android.util.Log.d(TAG, "GMA app volume updated to $clamped")
     }
 
     /**
