@@ -117,9 +117,9 @@ class StickyAdFragment : Fragment() {
     }
 
     companion object {
-        private const val PUBLISHER_ID = "81"
-        private const val AD_UNIT_ID = "ca-app-pub-3940256099942544/2934735716"
-        private const val CONFIG_ID = "33994718"
+        private const val PUBLISHER_ID = "35"
+        private const val AD_UNIT_ID = "/96628199/de_audienzz.ch_v2/multi-size"
+        private const val CONFIG_ID = "37116627"
         private const val MAX_HEIGHT_DP = 450
         private const val DEFAULT_REFRESH_SECONDS = 60
     }

@@ -184,13 +184,14 @@ class OriginalApiBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
     companion object {
         private const val TAG: String = "Original API BannerAd"
-        private const val AD_UNIT_ID_320_50 = "ca-app-pub-3940256099942544/2934735716"
-        private const val CONFIG_ID_320_50 = "33994718"
+        private const val AD_UNIT_ID_320_50 =
+            "/96628199/de_audienzz.ch_v2/multi-size"
+        private const val CONFIG_ID_320_50 = "37116627"
         private const val AD_UNIT_ID_300_250 =
-            "/96628199/de_audienzz.ch_v2/300x250"
-        private const val CONFIG_ID_300_250 = "36544278"
+            "/96628199/de_audienzz.ch_v2/multi-size"
+        private const val CONFIG_ID_300_250 = "37116627"
         private const val AD_UNIT_ID_MULTISIZE =
             "/96628199/de_audienzz.ch_v2/multi-size"
-        private const val CONFIG_ID_MULTISIZE = "15624474"
+        private const val CONFIG_ID_MULTISIZE = "37116627"
     }
 }
