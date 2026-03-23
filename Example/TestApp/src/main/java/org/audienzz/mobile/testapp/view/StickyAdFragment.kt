@@ -17,7 +17,6 @@ import org.audienzz.mobile.AudienzzStickyAdWrapperView
 import org.audienzz.mobile.api.data.AudienzzInitializationStatus
 import org.audienzz.mobile.original.AudienzzAdViewHandler
 import org.audienzz.mobile.testapp.R
-import org.audienzz.mobile.testapp.constants.SizeConstants
 
 class StickyAdFragment : Fragment() {
 
@@ -67,45 +66,50 @@ class StickyAdFragment : Fragment() {
     }
 
     private fun setupStickyBannerAd(scrollView: NestedScrollView, adContainer: FrameLayout) {
-        val context = adContainer.context
+        AudienzzPrebidMobile.getAdUnitConfig(BANNER_CONFIG_ID) { config ->
+            config ?: return@getAdUnitConfig
 
-        val bannerAdUnit = AudienzzBannerAdUnit(
-            CONFIG_ID,
-            SizeConstants.SMALL_BANNER_WIDTH,
-            SizeConstants.SMALL_BANNER_HEIGHT,
-        ).also { adUnits += it }
+            val context = adContainer.context
+            val primarySize = config.prebidConfig.adSizes.firstOrNull() ?: return@getAdUnitConfig
 
-        val adView = AdManagerAdView(context).apply {
-            adUnitId = AD_UNIT_ID
-            setAdSizes(AdSize(SizeConstants.SMALL_BANNER_WIDTH, SizeConstants.SMALL_BANNER_HEIGHT))
+            val bannerAdUnit = AudienzzBannerAdUnit(
+                config.prebidConfig.placementId,
+                primarySize.width,
+                primarySize.height,
+            ).also { adUnits += it }
+
+            val adView = AdManagerAdView(context).apply {
+                adUnitId = config.gamConfig.adUnitPath
+                setAdSizes(AdSize(primarySize.width, primarySize.height))
+            }
+
+            val wrapper = AudienzzStickyAdWrapperView(
+                context = context,
+                maxHeightDp = MAX_HEIGHT_DP,
+            ).apply {
+                isVisibilityGateEnabled = false
+                setAdView(adView)
+            }
+
+            adContainer.addView(
+                wrapper,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            wrapper.attachToScrollView(scrollView)
+            stickyWrappers += wrapper
+
+            val parameters = AudienzzBannerParameters().apply {
+                api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
+            }
+            bannerAdUnit.bannerParameters = parameters
+            bannerAdUnit.setAutoRefreshInterval(DEFAULT_REFRESH_SECONDS)
+
+            AudienzzAdViewHandler(adView = adView, adUnit = bannerAdUnit)
+                .load { request, _ -> adView.loadAd(request) }
         }
-
-        val wrapper = AudienzzStickyAdWrapperView(
-            context = context,
-            maxHeightDp = MAX_HEIGHT_DP,
-        ).apply {
-            isVisibilityGateEnabled = false
-            setAdView(adView)
-        }
-
-        adContainer.addView(
-            wrapper,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-            ),
-        )
-        wrapper.attachToScrollView(scrollView)
-        stickyWrappers += wrapper
-
-        val parameters = AudienzzBannerParameters().apply {
-            api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
-        }
-        bannerAdUnit.bannerParameters = parameters
-        bannerAdUnit.setAutoRefreshInterval(DEFAULT_REFRESH_SECONDS)
-
-        AudienzzAdViewHandler(adView = adView, adUnit = bannerAdUnit)
-            .load { request, _ -> adView.loadAd(request) }
     }
 
     override fun onDestroyView() {
@@ -118,8 +122,7 @@ class StickyAdFragment : Fragment() {
 
     companion object {
         private const val PUBLISHER_ID = "35"
-        private const val AD_UNIT_ID = "/96628199/de_audienzz.ch_v2/multi-size"
-        private const val CONFIG_ID = "37116627"
+        private const val BANNER_CONFIG_ID = "46"
         private const val MAX_HEIGHT_DP = 450
         private const val DEFAULT_REFRESH_SECONDS = 60
     }

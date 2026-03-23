@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import org.audienzz.mobile.api.config.AndroidOrtbConfig
 import org.audienzz.mobile.api.config.GamConfig
 import org.audienzz.mobile.api.config.OrtbConfig
+import org.audienzz.mobile.api.config.RemoteAdUnitConfig
 import org.audienzz.mobile.api.data.AudienzzInitializationStatus
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.api.rendering.AudienzzPrebidMobileInterstitialControllerInterface
@@ -403,6 +404,23 @@ object AudienzzPrebidMobile {
                 configureGam(context, publisherConfig?.gamConfig)
                 PrebidMobile.initializeSdk(context, prebidServerUrl, listener)
             }
+        }
+    }
+
+    /**
+     * Fetches a remote ad unit configuration by its ID.
+     * The SDK must have been initialized via [initializeRemoteSdk] first.
+     *
+     * @param configId the ad unit config ID as defined in the Audienzz dashboard (e.g. "46", "47")
+     * @param callback called on the main thread with the config, or null if not found / not initialized
+     */
+    @JvmStatic
+    fun getAdUnitConfig(configId: String, callback: (RemoteAdUnitConfig?) -> Unit) {
+        SCOPE.launch {
+            val config = withContext(Dispatchers.IO) {
+                MainComponent.remoteConfigManager?.getAdUnitConfig(configId)
+            }
+            callback(config)
         }
     }
 

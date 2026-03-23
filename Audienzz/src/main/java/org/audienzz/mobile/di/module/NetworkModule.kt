@@ -63,7 +63,7 @@ internal class NetworkModule {
     ): RemoteConfigApi = Retrofit.Builder()
         .addConverterFactory(converterFactory)
         .client(okHttpClient)
-        .baseUrl("https://dev-api.adnz.co/api/ws-sdk-config/public/v1/")
+        .baseUrl("https://api.adnz.co/api/ws-sdk-config/public/v1/")
         .build()
         .create(RemoteConfigApi::class.java)
 }

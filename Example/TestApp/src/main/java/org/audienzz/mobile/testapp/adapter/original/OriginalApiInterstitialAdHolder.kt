@@ -1,13 +1,13 @@
 package org.audienzz.mobile.testapp.adapter.original
 
-import android.content.res.Configuration
 import android.util.Log
 import android.view.ViewGroup
-import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.admanager.AdManagerInterstitialAd
 import org.audienzz.mobile.AudienzzInterstitialAdUnit
+import org.audienzz.mobile.AudienzzPrebidMobile
+import org.audienzz.mobile.AudienzzRemoteConfigInterstitial
 import org.audienzz.mobile.AudienzzSignals
 import org.audienzz.mobile.AudienzzVideoParameters
 import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
@@ -17,24 +17,13 @@ import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.adapter.BaseAdHolder
 import org.audienzz.mobile.testapp.constants.VideoConstants
 import org.audienzz.mobile.testapp.utils.FullscreenAdUtils
-import org.audienzz.mobile.util.getActivity
-import org.audienzz.mobile.util.lazyAdLoader
 import java.util.EnumSet
-import java.util.Random
 
 class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
     override val titleRes = R.string.original_api_interstitial_video_title
 
-    private var adUnitDisplay: AudienzzInterstitialAdUnit? = null
-    private var adUnitVideo: AudienzzInterstitialAdUnit? = null
-    private var adUnitMultiformat: AudienzzInterstitialAdUnit? = null
-
-    private var lazyLoadedInterstitialAd: AdManagerInterstitialAd? = null
-
-    private var buttonDisplay: Button? = null
-    private var buttonVideo: Button? = null
-    private var buttonMultiformat: Button? = null
+    private var displayInterstitial: AudienzzRemoteConfigInterstitial? = null
 
     override fun createAds() {
         createDisplayAd()
@@ -43,130 +32,73 @@ class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) 
     }
 
     private fun createDisplayAd() {
-        buttonDisplay = createButton(R.string.show_display_interstitial)
-        adUnitDisplay = AudienzzInterstitialAdUnit(
-            CONFIG_ID_BANNER,
-            DEFAULT_MIN_WIDTH,
-            DEFAULT_MIN_HEIGHT,
-        )
-
-        val orientation = adContainer.resources.configuration.orientation
-        val handler = AudienzzInterstitialAdHandler(
-            adUnitDisplay!!,
-            if (orientation == Configuration.ORIENTATION_PORTRAIT) {
-                AD_UNIT_ID_DISPLAY
-            } else {
-                FALLBACK_AD_UNIT_ID
-            },
-        )
-
-        buttonDisplay?.setOnClickListener {
-            adContainer.context.getActivity()?.let {
-                lazyLoadedInterstitialAd?.show(it)
-            }
+        val button = createButton(R.string.show_display_interstitial)
+        button.isEnabled = true
+        button.setOnClickListener {
+            displayInterstitial?.destroy()
+            displayInterstitial = AudienzzRemoteConfigInterstitial(adContainer.context, INTERSTITIAL_CONFIG_ID)
+            displayInterstitial?.loadAd()
         }
-
-        setLazyLoadInterstitialAd(handler)
-    }
-
-    private fun setLazyLoadInterstitialAd(handler: AudienzzInterstitialAdHandler) {
-        buttonDisplay?.lazyAdLoader(
-            adHandler = handler,
-            adLoadCallback = object : AudienzzInterstitialAdLoadCallback() {
-                override fun onAdLoaded(interstitialAd: AdManagerInterstitialAd) {
-                    super.onAdLoaded(interstitialAd)
-                    buttonDisplay?.isEnabled = true
-                    lazyLoadedInterstitialAd = interstitialAd
-                }
-
-                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    super.onAdFailedToLoad(loadAdError)
-                    showAdLoadingErrorDialog(adContainer.context, loadAdError)
-                }
-            },
-            fullScreenContentCallback = FullscreenAdUtils.createFullScreenCallback(
-                logTag = TAG,
-                onAdDismissedCallback = {
-                    lazyLoadedInterstitialAd = null
-                    buttonDisplay?.isEnabled = false
-                    setLazyLoadInterstitialAd(handler)
-                },
-            ),
-            resultCallback = { resultCode, request, listener ->
-                showFetchErrorDialog(adContainer.context, resultCode)
-                AdManagerInterstitialAd.load(
-                    adContainer.context,
-                    AD_UNIT_ID_VIDEO,
-                    request,
-                    listener,
-                )
-            },
-        )
     }
 
     private fun createVideoAd() {
-        buttonVideo = createButton(R.string.show_video_interstitial)
+        val button = createButton(R.string.show_video_interstitial)
+        button.isEnabled = true
+        button.setOnClickListener {
+            AudienzzPrebidMobile.getAdUnitConfig(INTERSTITIAL_CONFIG_ID) { config ->
+                config ?: return@getAdUnitConfig
 
-        adUnitVideo = AudienzzInterstitialAdUnit(
-            CONFIG_ID_VIDEO,
-            EnumSet.of(AudienzzAdUnitFormat.VIDEO),
-        )
-        adUnitVideo?.videoParameters = configureVideoParameters()
+                val adUnit = AudienzzInterstitialAdUnit(
+                    config.prebidConfig.placementId,
+                    EnumSet.of(AudienzzAdUnitFormat.VIDEO),
+                )
+                adUnit.videoParameters = configureVideoParameters()
 
-        val handler = AudienzzInterstitialAdHandler(adUnitVideo!!, AD_UNIT_ID_VIDEO)
-        buttonVideo?.isEnabled = true
-        buttonVideo?.setOnClickListener {
-            handler.load(
-                adLoadCallback = createAdLoadCallback(),
-                fullScreenContentCallback = FullscreenAdUtils.createFullScreenCallback(TAG),
-                resultCallback = { resultCode, request, listener ->
-                    showFetchErrorDialog(adContainer.context, resultCode)
-                    AdManagerInterstitialAd.load(
-                        adContainer.context,
-                        AD_UNIT_ID_VIDEO,
-                        request,
-                        listener,
-                    )
-                },
-            )
+                AudienzzInterstitialAdHandler(adUnit, config.gamConfig.adUnitPath).load(
+                    adLoadCallback = createAdLoadCallback(),
+                    fullScreenContentCallback = FullscreenAdUtils.createFullScreenCallback(TAG),
+                    resultCallback = { resultCode, request, listener ->
+                        showFetchErrorDialog(adContainer.context, resultCode)
+                        AdManagerInterstitialAd.load(
+                            adContainer.context,
+                            config.gamConfig.adUnitPath,
+                            request,
+                            listener,
+                        )
+                    },
+                )
+            }
         }
     }
 
     private fun createMultiformatAd() {
-        val configId = if (Random().nextBoolean()) {
-            CONFIG_ID_BANNER
-        } else {
-            CONFIG_ID_VIDEO
-        }
+        val button = createButton(R.string.show_multiformat_interstitial)
+        button.isEnabled = true
+        button.setOnClickListener {
+            AudienzzPrebidMobile.getAdUnitConfig(INTERSTITIAL_CONFIG_ID) { config ->
+                config ?: return@getAdUnitConfig
 
-        adUnitMultiformat = AudienzzInterstitialAdUnit(
-            configId,
-            EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO),
-        )
-        adUnitMultiformat?.setMinSizePercentage(
-            DEFAULT_MIN_WIDTH,
-            DEFAULT_MIN_HEIGHT,
-        )
-        adUnitMultiformat?.videoParameters = AudienzzVideoParameters(listOf("video/mp4"))
+                val adUnit = AudienzzInterstitialAdUnit(
+                    config.prebidConfig.placementId,
+                    EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO),
+                )
+                adUnit.setMinSizePercentage(DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT)
+                adUnit.videoParameters = AudienzzVideoParameters(listOf("video/mp4"))
 
-        buttonMultiformat = createButton(R.string.show_multiformat_interstitial)
-
-        val handler = AudienzzInterstitialAdHandler(adUnitMultiformat!!, AD_UNIT_ID_MULTIFORMAT)
-        buttonMultiformat?.isEnabled = true
-        buttonMultiformat?.setOnClickListener {
-            handler.load(
-                adLoadCallback = createAdLoadCallback(),
-                fullScreenContentCallback = FullscreenAdUtils.createFullScreenCallback(TAG),
-                resultCallback = { resultCode, request, listener ->
-                    showFetchErrorDialog(adContainer.context, resultCode)
-                    AdManagerInterstitialAd.load(
-                        adContainer.context,
-                        AD_UNIT_ID_VIDEO,
-                        request,
-                        listener,
-                    )
-                },
-            )
+                AudienzzInterstitialAdHandler(adUnit, config.gamConfig.adUnitPath).load(
+                    adLoadCallback = createAdLoadCallback(),
+                    fullScreenContentCallback = FullscreenAdUtils.createFullScreenCallback(TAG),
+                    resultCallback = { resultCode, request, listener ->
+                        showFetchErrorDialog(adContainer.context, resultCode)
+                        AdManagerInterstitialAd.load(
+                            adContainer.context,
+                            config.gamConfig.adUnitPath,
+                            request,
+                            listener,
+                        )
+                    },
+                )
+            }
         }
     }
 
@@ -195,35 +127,19 @@ class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) 
 
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                 super.onAdFailedToLoad(loadAdError)
-                Log.d(TAG, "Ad failed to loaded")
+                Log.d(TAG, "Ad failed to load")
                 showAdLoadingErrorDialog(adContainer.context, loadAdError)
             }
         }
     }
 
-    override fun onAttach() {
-        adUnitDisplay?.resumeAutoRefresh()
-        adUnitVideo?.resumeAutoRefresh()
-        adUnitMultiformat?.resumeAutoRefresh()
-    }
-
     override fun onDetach() {
-        adUnitDisplay?.stopAutoRefresh()
-        adUnitVideo?.stopAutoRefresh()
-        adUnitMultiformat?.stopAutoRefresh()
+        displayInterstitial?.destroy()
     }
 
     companion object {
         private const val TAG = "Original API InterstitialAd"
-        private const val AD_UNIT_ID_DISPLAY =
-            "/96628199/de_audienzz.ch_v2/interstitial"
-        private const val AD_UNIT_ID_VIDEO =
-            "/96628199/de_audienzz.ch_v2/interstitial"
-        private const val AD_UNIT_ID_MULTIFORMAT =
-            "/96628199/de_audienzz.ch_v2/interstitial"
-        private const val CONFIG_ID_BANNER = "36544556"
-        private const val CONFIG_ID_VIDEO = "36544556"
-        private const val FALLBACK_AD_UNIT_ID = "ca-app-pub-3940256099942544/1033173712"
+        private const val INTERSTITIAL_CONFIG_ID = "47"
         private const val DEFAULT_MIN_WIDTH = 80
         private const val DEFAULT_MIN_HEIGHT = 60
     }

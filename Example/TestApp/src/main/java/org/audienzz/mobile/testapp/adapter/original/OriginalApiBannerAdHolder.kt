@@ -1,197 +1,32 @@
 package org.audienzz.mobile.testapp.adapter.original
 
-import android.util.Log
 import android.view.ViewGroup
-import android.view.View
-import android.widget.LinearLayout
-import android.widget.TextView
-import androidx.core.content.ContextCompat
-import androidx.core.view.doOnNextLayout
-import androidx.core.view.isVisible
-import com.google.android.gms.ads.AdListener
-import com.google.android.gms.ads.AdSize
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.admanager.AdManagerAdView
-import org.audienzz.mobile.AudienzzBannerAdUnit
-import org.audienzz.mobile.AudienzzBannerParameters
-import org.audienzz.mobile.AudienzzSignals
-import org.audienzz.mobile.addentum.AudienzzAdViewUtils
-import org.audienzz.mobile.original.AudienzzAdViewHandler
+import org.audienzz.mobile.AudienzzRemoteBannerView
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.adapter.BaseAdHolder
-import org.audienzz.mobile.testapp.constants.SizeConstants
-import org.audienzz.mobile.util.pxToDp
 
 class OriginalApiBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     override val titleRes = R.string.original_api_banner_title
 
-    private var adUnit320x50 =
-        AudienzzBannerAdUnit(
-            CONFIG_ID_320_50,
-            SizeConstants.SMALL_BANNER_WIDTH,
-            SizeConstants.SMALL_BANNER_HEIGHT,
-        )
-    private var adUnit300x250 =
-        AudienzzBannerAdUnit(
-            CONFIG_ID_300_250,
-            SizeConstants.MEDIUM_BANNER_WIDTH,
-            SizeConstants.MEDIUM_BANNER_HEIGHT,
-        )
-    private var adUnitMultisize =
-        AudienzzBannerAdUnit(
-            CONFIG_ID_MULTISIZE,
-            SizeConstants.SMALL_BANNER_WIDTH,
-            SizeConstants.SMALL_BANNER_HEIGHT,
-        )
+    private var bannerView: AudienzzRemoteBannerView? = null
 
     override fun createAds() {
-        createAd(
-            SizeConstants.SMALL_BANNER_WIDTH,
-            SizeConstants.SMALL_BANNER_HEIGHT,
-            AD_UNIT_ID_320_50,
-            adUnit320x50,
-        )
-        createAd(
-            SizeConstants.MEDIUM_BANNER_WIDTH,
-            SizeConstants.MEDIUM_BANNER_HEIGHT,
-            AD_UNIT_ID_300_250,
-            adUnit300x250,
-        )
-        createAd(
-            SizeConstants.SMALL_BANNER_WIDTH,
-            SizeConstants.SMALL_BANNER_HEIGHT,
-            AD_UNIT_ID_MULTISIZE,
-            adUnitMultisize,
-            true,
-        )
-    }
-
-    private fun createAd(
-        width: Int,
-        height: Int,
-        unitId: String,
-        adUnit: AudienzzBannerAdUnit,
-        adaptiveSize: Boolean = false,
-    ) {
-        val context = adContainer.context
-
-        val adLayout = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        val adView = AdManagerAdView(context)
-        if (adaptiveSize) {
-            adView.doOnNextLayout {
-                adView.setAdSizes(
-                    AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(
-                        context,
-                        context.resources.pxToDp(it.width),
-                    ),
-                )
-            }
-        }
-        adView.adUnitId = unitId
-        adView.setAdSizes(AdSize(width, height))
-        applyAdCallback(adView)
-
-        val errorTextView = TextView(context).apply {
-            isVisible = false
-            setTextColor(ContextCompat.getColor(context, android.R.color.holo_red_dark))
-            textSize = 24f
-            setPadding(0, 8, 0, 0)
-        }
-
-        adLayout.addView(adView)
-        adLayout.addView(errorTextView)
-
-        adContainer.addView(adLayout)
-        addBottomMargin(adLayout)
-
-        val parameters = AudienzzBannerParameters().apply {
-            api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
-        }
-        adUnit.bannerParameters = parameters
-        adUnit.setAutoRefreshInterval(DEFAULT_REFRESH_TIME)
-
-        AudienzzAdViewHandler(
-            adView = adView,
-            adUnit = adUnit,
-        ).load { request, resultCode ->
-            errorTextView.apply {
-                isVisible = true
-                text = "Ad fetch error: $resultCode"
-            }
-            adView.loadAd(request)
-        }
-    }
-
-    private fun applyAdCallback(adView: AdManagerAdView) {
-        adView.adListener = object : AdListener() {
-            override fun onAdLoaded() {
-                super.onAdLoaded()
-                Log.d(TAG, "onAdLoaded")
-                AudienzzAdViewUtils.hideScrollBar(adView)
-            }
-
-            override fun onAdFailedToLoad(error: LoadAdError) {
-                super.onAdFailedToLoad(error)
-                Log.d(TAG, "onAdFailedToLoad $error")
-                showAdLoadingErrorDialog(adContainer.context, error)
-            }
-
-            override fun onAdClicked() {
-                super.onAdClicked()
-                Log.d(TAG, "onAdClicked")
-            }
-
-            override fun onAdClosed() {
-                super.onAdClosed()
-                Log.d(TAG, "onAdClosed")
-            }
-
-            override fun onAdOpened() {
-                super.onAdOpened()
-                Log.d(TAG, "onAdOpened")
-            }
-
-            override fun onAdImpression() {
-                super.onAdImpression()
-                Log.d(TAG, "onAdImpression")
-            }
-
-            override fun onAdSwipeGestureClicked() {
-                super.onAdSwipeGestureClicked()
-                Log.d(TAG, "onAdSwipeGestureClicked")
-            }
-        }
+        val view = AudienzzRemoteBannerView(adContainer.context, BANNER_CONFIG_ID)
+        bannerView = view
+        adContainer.addView(view)
+        view.loadAd()
     }
 
     override fun onAttach() {
-        adUnit320x50.resumeAutoRefresh()
-        adUnit300x250.resumeAutoRefresh()
-        adUnitMultisize.resumeAutoRefresh()
+        bannerView?.onResume()
     }
 
     override fun onDetach() {
-        adUnit320x50.stopAutoRefresh()
-        adUnit300x250.stopAutoRefresh()
-        adUnitMultisize.stopAutoRefresh()
+        bannerView?.onPause()
     }
 
     companion object {
-        private const val TAG: String = "Original API BannerAd"
-        private const val AD_UNIT_ID_320_50 =
-            "/96628199/de_audienzz.ch_v2/multi-size"
-        private const val CONFIG_ID_320_50 = "37116627"
-        private const val AD_UNIT_ID_300_250 =
-            "/96628199/de_audienzz.ch_v2/multi-size"
-        private const val CONFIG_ID_300_250 = "37116627"
-        private const val AD_UNIT_ID_MULTISIZE =
-            "/96628199/de_audienzz.ch_v2/multi-size"
-        private const val CONFIG_ID_MULTISIZE = "37116627"
+        private const val TAG = "Original API BannerAd"
+        private const val BANNER_CONFIG_ID = "46"
     }
 }
