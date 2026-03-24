@@ -18,7 +18,7 @@
 
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-1875909575462531~6255590079" />
+            android:value="ca-app-pub-3384408078236170~9501675642" />
         <meta-data
             android:name="com.google.android.gms.ads.flag.OPTIMIZE_INITIALIZATION"
             android:value="true"/>

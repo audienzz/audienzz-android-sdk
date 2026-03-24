@@ -82,12 +82,12 @@ class AdsPageFragment : Fragment() {
                 remoteUrl = "https://api.adnz.co/api/ws-sdk-config/public/v1"
             )
 
+            AudienzzPrebidMobile.isPbsDebug = true
             AudienzzPrebidMobile.initializeRemoteSdk(
                 requireContext().applicationContext,
                 PUBLISHER_ID,
                 true,
             ) { status ->
-                AudienzzPrebidMobile.isPbsDebug = true
                 handleInitializationStatus(status)
             }
         } else {
