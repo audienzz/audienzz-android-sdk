@@ -1,28 +1,21 @@
 package org.audienzz.mobile.testapp.view
 
 import android.os.Bundle
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
-import com.google.android.gms.ads.AdListener
-import com.google.android.gms.ads.AdSize
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.admanager.AdManagerAdView
-import org.audienzz.mobile.AudienzzBannerAdUnit
-import org.audienzz.mobile.AudienzzBannerParameters
+import org.audienzz.mobile.AudienzzRemoteBannerView
 import org.audienzz.mobile.AudienzzTargetingParams
-import org.audienzz.mobile.addentum.AudienzzAdViewUtils
-import org.audienzz.mobile.original.AudienzzAdViewHandler
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.databinding.TargetingPageFragmentBinding
 
 class TargetingPageFragment : Fragment() {
     private lateinit var binding: TargetingPageFragmentBinding
-    private var adUnit = AudienzzBannerAdUnit(CONFIG_ID, AD_SIZE.width, AD_SIZE.height)
+
+    private var bannerView: AudienzzRemoteBannerView? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -46,7 +39,7 @@ class TargetingPageFragment : Fragment() {
     }
 
     private fun applyStoreUrlForTargeting() {
-        AudienzzTargetingParams.storeUrl = STORE_URL;
+        AudienzzTargetingParams.storeUrl = STORE_URL
     }
 
     private fun setupClickListeners() {
@@ -102,35 +95,18 @@ class TargetingPageFragment : Fragment() {
 
     private fun requestAd() {
         binding.adContainer.removeAllViews()
-        val adView = AdManagerAdView(requireContext()).apply {
-            adUnitId = AD_UNIT_ID
-            setAdSizes(AD_SIZE)
-            adListener = object : AdListener() {
-                override fun onAdLoaded() {
-                    super.onAdLoaded()
-                    Log.d(TAG, "onAdLoaded")
-                    AudienzzAdViewUtils.hideScrollBar(this@apply)
-                }
+        bannerView?.destroy()
 
-                override fun onAdFailedToLoad(error: LoadAdError) {
-                    super.onAdFailedToLoad(error)
-                    Log.d(TAG, "onAdFailedToLoad $error")
-                }
-            }
-        }
+        val view = AudienzzRemoteBannerView(requireContext(), BANNER_CONFIG_ID)
+        bannerView = view
+        binding.adContainer.addView(view)
+        view.loadAd()
+    }
 
-        binding.adContainer.addView(adView)
-
-        adUnit.bannerParameters = AudienzzBannerParameters()
-
-        AudienzzAdViewHandler(
-            adView = adView,
-            adUnit = adUnit,
-        ).load(
-            callback = { request, _ ->
-                adView.loadAd(request)
-            },
-        )
+    override fun onDestroyView() {
+        super.onDestroyView()
+        bannerView?.destroy()
+        bannerView = null
     }
 
     private fun showToast(message: String) {
@@ -139,9 +115,7 @@ class TargetingPageFragment : Fragment() {
 
     companion object {
         private const val TAG = "TargetingPage"
-        private const val CONFIG_ID = "15624474"
-        private const val AD_UNIT_ID = "/96628199/testapp_publisher/medium_rectangle_banner"
-        private val AD_SIZE = AdSize(300, 250)
+        private const val BANNER_CONFIG_ID = "46"
         private val STORE_URL = "https://play.google.com/store/apps/details?id=com.example.testapp"
     }
 }

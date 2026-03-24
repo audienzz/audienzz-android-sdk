@@ -22,9 +22,9 @@ class RemoteConfigFragment : Fragment() {
     private var interstitial: AudienzzRemoteConfigInterstitial? = null
 
     private companion object {
-        const val FIXED_BANNER_CONFIG_ID = "192"
-        const val ADAPTIVE_BANNER_CONFIG_ID = "118"
-        const val INTERSTITIAL_CONFIG_ID = "267"
+        const val FIXED_BANNER_CONFIG_ID = "46"
+        const val ADAPTIVE_BANNER_CONFIG_ID = "46"
+        const val INTERSTITIAL_CONFIG_ID = "47"
         const val FIXED_BANNER_WIDTH_DP = 320
         const val FIXED_BANNER_HEIGHT_DP = 480
     }

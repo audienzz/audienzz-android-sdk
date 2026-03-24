@@ -41,7 +41,6 @@ dokka = "2.0.0"
 gradle-kotlin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 # prebid
 prebid = { module = "org.prebid:prebid-mobile-sdk", version.ref = "prebid" }
-prebid-admob-adapters = { module = "org.prebid:prebid-mobile-sdk-admob-adapters", version.ref = "prebid" }
 prebid-max-adapters = { module = "org.prebid:prebid-mobile-sdk-max-adapters", version.ref = "prebid" }
 prebid-gam-event-handlers = { module = "org.prebid:prebid-mobile-sdk-gam-event-handlers", version.ref = "prebid" }
 # GMS
@@ -95,7 +94,6 @@ kotlin-bom = [
 # bom
 prebid = [
     "prebid",
-    "prebid-admob-adapters",
     "prebid-max-adapters",
     "prebid-gam-event-handlers",
 ]

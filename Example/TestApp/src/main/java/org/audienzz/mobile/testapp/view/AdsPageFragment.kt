@@ -79,15 +79,15 @@ class AdsPageFragment : Fragment() {
         if (useRemoteConfiguration) {
             RemoteConfigManager.initialize(
                 publisherId = PUBLISHER_ID,
-                remoteUrl = "https://dev-api.adnz.co/api/ws-sdk-config/public/v1"
+                remoteUrl = "https://api.adnz.co/api/ws-sdk-config/public/v1"
             )
 
+            AudienzzPrebidMobile.isPbsDebug = true
             AudienzzPrebidMobile.initializeRemoteSdk(
                 requireContext().applicationContext,
                 PUBLISHER_ID,
                 true,
             ) { status ->
-                AudienzzPrebidMobile.isPbsDebug = true
                 handleInitializationStatus(status)
             }
         } else {
@@ -141,6 +141,6 @@ class AdsPageFragment : Fragment() {
     }
 
     companion object {
-        private const val PUBLISHER_ID = "81"
+        private const val PUBLISHER_ID = "35"
     }
 }
