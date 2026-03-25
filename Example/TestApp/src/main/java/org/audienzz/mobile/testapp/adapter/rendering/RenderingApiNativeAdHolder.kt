@@ -18,7 +18,6 @@ import com.google.android.gms.ads.nativead.NativeCustomFormatAd
 import com.google.common.collect.Lists
 import org.audienzz.mobile.AudienzzNativeAdUnit
 import org.audienzz.mobile.AudienzzNativeEventTracker
-import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzPrebidNativeAd
 import org.audienzz.mobile.AudienzzPrebidNativeAdListener
 import org.audienzz.mobile.addentum.AudienzzAdViewUtils
@@ -36,19 +35,14 @@ class RenderingApiNativeAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     private var adLoader: AdLoader? = null
 
     override fun createAds() {
-        AudienzzPrebidMobile.getAdUnitConfig(NATIVE_CONFIG_ID) { config ->
-            config ?: return@getAdUnitConfig
-
-            val placementId = config.prebidConfig.placementId
-            val gamPath = config.gamConfig.adUnitPath
-
-            adUnit = configureNativeAdUnit(placementId)
-            val adRequest = AdManagerAdRequest.Builder().build()
-            adLoader = createAdLoader(adContainer, gamPath)
-            adUnit?.fetchDemand(adRequest) { resultCode ->
-                showFetchErrorDialog(adContainer.context, resultCode)
-                adLoader?.loadAd(adRequest)
-            }
+        // TODO: replace with your own config from Audienzz dashboard
+        adUnit = configureNativeAdUnit(CONFIG_ID)
+        val adRequest = AdManagerAdRequest.Builder().build()
+        // TODO: replace with your own config from Audienzz dashboard
+        adLoader = createAdLoader(adContainer, AD_UNIT_ID)
+        adUnit?.fetchDemand(adRequest) { resultCode ->
+            showFetchErrorDialog(adContainer.context, resultCode)
+            adLoader?.loadAd(adRequest)
         }
     }
 
@@ -168,7 +162,11 @@ class RenderingApiNativeAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
     companion object {
         private const val TAG = "Rendering Api NativeAd Holder"
-        private const val NATIVE_CONFIG_ID = "46"
-        private const val CUSTOM_FORMAT_ID = "12486579"
+        // TODO: replace with your own config from Audienzz dashboard
+        private const val AD_UNIT_ID = "/21808260008/apollo_custom_template_native_ad_unit"
+        // TODO: replace with your own placement ID from Audienzz dashboard
+        private const val CONFIG_ID = "wuobgeuc"
+        // TODO: replace with your own config from Audienzz dashboard
+        private const val CUSTOM_FORMAT_ID = "11934135"
     }
 }

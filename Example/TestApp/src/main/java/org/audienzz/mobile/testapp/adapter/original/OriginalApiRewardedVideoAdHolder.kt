@@ -10,7 +10,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.rewarded.RewardedAd
-import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzRewardedVideoAdUnit
 import org.audienzz.mobile.AudienzzSignals
 import org.audienzz.mobile.AudienzzVideoParameters
@@ -69,24 +68,22 @@ class OriginalApiRewardedVideoAdHolder(parent: ViewGroup) : BaseAdHolder(parent)
         layout.addView(errorTextView)
         adContainer.addView(layout)
 
-        AudienzzPrebidMobile.getAdUnitConfig(REWARDED_CONFIG_ID) { config ->
-            config ?: return@getAdUnitConfig
+        // TODO: replace with your own config from Audienzz dashboard
+        adUnit = AudienzzRewardedVideoAdUnit(CONFIG_ID)
+        adUnit?.videoParameters = configureVideoParameters()
 
-            adUnit = AudienzzRewardedVideoAdUnit(config.prebidConfig.placementId)
-            adUnit?.videoParameters = configureVideoParameters()
+        val handler = AudienzzRewardedVideoAdHandler(adUnit!!, AD_UNIT_ID)
 
-            val handler = AudienzzRewardedVideoAdHandler(adUnit!!, config.gamConfig.adUnitPath)
-            setLazyLoadedRewarded(handler, config.gamConfig.adUnitPath)
+        setLazyLoadedRewarded(handler)
 
-            button?.setOnClickListener {
-                (context as? AppCompatActivity)?.let { activity ->
-                    lazyLoadedRewarded?.show(activity) { }
-                }
+        button?.setOnClickListener {
+            (context as? AppCompatActivity)?.let { activity ->
+                lazyLoadedRewarded?.show(activity) { }
             }
         }
     }
 
-    private fun setLazyLoadedRewarded(handler: AudienzzRewardedVideoAdHandler, adUnitPath: String) {
+    private fun setLazyLoadedRewarded(handler: AudienzzRewardedVideoAdHandler) {
         adWrapper.lazyAdLoader(
             adHandler = handler,
             adLoadCallback = object : AudienzzRewardedAdLoadCallback() {
@@ -113,7 +110,7 @@ class OriginalApiRewardedVideoAdHolder(parent: ViewGroup) : BaseAdHolder(parent)
 
                 RewardedAd.load(
                     adWrapper.context,
-                    adUnitPath,
+                    AD_UNIT_ID,
                     request,
                     listener,
                 )
@@ -130,6 +127,9 @@ class OriginalApiRewardedVideoAdHolder(parent: ViewGroup) : BaseAdHolder(parent)
 
     companion object {
         private const val TAG = "Original API RewardedAd"
-        private const val REWARDED_CONFIG_ID = "47"
+        // TODO: replace with your own config from Audienzz dashboard
+        private const val AD_UNIT_ID = "/21808260008/prebid-demo-app-original-api-video-interstitial"
+        // TODO: replace with your own placement ID from Audienzz dashboard
+        private const val CONFIG_ID = "wuobgeuc"
     }
 }

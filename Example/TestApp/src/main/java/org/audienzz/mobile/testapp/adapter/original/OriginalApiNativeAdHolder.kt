@@ -5,7 +5,6 @@ import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.admanager.AdManagerAdView
 import org.audienzz.mobile.AudienzzNativeAdUnit
 import org.audienzz.mobile.AudienzzNativeEventTracker
-import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.original.AudienzzAdViewHandler
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.adapter.BaseAdHolder
@@ -18,35 +17,30 @@ class OriginalApiNativeAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     private var nativeAdUnit: AudienzzNativeAdUnit? = null
 
     override fun createAds() {
-        AudienzzPrebidMobile.getAdUnitConfig(NATIVE_CONFIG_ID) { config ->
-            config ?: return@getAdUnitConfig
+        // TODO: replace with your own config from Audienzz dashboard
+        nativeAdUnit = AudienzzNativeAdUnit(CONFIG_ID).apply {
+            setContextType(AudienzzNativeAdUnit.ContextType.SOCIAL_CENTRIC)
+            setPlacementType(AudienzzNativeAdUnit.PlacementType.CONTENT_FEED)
+            setContextSubType(AudienzzNativeAdUnit.ContextSubtype.GENERAL_SOCIAL)
+        }
+        addNativeAssets(nativeAdUnit)
 
-            val placementId = config.prebidConfig.placementId
-            val gamPath = config.gamConfig.adUnitPath
+        val gamView = AdManagerAdView(adContainer.context)
+        // TODO: replace with your own config from Audienzz dashboard
+        gamView.adUnitId = AD_UNIT_ID
+        gamView.setAdSizes(AdSize.FLUID)
+        adContainer.addView(gamView)
 
-            nativeAdUnit = AudienzzNativeAdUnit(placementId).apply {
-                setContextType(AudienzzNativeAdUnit.ContextType.SOCIAL_CENTRIC)
-                setPlacementType(AudienzzNativeAdUnit.PlacementType.CONTENT_FEED)
-                setContextSubType(AudienzzNativeAdUnit.ContextSubtype.GENERAL_SOCIAL)
-            }
-            addNativeAssets(nativeAdUnit)
-
-            val gamView = AdManagerAdView(adContainer.context)
-            gamView.adUnitId = gamPath
-            gamView.setAdSizes(AdSize.FLUID)
-            adContainer.addView(gamView)
-
-            nativeAdUnit?.let {
-                AudienzzAdViewHandler(
-                    adView = gamView,
-                    adUnit = it,
-                ).load(
-                    callback = { request, resultCode ->
-                        showFetchErrorDialog(adContainer.context, resultCode)
-                        gamView.loadAd(request)
-                    },
-                )
-            }
+        nativeAdUnit?.let {
+            AudienzzAdViewHandler(
+                adView = gamView,
+                adUnit = it,
+            ).load(
+                callback = { request, resultCode ->
+                    showFetchErrorDialog(adContainer.context, resultCode)
+                    gamView.loadAd(request)
+                },
+            )
         }
     }
 
@@ -64,6 +58,9 @@ class OriginalApiNativeAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     }
 
     companion object {
-        private const val NATIVE_CONFIG_ID = "46"
+        // TODO: replace with your own config from Audienzz dashboard
+        private const val AD_UNIT_ID = "/21808260008/apollo_custom_template_native_ad_unit"
+        // TODO: replace with your own placement ID from Audienzz dashboard
+        private const val CONFIG_ID = "wuobgeuc"
     }
 }

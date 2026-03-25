@@ -2,7 +2,6 @@ package org.audienzz.mobile.testapp.adapter.rendering
 
 import android.app.Activity
 import android.view.ViewGroup
-import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.api.rendering.AudienzzInterstitialAdUnit
@@ -29,39 +28,37 @@ class RenderingApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent)
         val button = createButton(R.string.show_display_interstitial)
 
         button.addOnBecameVisibleOnScreenListener {
-            AudienzzPrebidMobile.getAdUnitConfig(INTERSTITIAL_CONFIG_ID) { config ->
-                config ?: return@getAdUnitConfig
+            val eventHandler = AudienzzGamInterstitialEventHandler(
+                adContainer.context as Activity,
+                // TODO: replace with your own config from Audienzz dashboard
+                DISPLAY_AD_UNIT_ID,
+            )
 
-                val eventHandler = AudienzzGamInterstitialEventHandler(
-                    adContainer.context as Activity,
-                    config.gamConfig.adUnitPath,
-                )
+            // TODO: replace with your own config from Audienzz dashboard
+            displayAdUnit = AudienzzInterstitialAdUnit(
+                adContainer.context,
+                DISPLAY_CONFIG_ID,
+                EnumSet.of(AudienzzAdUnitFormat.BANNER),
+                eventHandler,
+            )
 
-                displayAdUnit = AudienzzInterstitialAdUnit(
-                    adContainer.context,
-                    config.prebidConfig.placementId,
-                    EnumSet.of(AudienzzAdUnitFormat.BANNER),
-                    eventHandler,
-                )
-
-                displayAdUnit?.setInterstitialAdUnitListener(object : AudienzzInterstitialAdUnitListener {
-                    override fun onAdLoaded(interstitialAdUnit: AudienzzInterstitialAdUnit) {
-                        button.isEnabled = true
-                        button.setOnClickListener {
-                            displayAdUnit?.show()
-                        }
+            displayAdUnit?.setInterstitialAdUnitListener(object : AudienzzInterstitialAdUnitListener {
+                override fun onAdLoaded(interstitialAdUnit: AudienzzInterstitialAdUnit) {
+                    button.isEnabled = true
+                    button.setOnClickListener {
+                        displayAdUnit?.show()
                     }
+                }
 
-                    override fun onAdFailed(
-                        interstitialAdUnit: AudienzzInterstitialAdUnit,
-                        exception: AudienzzAdException?,
-                    ) {
-                        showErrorDialog(adContainer.context, exception?.message.orEmpty())
-                    }
-                })
+                override fun onAdFailed(
+                    interstitialAdUnit: AudienzzInterstitialAdUnit,
+                    exception: AudienzzAdException?,
+                ) {
+                    showErrorDialog(adContainer.context, exception?.message.orEmpty())
+                }
+            })
 
-                displayAdUnit?.loadAd()
-            }
+            displayAdUnit?.loadAd()
         }
     }
 
@@ -69,39 +66,37 @@ class RenderingApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent)
         val button = createButton(R.string.show_video_interstitial)
 
         button.addOnBecameVisibleOnScreenListener {
-            AudienzzPrebidMobile.getAdUnitConfig(INTERSTITIAL_CONFIG_ID) { config ->
-                config ?: return@getAdUnitConfig
+            val eventHandler = AudienzzGamInterstitialEventHandler(
+                adContainer.context as Activity,
+                // TODO: replace with your own config from Audienzz dashboard
+                VIDEO_AD_UNIT_ID,
+            )
 
-                val eventHandler = AudienzzGamInterstitialEventHandler(
-                    adContainer.context as Activity,
-                    config.gamConfig.adUnitPath,
-                )
+            // TODO: replace with your own config from Audienzz dashboard
+            videoAdUnit = AudienzzInterstitialAdUnit(
+                adContainer.context,
+                VIDEO_CONFIG_ID,
+                EnumSet.of(AudienzzAdUnitFormat.VIDEO),
+                eventHandler,
+            )
 
-                videoAdUnit = AudienzzInterstitialAdUnit(
-                    adContainer.context,
-                    config.prebidConfig.placementId,
-                    EnumSet.of(AudienzzAdUnitFormat.VIDEO),
-                    eventHandler,
-                )
-
-                videoAdUnit?.setInterstitialAdUnitListener(object : AudienzzInterstitialAdUnitListener {
-                    override fun onAdLoaded(interstitialAdUnit: AudienzzInterstitialAdUnit) {
-                        button.isEnabled = true
-                        button.setOnClickListener {
-                            interstitialAdUnit.show()
-                        }
+            videoAdUnit?.setInterstitialAdUnitListener(object : AudienzzInterstitialAdUnitListener {
+                override fun onAdLoaded(interstitialAdUnit: AudienzzInterstitialAdUnit) {
+                    button.isEnabled = true
+                    button.setOnClickListener {
+                        interstitialAdUnit.show()
                     }
+                }
 
-                    override fun onAdFailed(
-                        interstitialAdUnit: AudienzzInterstitialAdUnit,
-                        exception: AudienzzAdException?,
-                    ) {
-                        showErrorDialog(adContainer.context, exception?.message.orEmpty())
-                    }
-                })
+                override fun onAdFailed(
+                    interstitialAdUnit: AudienzzInterstitialAdUnit,
+                    exception: AudienzzAdException?,
+                ) {
+                    showErrorDialog(adContainer.context, exception?.message.orEmpty())
+                }
+            })
 
-                videoAdUnit?.loadAd()
-            }
+            videoAdUnit?.loadAd()
         }
     }
 
@@ -111,6 +106,13 @@ class RenderingApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent)
     }
 
     companion object {
-        private const val INTERSTITIAL_CONFIG_ID = "47"
+        // TODO: replace with your own config from Audienzz dashboard
+        private const val DISPLAY_AD_UNIT_ID = "/21808260008/prebid_oxb_html_interstitial"
+        // TODO: replace with your own placement ID from Audienzz dashboard
+        private const val DISPLAY_CONFIG_ID = "wuobgeuc"
+        // TODO: replace with your own config from Audienzz dashboard
+        private const val VIDEO_AD_UNIT_ID = "/21808260008/prebid_oxb_interstitial_video"
+        // TODO: replace with your own placement ID from Audienzz dashboard
+        private const val VIDEO_CONFIG_ID = "wuobgeuc"
     }
 }

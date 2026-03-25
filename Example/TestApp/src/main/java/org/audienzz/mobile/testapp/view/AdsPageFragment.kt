@@ -18,7 +18,6 @@ import org.audienzz.mobile.testapp.BuildConfig
 import org.audienzz.mobile.testapp.adapter.AdsAdapter
 import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_DEFAULT
 import org.audienzz.mobile.testapp.databinding.AdsPageFragmentBinding
-import org.audienzz.mobile.util.remote.RemoteConfigManager
 
 class AdsPageFragment : Fragment() {
 
@@ -74,30 +73,14 @@ class AdsPageFragment : Fragment() {
             return
         }
 
-        val useRemoteConfiguration = true
-
-        if (useRemoteConfiguration) {
-            RemoteConfigManager.initialize(
-                publisherId = PUBLISHER_ID,
-                remoteUrl = "https://api.adnz.co/api/ws-sdk-config/public/v1"
-            )
-
-            AudienzzPrebidMobile.isPbsDebug = true
-            AudienzzPrebidMobile.initializeRemoteSdk(
-                requireContext().applicationContext,
-                PUBLISHER_ID,
-                true,
-            ) { status ->
-                handleInitializationStatus(status)
-            }
-        } else {
-            AudienzzPrebidMobile.initializeSdk(
-                requireContext().applicationContext,
-                "TestCompany",
-                true,
-            ) { status ->
-                handleInitializationStatus(status)
-            }
+        // TODO: replace with initializeRemoteSdk and your own Audienzz publisher ID for production
+        AudienzzPrebidMobile.initializeSdk(
+            requireContext().applicationContext,
+            "TestCompany",
+            true,
+            prebidServerUrl = "https://fast.nexx360.io/inapp",
+        ) { status ->
+            handleInitializationStatus(status)
         }
     }
 

@@ -15,7 +15,6 @@ import com.google.android.exoplayer2.upstream.DataSpec
 import com.google.android.exoplayer2.upstream.DefaultDataSourceFactory
 import org.audienzz.mobile.AudienzzAdSize
 import org.audienzz.mobile.AudienzzInStreamVideoAdUnit
-import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzSignals
 import org.audienzz.mobile.AudienzzUtil
 import org.audienzz.mobile.AudienzzVideoParameters
@@ -35,40 +34,35 @@ class OriginalApiInStreamAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     private var playerView: PlayerView? = null
 
     override fun createAds() {
-        AudienzzPrebidMobile.getAdUnitConfig(INSTREAM_CONFIG_ID) { config ->
-            config ?: return@getAdUnitConfig
+        // TODO: replace with your own config from Audienzz dashboard
+        adUnit = AudienzzInStreamVideoAdUnit(
+            CONFIG_ID,
+            SizeConstants.INSTREAM_AD_WIDTH,
+            SizeConstants.INSTREAM_AD_HEIGHT,
+        )
+        adUnit?.videoParameters = configureVideoParameters()
 
-            val placementId = config.prebidConfig.placementId
-            val gamPath = config.gamConfig.adUnitPath
+        playerView = PlayerView(adContainer.context)
+        val params = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, CONTAINER_HEIGHT)
+        adContainer.addView(playerView, params)
 
-            adUnit = AudienzzInStreamVideoAdUnit(
-                placementId,
-                SizeConstants.INSTREAM_AD_WIDTH,
-                SizeConstants.INSTREAM_AD_HEIGHT,
+        adUnit?.fetchDemand { bidInfo ->
+            showFetchErrorDialog(adContainer.context, bidInfo.resultCode)
+            val sizes = HashSet<AudienzzAdSize>()
+            sizes.add(
+                AudienzzAdSize(
+                    SizeConstants.INSTREAM_AD_WIDTH,
+                    SizeConstants.INSTREAM_AD_HEIGHT,
+                ),
             )
-            adUnit?.videoParameters = configureVideoParameters()
-
-            playerView = PlayerView(adContainer.context)
-            val params = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, CONTAINER_HEIGHT)
-            adContainer.addView(playerView, params)
-
-            adUnit?.fetchDemand { bidInfo ->
-                showFetchErrorDialog(adContainer.context, bidInfo.resultCode)
-                val sizes = HashSet<AudienzzAdSize>()
-                sizes.add(
-                    AudienzzAdSize(
-                        SizeConstants.INSTREAM_AD_WIDTH,
-                        SizeConstants.INSTREAM_AD_HEIGHT,
-                    ),
-                )
-                val prebidURL = AudienzzUtil.generateInstreamUriForGam(
-                    gamPath,
-                    sizes,
-                    bidInfo.targetingKeywords,
-                )
-                adsUri = prebidURL.toUri()
-                initializePlayer()
-            }
+            val prebidURL = AudienzzUtil.generateInstreamUriForGam(
+                // TODO: replace with your own config from Audienzz dashboard
+                AD_UNIT_ID,
+                sizes,
+                bidInfo.targetingKeywords,
+            )
+            adsUri = prebidURL.toUri()
+            initializePlayer()
         }
     }
 
@@ -128,7 +122,10 @@ class OriginalApiInStreamAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     }
 
     companion object {
-        private const val INSTREAM_CONFIG_ID = "47"
+        // TODO: replace with your own config from Audienzz dashboard
+        private const val AD_UNIT_ID = "/21808260008/prebid_demo_app_instream"
+        // TODO: replace with your own placement ID from Audienzz dashboard
+        private const val CONFIG_ID = "wuobgeuc"
         private const val CONTAINER_HEIGHT = 600
         private const val VIDEO_URL =
             "https://storage.googleapis.com/gvabox/media/samples/stock.mp4"

@@ -23,7 +23,6 @@ import org.audienzz.mobile.AudienzzBannerParameters
 import org.audienzz.mobile.AudienzzNativeAdUnit
 import org.audienzz.mobile.AudienzzNativeEventTracker
 import org.audienzz.mobile.AudienzzNativeParameters
-import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzPrebidNativeAd
 import org.audienzz.mobile.AudienzzPrebidNativeAdListener
 import org.audienzz.mobile.AudienzzSignals
@@ -55,71 +54,61 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
     }
 
     private fun createBannerAd() {
-        AudienzzPrebidMobile.getAdUnitConfig(BANNER_CONFIG_ID) { config ->
-            config ?: return@getAdUnitConfig
+        // TODO: replace with your own config from Audienzz dashboard
+        adUnit = AudienzzBannerAdUnit(
+            CONFIG_ID_BANNER,
+            SizeConstants.MEDIUM_BANNER_WIDTH,
+            SizeConstants.MEDIUM_BANNER_HEIGHT,
+            EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO),
+        )
+        adUnit?.setAutoRefreshInterval(DEFAULT_REFRESH_TIME)
 
-            val placementId = config.prebidConfig.placementId
-            val gamPath = config.gamConfig.adUnitPath
+        val parameters = AudienzzBannerParameters()
+        parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
+        adUnit?.bannerParameters = parameters
+        adUnit?.videoParameters = AudienzzVideoParameters(listOf("video/mp4"))
 
-            adUnit = AudienzzBannerAdUnit(
-                placementId,
-                SizeConstants.MEDIUM_BANNER_WIDTH,
-                SizeConstants.MEDIUM_BANNER_HEIGHT,
-                EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO),
+        val adView = AdManagerAdView(adContainer.context).apply {
+            // TODO: replace with your own config from Audienzz dashboard
+            adUnitId = AD_UNIT_ID
+            setAdSizes(
+                AdSize(
+                    SizeConstants.MEDIUM_BANNER_WIDTH,
+                    SizeConstants.MEDIUM_BANNER_HEIGHT,
+                ),
             )
-            adUnit?.setAutoRefreshInterval(DEFAULT_REFRESH_TIME)
-
-            val parameters = AudienzzBannerParameters()
-            parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
-            adUnit?.bannerParameters = parameters
-            adUnit?.videoParameters = AudienzzVideoParameters(listOf("video/mp4"))
-
-            val adView = AdManagerAdView(adContainer.context).apply {
-                adUnitId = gamPath
-                setAdSizes(
-                    AdSize(
-                        SizeConstants.MEDIUM_BANNER_WIDTH,
-                        SizeConstants.MEDIUM_BANNER_HEIGHT,
-                    ),
-                )
-                adListener = createGAMListener(this)
-            }
-
-            adContainer.addView(adView)
-            addBottomMargin(adView)
-
-            AudienzzAdViewHandler(
-                adView = adView,
-                adUnit = adUnit!!,
-            ).load(callback = { request, resultCode ->
-                showFetchErrorDialog(adContainer.context, resultCode)
-                adView.loadAd(request)
-            })
+            adListener = createGAMListener(this)
         }
+
+        adContainer.addView(adView)
+        addBottomMargin(adView)
+
+        AudienzzAdViewHandler(
+            adView = adView,
+            adUnit = adUnit!!,
+        ).load(callback = { request, resultCode ->
+            showFetchErrorDialog(adContainer.context, resultCode)
+            adView.loadAd(request)
+        })
     }
 
     private fun createMultiformatAd() {
-        AudienzzPrebidMobile.getAdUnitConfig(BANNER_CONFIG_ID) { config ->
-            config ?: return@getAdUnitConfig
+        // TODO: replace with your own config from Audienzz dashboard
+        adUnitMultiformat = AudienzzPrebidAdUnit(CONFIG_ID_BANNER)
 
-            val placementId = config.prebidConfig.placementId
-            val gamPath = config.gamConfig.adUnitPath
-
-            adUnitMultiformat = AudienzzPrebidAdUnit(placementId)
-
-            val prebidRequest = AudienzzPrebidRequest().apply {
-                setBannerParameters(createBannerParameters())
-                setVideoParameters(createVideoParameters())
-                setNativeParameters(createNativeParameters())
-            }
-
-            val gamRequestBuilder = AdManagerAdRequest.Builder()
-            AudienzzMultiformatAdHandler(adUnitMultiformat!!, gamPath)
-                .load(gamRequestBuilder, prebidRequest) { bidInfo ->
-                    showFetchErrorDialog(adContainer.context, bidInfo.resultCode)
-                    loadGam(gamRequestBuilder, gamPath)
-                }
+        val prebidRequest = AudienzzPrebidRequest().apply {
+            setBannerParameters(createBannerParameters())
+            setVideoParameters(createVideoParameters())
+            setNativeParameters(createNativeParameters())
         }
+
+        val gamRequestBuilder = AdManagerAdRequest.Builder()
+        // TODO: replace with your own config from Audienzz dashboard
+        AudienzzMultiformatAdHandler(adUnitMultiformat!!, AD_UNIT_ID_MULTIFORMAT)
+            .load(gamRequestBuilder, prebidRequest) { bidInfo ->
+                showFetchErrorDialog(adContainer.context, bidInfo.resultCode)
+                loadGam(gamRequestBuilder, AD_UNIT_ID_MULTIFORMAT)
+            }
     }
 
     private fun createGAMListener(adView: AdManagerAdView): AdListener {
@@ -297,7 +286,13 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
     }
 
     companion object {
-        private const val BANNER_CONFIG_ID = "46"
-        private const val CUSTOM_FORMAT_ID = "12486579"
+        // TODO: replace with your own config from Audienzz dashboard
+        private const val AD_UNIT_ID = "/21808260008/prebid-demo-original-banner-multiformat"
+        // TODO: replace with your own config from Audienzz dashboard
+        private const val AD_UNIT_ID_MULTIFORMAT = "/21808260008/prebid-demo-multiformat"
+        // TODO: replace with your own placement ID from Audienzz dashboard
+        private const val CONFIG_ID_BANNER = "wuobgeuc"
+        // TODO: replace with your own config from Audienzz dashboard
+        private const val CUSTOM_FORMAT_ID = "12304464"
     }
 }

@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzRemoteBannerView
 import org.audienzz.mobile.AudienzzRemoteConfigInterstitial
 import org.audienzz.mobile.testapp.R

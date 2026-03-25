@@ -5,7 +5,6 @@ import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.admanager.AdManagerAdView
 import org.audienzz.mobile.AudienzzBannerAdUnit
-import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzSignals
 import org.audienzz.mobile.AudienzzVideoParameters
 import org.audienzz.mobile.addentum.AudienzzAdViewUtils
@@ -25,41 +24,36 @@ class OriginalApiVideoBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     private var adUnit: AudienzzBannerAdUnit? = null
 
     override fun createAds() {
-        AudienzzPrebidMobile.getAdUnitConfig(BANNER_CONFIG_ID) { config ->
-            config ?: return@getAdUnitConfig
+        // TODO: replace with your own config from Audienzz dashboard
+        adUnit = AudienzzBannerAdUnit(
+            CONFIG_ID,
+            SizeConstants.MEDIUM_BANNER_WIDTH,
+            SizeConstants.MEDIUM_BANNER_HEIGHT,
+            EnumSet.of(AudienzzAdUnitFormat.VIDEO),
+        )
+        adUnit?.videoParameters = configureVideoParameters()
 
-            val placementId = config.prebidConfig.placementId
-            val gamPath = config.gamConfig.adUnitPath
-
-            adUnit = AudienzzBannerAdUnit(
-                placementId,
+        val adView = AdManagerAdView(adContainer.context)
+        // TODO: replace with your own config from Audienzz dashboard
+        adView.adUnitId = AD_UNIT_ID
+        adView.setAdSizes(
+            AdSize(
                 SizeConstants.MEDIUM_BANNER_WIDTH,
                 SizeConstants.MEDIUM_BANNER_HEIGHT,
-                EnumSet.of(AudienzzAdUnitFormat.VIDEO),
-            )
-            adUnit?.videoParameters = configureVideoParameters()
+            ),
+        )
+        adView.adListener = createListener(adView)
 
-            val adView = AdManagerAdView(adContainer.context)
-            adView.adUnitId = gamPath
-            adView.setAdSizes(
-                AdSize(
-                    SizeConstants.MEDIUM_BANNER_WIDTH,
-                    SizeConstants.MEDIUM_BANNER_HEIGHT,
-                ),
-            )
-            adView.adListener = createListener(adView)
+        adContainer.addView(adView)
+        addBottomMargin(adView)
 
-            adContainer.addView(adView)
-            addBottomMargin(adView)
-
-            AudienzzAdViewHandler(
-                adView = adView,
-                adUnit = adUnit!!,
-            ).load(callback = { request, resultCode ->
-                showFetchErrorDialog(adContainer.context, resultCode)
-                adView.loadAd(request)
-            })
-        }
+        AudienzzAdViewHandler(
+            adView = adView,
+            adUnit = adUnit!!,
+        ).load(callback = { request, resultCode ->
+            showFetchErrorDialog(adContainer.context, resultCode)
+            adView.loadAd(request)
+        })
     }
 
     private fun configureVideoParameters(): AudienzzVideoParameters {
@@ -107,6 +101,9 @@ class OriginalApiVideoBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     }
 
     companion object {
-        private const val BANNER_CONFIG_ID = "46"
+        // TODO: replace with your own config from Audienzz dashboard
+        private const val AD_UNIT_ID = "/21808260008/prebid-demo-original-api-video-banner"
+        // TODO: replace with your own placement ID from Audienzz dashboard
+        private const val CONFIG_ID = "wuobgeuc"
     }
 }
