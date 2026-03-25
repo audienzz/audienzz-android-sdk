@@ -45,6 +45,7 @@ class TabPagerAdapter(fragmentActivity: FragmentActivity) : FragmentStateAdapter
             1 -> TargetingPageFragment()
             2 -> RemoteConfigFragment()
             3 -> StickyAdFragment()
+//            4 -> NativePageFragment()
             else -> AdsPageFragment()
         }
     }

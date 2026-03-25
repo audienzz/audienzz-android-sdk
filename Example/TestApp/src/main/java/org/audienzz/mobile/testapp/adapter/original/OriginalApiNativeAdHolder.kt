@@ -5,6 +5,7 @@ import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.admanager.AdManagerAdView
 import org.audienzz.mobile.AudienzzNativeAdUnit
 import org.audienzz.mobile.AudienzzNativeEventTracker
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.original.AudienzzAdViewHandler
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.adapter.BaseAdHolder
@@ -17,28 +18,35 @@ class OriginalApiNativeAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     private var nativeAdUnit: AudienzzNativeAdUnit? = null
 
     override fun createAds() {
-        nativeAdUnit = AudienzzNativeAdUnit(CONFIG_ID).apply {
-            setContextType(AudienzzNativeAdUnit.ContextType.SOCIAL_CENTRIC)
-            setPlacementType(AudienzzNativeAdUnit.PlacementType.CONTENT_FEED)
-            setContextSubType(AudienzzNativeAdUnit.ContextSubtype.GENERAL_SOCIAL)
-        }
-        addNativeAssets(nativeAdUnit)
+        AudienzzPrebidMobile.getAdUnitConfig(NATIVE_CONFIG_ID) { config ->
+            config ?: return@getAdUnitConfig
 
-        val gamView = AdManagerAdView(adContainer.context)
-        gamView.adUnitId = AD_UNIT_ID
-        gamView.setAdSizes(AdSize.FLUID)
-        adContainer.addView(gamView)
+            val placementId = config.prebidConfig.placementId
+            val gamPath = config.gamConfig.adUnitPath
 
-        nativeAdUnit?.let {
-            AudienzzAdViewHandler(
-                adView = gamView,
-                adUnit = it,
-            ).load(
-                callback = { request, resultCode ->
-                    showFetchErrorDialog(adContainer.context, resultCode)
-                    gamView.loadAd(request)
-                },
-            )
+            nativeAdUnit = AudienzzNativeAdUnit(placementId).apply {
+                setContextType(AudienzzNativeAdUnit.ContextType.SOCIAL_CENTRIC)
+                setPlacementType(AudienzzNativeAdUnit.PlacementType.CONTENT_FEED)
+                setContextSubType(AudienzzNativeAdUnit.ContextSubtype.GENERAL_SOCIAL)
+            }
+            addNativeAssets(nativeAdUnit)
+
+            val gamView = AdManagerAdView(adContainer.context)
+            gamView.adUnitId = gamPath
+            gamView.setAdSizes(AdSize.FLUID)
+            adContainer.addView(gamView)
+
+            nativeAdUnit?.let {
+                AudienzzAdViewHandler(
+                    adView = gamView,
+                    adUnit = it,
+                ).load(
+                    callback = { request, resultCode ->
+                        showFetchErrorDialog(adContainer.context, resultCode)
+                        gamView.loadAd(request)
+                    },
+                )
+            }
         }
     }
 
@@ -56,8 +64,6 @@ class OriginalApiNativeAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     }
 
     companion object {
-        private const val AD_UNIT_ID = "/21808260008/prebid-demo-original-native-styles"
-        private const val CONFIG_ID = "prebid-demo-banner-native-styles"
+        private const val NATIVE_CONFIG_ID = "46"
     }
 }
-

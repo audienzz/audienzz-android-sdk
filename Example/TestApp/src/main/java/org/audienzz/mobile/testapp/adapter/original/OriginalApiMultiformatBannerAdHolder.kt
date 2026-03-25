@@ -23,6 +23,7 @@ import org.audienzz.mobile.AudienzzBannerParameters
 import org.audienzz.mobile.AudienzzNativeAdUnit
 import org.audienzz.mobile.AudienzzNativeEventTracker
 import org.audienzz.mobile.AudienzzNativeParameters
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzPrebidNativeAd
 import org.audienzz.mobile.AudienzzPrebidNativeAdListener
 import org.audienzz.mobile.AudienzzSignals
@@ -54,64 +55,71 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
     }
 
     private fun createBannerAd() {
-        val configId = if (Random().nextBoolean()) {
-            CONFIG_ID_BANNER
-        } else {
-            CONFIG_ID_VIDEO
-        }
+        AudienzzPrebidMobile.getAdUnitConfig(BANNER_CONFIG_ID) { config ->
+            config ?: return@getAdUnitConfig
 
-        adUnit = AudienzzBannerAdUnit(
-            configId,
-            SizeConstants.MEDIUM_BANNER_WIDTH,
-            SizeConstants.MEDIUM_BANNER_HEIGHT,
-            EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO),
-        )
-        adUnit?.setAutoRefreshInterval(DEFAULT_REFRESH_TIME)
+            val placementId = config.prebidConfig.placementId
+            val gamPath = config.gamConfig.adUnitPath
 
-        val parameters = AudienzzBannerParameters()
-        parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
-        adUnit?.bannerParameters = parameters
-        adUnit?.videoParameters = AudienzzVideoParameters(listOf("video/mp4"))
-
-        val adView = AdManagerAdView(adContainer.context).apply {
-            adUnitId = AD_UNIT_ID
-            setAdSizes(
-                AdSize(
-                    SizeConstants.MEDIUM_BANNER_WIDTH,
-                    SizeConstants.MEDIUM_BANNER_HEIGHT,
-                ),
+            adUnit = AudienzzBannerAdUnit(
+                placementId,
+                SizeConstants.MEDIUM_BANNER_WIDTH,
+                SizeConstants.MEDIUM_BANNER_HEIGHT,
+                EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO),
             )
-            adListener = createGAMListener(this)
+            adUnit?.setAutoRefreshInterval(DEFAULT_REFRESH_TIME)
+
+            val parameters = AudienzzBannerParameters()
+            parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
+            adUnit?.bannerParameters = parameters
+            adUnit?.videoParameters = AudienzzVideoParameters(listOf("video/mp4"))
+
+            val adView = AdManagerAdView(adContainer.context).apply {
+                adUnitId = gamPath
+                setAdSizes(
+                    AdSize(
+                        SizeConstants.MEDIUM_BANNER_WIDTH,
+                        SizeConstants.MEDIUM_BANNER_HEIGHT,
+                    ),
+                )
+                adListener = createGAMListener(this)
+            }
+
+            adContainer.addView(adView)
+            addBottomMargin(adView)
+
+            AudienzzAdViewHandler(
+                adView = adView,
+                adUnit = adUnit!!,
+            ).load(callback = { request, resultCode ->
+                showFetchErrorDialog(adContainer.context, resultCode)
+                adView.loadAd(request)
+            })
         }
-
-        adContainer.addView(adView)
-        addBottomMargin(adView)
-
-        AudienzzAdViewHandler(
-            adView = adView,
-            adUnit = adUnit!!,
-        ).load(callback = { request, resultCode ->
-            showFetchErrorDialog(adContainer.context, resultCode)
-            adView.loadAd(request)
-        })
     }
 
     private fun createMultiformatAd() {
-        val configId = listOf(CONFIG_ID_BANNER, CONFIG_ID_VIDEO, CONFIG_ID_NATIVE).random()
-        adUnitMultiformat = AudienzzPrebidAdUnit(configId)
+        AudienzzPrebidMobile.getAdUnitConfig(BANNER_CONFIG_ID) { config ->
+            config ?: return@getAdUnitConfig
 
-        val prebidRequest = AudienzzPrebidRequest().apply {
-            setBannerParameters(createBannerParameters())
-            setVideoParameters(createVideoParameters())
-            setNativeParameters(createNativeParameters())
-        }
+            val placementId = config.prebidConfig.placementId
+            val gamPath = config.gamConfig.adUnitPath
 
-        val gamRequestBuilder = AdManagerAdRequest.Builder()
-        AudienzzMultiformatAdHandler(adUnitMultiformat!!, AD_UNIT_ID_MULTIFORMAT)
-            .load(gamRequestBuilder, prebidRequest) { bidInfo ->
-                showFetchErrorDialog(adContainer.context, bidInfo.resultCode)
-                loadGam(gamRequestBuilder)
+            adUnitMultiformat = AudienzzPrebidAdUnit(placementId)
+
+            val prebidRequest = AudienzzPrebidRequest().apply {
+                setBannerParameters(createBannerParameters())
+                setVideoParameters(createVideoParameters())
+                setNativeParameters(createNativeParameters())
             }
+
+            val gamRequestBuilder = AdManagerAdRequest.Builder()
+            AudienzzMultiformatAdHandler(adUnitMultiformat!!, gamPath)
+                .load(gamRequestBuilder, prebidRequest) { bidInfo ->
+                    showFetchErrorDialog(adContainer.context, bidInfo.resultCode)
+                    loadGam(gamRequestBuilder, gamPath)
+                }
+        }
     }
 
     private fun createGAMListener(adView: AdManagerAdView): AdListener {
@@ -139,7 +147,7 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
         }
     }
 
-    private fun loadGam(gamRequestBuilder: AdManagerAdRequest.Builder) {
+    private fun loadGam(gamRequestBuilder: AdManagerAdRequest.Builder, gamPath: String) {
         val onBannerLoaded = OnAdManagerAdViewLoadedListener { adView ->
             showBannerAd(adView)
         }
@@ -153,10 +161,14 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
                 showPrebidNativeAd(customNativeAd)
             }
 
-        val adLoader = AdLoader.Builder(adContainer.context, AD_UNIT_ID_MULTIFORMAT)
+        val adLoader = AdLoader.Builder(adContainer.context, gamPath)
             .forAdManagerAdView(onBannerLoaded, AdSize.BANNER, AdSize.MEDIUM_RECTANGLE)
             .forNativeAd(onNativeLoaded)
-            .forCustomFormatAd(CUSTOM_FORMAT_ID, onPrebidNativeAdLoaded, null)
+            .forCustomFormatAd(
+                CUSTOM_FORMAT_ID,
+                onPrebidNativeAdLoaded,
+                null,
+            )
             .withAdManagerAdViewOptions(AdManagerAdViewOptions.Builder().build())
             .build()
         adLoader.loadAd(gamRequestBuilder.build())
@@ -285,11 +297,7 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
     }
 
     companion object {
-        private const val AD_UNIT_ID = "/21808260008/prebid-demo-original-banner-multiformat"
-        private const val CONFIG_ID_BANNER = "prebid-demo-banner-300-250"
-        private const val CONFIG_ID_VIDEO = "prebid-demo-video-outstream-original-api"
-        private const val CONFIG_ID_NATIVE = "prebid-demo-banner-native-styles"
-        private const val CUSTOM_FORMAT_ID = "12304464"
-        private const val AD_UNIT_ID_MULTIFORMAT = "/21808260008/prebid-demo-multiformat"
+        private const val BANNER_CONFIG_ID = "46"
+        private const val CUSTOM_FORMAT_ID = "12486579"
     }
 }

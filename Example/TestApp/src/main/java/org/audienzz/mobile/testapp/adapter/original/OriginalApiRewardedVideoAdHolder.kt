@@ -130,6 +130,6 @@ class OriginalApiRewardedVideoAdHolder(parent: ViewGroup) : BaseAdHolder(parent)
 
     companion object {
         private const val TAG = "Original API RewardedAd"
-        private const val REWARDED_CONFIG_ID = "46"
+        private const val REWARDED_CONFIG_ID = "47"
     }
 }

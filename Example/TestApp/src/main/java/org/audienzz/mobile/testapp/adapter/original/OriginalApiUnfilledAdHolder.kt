@@ -8,6 +8,7 @@ import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.admanager.AdManagerAdView
 import org.audienzz.mobile.AudienzzBannerAdUnit
 import org.audienzz.mobile.AudienzzBannerParameters
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzSignals
 import org.audienzz.mobile.addentum.AudienzzAdViewUtils
 import org.audienzz.mobile.original.AudienzzAdViewHandler
@@ -19,40 +20,49 @@ class OriginalApiUnfilledAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
     override val titleRes: Int = R.string.original_api_unfilled
 
-    private var unfilledAdUnit = AudienzzBannerAdUnit(
-        UNFILLED_CONFIG_ID,
-        SizeConstants.SMALL_BANNER_WIDTH,
-        SizeConstants.SMALL_BANNER_HEIGHT,
-    )
+    private var unfilledAdUnit: AudienzzBannerAdUnit? = null
 
     override fun createAds() {
-        val adView = AdManagerAdView(adContainer.context)
+        AudienzzPrebidMobile.getAdUnitConfig(BANNER_CONFIG_ID) { config ->
+            config ?: return@getAdUnitConfig
 
-        adView.adUnitId = UNFILLED_AD_UNIT_ID
-        adView.setAdSizes(
-            AdSize(
+            val placementId = config.prebidConfig.placementId
+            val gamPath = config.gamConfig.adUnitPath
+
+            unfilledAdUnit = AudienzzBannerAdUnit(
+                placementId,
                 SizeConstants.SMALL_BANNER_WIDTH,
                 SizeConstants.SMALL_BANNER_HEIGHT,
-            ),
-        )
-        applyAdCallback(adView)
+            )
 
-        adContainer.addView(adView)
-        addBottomMargin(adView)
+            val adView = AdManagerAdView(adContainer.context)
 
-        val parameters = AudienzzBannerParameters()
-        parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
-        unfilledAdUnit.bannerParameters = parameters
-        unfilledAdUnit.setAutoRefreshInterval(DEFAULT_REFRESH_TIME)
+            adView.adUnitId = gamPath
+            adView.setAdSizes(
+                AdSize(
+                    SizeConstants.SMALL_BANNER_WIDTH,
+                    SizeConstants.SMALL_BANNER_HEIGHT,
+                ),
+            )
+            applyAdCallback(adView)
 
-        AudienzzAdViewHandler(
-            adView = adView,
-            adUnit = unfilledAdUnit,
-        ).load(
-            callback = { request, _ ->
-                adView.loadAd(request)
-            },
-        )
+            adContainer.addView(adView)
+            addBottomMargin(adView)
+
+            val parameters = AudienzzBannerParameters()
+            parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
+            unfilledAdUnit?.bannerParameters = parameters
+            unfilledAdUnit?.setAutoRefreshInterval(DEFAULT_REFRESH_TIME)
+
+            AudienzzAdViewHandler(
+                adView = adView,
+                adUnit = unfilledAdUnit!!,
+            ).load(
+                callback = { request, _ ->
+                    adView.loadAd(request)
+                },
+            )
+        }
     }
 
     private fun applyAdCallback(adView: AdManagerAdView) {
@@ -97,16 +107,15 @@ class OriginalApiUnfilledAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     }
 
     override fun onAttach() {
-        unfilledAdUnit.resumeAutoRefresh()
+        unfilledAdUnit?.resumeAutoRefresh()
     }
 
     override fun onDetach() {
-        unfilledAdUnit.stopAutoRefresh()
+        unfilledAdUnit?.stopAutoRefresh()
     }
 
     companion object {
         private const val TAG = "Original API UnfilledAd"
-        private const val UNFILLED_AD_UNIT_ID = "/96628199/testapp_publisher/high_floor"
-        private const val UNFILLED_CONFIG_ID = "2"
+        private const val BANNER_CONFIG_ID = "46"
     }
 }
