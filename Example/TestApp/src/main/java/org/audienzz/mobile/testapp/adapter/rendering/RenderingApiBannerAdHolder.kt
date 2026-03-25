@@ -2,11 +2,11 @@ package org.audienzz.mobile.testapp.adapter.rendering
 
 import android.view.ViewGroup
 import org.audienzz.mobile.AudienzzAdSize
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.api.rendering.AudienzzBannerView
 import org.audienzz.mobile.eventhandlers.AudienzzGamBannerEventHandler
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.adapter.BaseAdHolder
-import org.audienzz.mobile.testapp.constants.SizeConstants
 
 class RenderingApiBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
@@ -15,15 +15,24 @@ class RenderingApiBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     private var adView: AudienzzBannerView? = null
 
     override fun createAds() {
-        val eventHandler = AudienzzGamBannerEventHandler(
-            adContainer.context,
-            AD_UNIT_ID,
-            AudienzzAdSize(SizeConstants.SMALL_BANNER_WIDTH, SizeConstants.SMALL_BANNER_HEIGHT),
-        )
-        adView = AudienzzBannerView(adContainer.context, CONFIG_ID, eventHandler).apply {
-            view.let { adContainer.addView(it) }
-            setAutoRefreshDelay(DEFAULT_REFRESH_TIME)
-            loadAd()
+        AudienzzPrebidMobile.getAdUnitConfig(BANNER_CONFIG_ID) { config ->
+            config ?: return@getAdUnitConfig
+
+            val placementId = config.prebidConfig.placementId
+            val gamPath = config.gamConfig.adUnitPath
+            val adSizes = config.prebidConfig.adSizes.map { AudienzzAdSize(it.width, it.height) }
+            val primarySize = adSizes.firstOrNull() ?: AudienzzAdSize(320, 50)
+
+            val eventHandler = AudienzzGamBannerEventHandler(
+                adContainer.context,
+                gamPath,
+                primarySize,
+            )
+            adView = AudienzzBannerView(adContainer.context, placementId, eventHandler).apply {
+                view.let { adContainer.addView(it) }
+                setAutoRefreshDelay(DEFAULT_REFRESH_TIME)
+                loadAd()
+            }
         }
     }
 
@@ -32,7 +41,6 @@ class RenderingApiBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     }
 
     companion object {
-        private const val AD_UNIT_ID = "/21808260008/prebid_oxb_320x50_banner"
-        private const val CONFIG_ID = "prebid-demo-banner-320-50"
+        private const val BANNER_CONFIG_ID = "46"
     }
 }

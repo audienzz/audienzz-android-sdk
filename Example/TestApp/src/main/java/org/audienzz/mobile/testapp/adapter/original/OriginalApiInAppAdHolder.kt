@@ -17,6 +17,7 @@ import com.google.android.gms.ads.nativead.NativeAd
 import com.google.android.gms.ads.nativead.NativeCustomFormatAd
 import org.audienzz.mobile.AudienzzNativeAdUnit
 import org.audienzz.mobile.AudienzzNativeEventTracker
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzPrebidNativeAd
 import org.audienzz.mobile.AudienzzPrebidNativeAdListener
 import org.audienzz.mobile.addentum.AudienzzAdViewUtils
@@ -33,18 +34,25 @@ class OriginalApiInAppAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     private var adLoader: AdLoader? = null
 
     override fun createAds() {
-        adUnit = AudienzzNativeAdUnit(CONFIG_ID).apply {
-            setContextType(AudienzzNativeAdUnit.ContextType.SOCIAL_CENTRIC)
-            setPlacementType(AudienzzNativeAdUnit.PlacementType.CONTENT_FEED)
-            setContextSubType(AudienzzNativeAdUnit.ContextSubtype.GENERAL_SOCIAL)
-        }
-        addNativeAssets(adUnit)
+        AudienzzPrebidMobile.getAdUnitConfig(CONFIG_ID) { config ->
+            config ?: return@getAdUnitConfig
 
-        val adRequest = AdManagerAdRequest.Builder().build()
-        adUnit?.fetchDemand(adRequest) { resultCode ->
-            showFetchErrorDialog(adContainer.context, resultCode)
-            adLoader = createAdLoader(adContainer)
-            adLoader?.loadAd(adRequest)
+            val placementId = config.prebidConfig.placementId
+            val gamPath = config.gamConfig.adUnitPath
+
+            adUnit = AudienzzNativeAdUnit(placementId).apply {
+                setContextType(AudienzzNativeAdUnit.ContextType.SOCIAL_CENTRIC)
+                setPlacementType(AudienzzNativeAdUnit.PlacementType.CONTENT_FEED)
+                setContextSubType(AudienzzNativeAdUnit.ContextSubtype.GENERAL_SOCIAL)
+            }
+            addNativeAssets(adUnit)
+
+            val adRequest = AdManagerAdRequest.Builder().build()
+            adUnit?.fetchDemand(adRequest) { resultCode ->
+                showFetchErrorDialog(adContainer.context, resultCode)
+                adLoader = createAdLoader(adContainer, gamPath)
+                adLoader?.loadAd(adRequest)
+            }
         }
     }
 
@@ -75,7 +83,7 @@ class OriginalApiInAppAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
         wrapper.addView(nativeContainer)
     }
 
-    private fun createAdLoader(wrapper: ViewGroup): AdLoader {
+    private fun createAdLoader(wrapper: ViewGroup, gamPath: String): AdLoader {
         val onGamAdLoaded = OnAdManagerAdViewLoadedListener { adManagerAdView: AdManagerAdView ->
             Log.d(TAG, "Gam loaded")
             adView = adManagerAdView
@@ -109,7 +117,7 @@ class OriginalApiInAppAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
                 )
             }
 
-        return AdLoader.Builder(wrapper.context, AD_UNIT_ID)
+        return AdLoader.Builder(wrapper.context, gamPath)
             .forAdManagerAdView(onGamAdLoaded, AdSize.BANNER)
             .forNativeAd(onUnifiedAdLoaded)
             .forCustomFormatAd(
@@ -145,8 +153,7 @@ class OriginalApiInAppAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
     companion object {
         private const val TAG = "Original API Native InApp Ad"
-        private const val AD_UNIT_ID = "/21808260008/apollo_custom_template_native_ad_unit"
-        private const val CONFIG_ID = "prebid-demo-banner-native-styles"
-        private const val CUSTOM_FORMAT_ID = "11934135"
+        private const val CONFIG_ID = "46"
+        private const val CUSTOM_FORMAT_ID = "12486579"
     }
 }
