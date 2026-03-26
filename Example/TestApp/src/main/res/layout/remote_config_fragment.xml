@@ -20,7 +20,7 @@
 
             <!-- Fixed size banner container -->
             <FrameLayout
-                android:id="@+id/fixedContainerSizeBannerContainer"
+                android:id="@+id/fixedBannerContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal" />
@@ -37,7 +37,7 @@
 
             <!-- Adaptive banner container -->
             <FrameLayout
-                android:id="@+id/wrapContentContainerBannerContainer"
+                android:id="@+id/adaptiveBannerContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_horizontal" />

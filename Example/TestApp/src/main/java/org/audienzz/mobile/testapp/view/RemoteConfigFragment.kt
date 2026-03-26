@@ -22,11 +22,11 @@ class RemoteConfigFragment : Fragment() {
     private var interstitial: AudienzzRemoteConfigInterstitial? = null
 
     private companion object {
-        const val FIXED_CONTAINER_BANNER_CONFIG_ID = "46"
-        const val WRAP_CONTENT_BANNER_CONFIG_ID = "48"
+        const val FIXED_BANNER_CONFIG_ID = "46"
+        const val ADAPTIVE_BANNER_CONFIG_ID = "48"
         const val INTERSTITIAL_CONFIG_ID = "47"
-        const val FIXED_CONTAINER_BANNER_WIDTH_DP = 320
-        const val FIXED_CONTAINER_BANNER_HEIGHT_DP = 480
+        const val FIXED_BANNER_WIDTH_DP = 320
+        const val FIXED_BANNER_HEIGHT_DP = 480
     }
 
     override fun onCreateView(
@@ -46,27 +46,27 @@ class RemoteConfigFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        loadFixedContainerSizeBanner()
-        loadWrapContentContainerBanner()
+        loadFixedBanner()
+        loadAdaptiveBanner()
 
         bindings.btnLoadInterstitial.setOnClickListener {
             loadInterstitial()
         }
     }
 
-    private fun loadFixedContainerSizeBanner() {
+    private fun loadFixedBanner() {
         fixedBannerView?.destroy()
-        bindings.fixedContainerSizeBannerContainer.removeAllViews()
+        bindings.fixedBannerContainer.removeAllViews()
 
         val bannerView = AudienzzRemoteBannerView(
             requireContext(),
-            FIXED_CONTAINER_BANNER_CONFIG_ID
+            FIXED_BANNER_CONFIG_ID
         )
 
         fixedBannerView = bannerView
 
-        val widthPx = dpToPx(FIXED_CONTAINER_BANNER_WIDTH_DP)
-        val heightPx = dpToPx(FIXED_CONTAINER_BANNER_HEIGHT_DP)
+        val widthPx = dpToPx(FIXED_BANNER_WIDTH_DP)
+        val heightPx = dpToPx(FIXED_BANNER_HEIGHT_DP)
 
         val params = FrameLayout.LayoutParams(
             widthPx,
@@ -74,17 +74,17 @@ class RemoteConfigFragment : Fragment() {
             Gravity.CENTER
         )
 
-        bindings.fixedContainerSizeBannerContainer.addView(bannerView, params)
+        bindings.fixedBannerContainer.addView(bannerView, params)
         bannerView.loadAd()
     }
 
-    private fun loadWrapContentContainerBanner() {
+    private fun loadAdaptiveBanner() {
         adaptiveBannerView?.destroy()
-        bindings.wrapContentContainerBannerContainer.removeAllViews()
+        bindings.adaptiveBannerContainer.removeAllViews()
 
         val bannerView = AudienzzRemoteBannerView(
             requireContext(),
-            WRAP_CONTENT_BANNER_CONFIG_ID
+            ADAPTIVE_BANNER_CONFIG_ID
         )
 
         adaptiveBannerView = bannerView
@@ -95,7 +95,7 @@ class RemoteConfigFragment : Fragment() {
             Gravity.CENTER
         )
 
-        bindings.wrapContentContainerBannerContainer.addView(bannerView, params)
+        bindings.adaptiveBannerContainer.addView(bannerView, params)
         bannerView.loadAd()
     }
 
