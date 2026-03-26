@@ -25,8 +25,8 @@ class RemoteConfigFragment : Fragment() {
         const val FIXED_CONTAINER_BANNER_CONFIG_ID = "46"
         const val WRAP_CONTENT_BANNER_CONFIG_ID = "48"
         const val INTERSTITIAL_CONFIG_ID = "47"
-        const val FIXED_BANNER_WIDTH_DP = 320
-        const val FIXED_BANNER_HEIGHT_DP = 480
+        const val FIXED_CONTAINER_BANNER_WIDTH_DP = 320
+        const val FIXED_CONTAINER_BANNER_HEIGHT_DP = 480
     }
 
     override fun onCreateView(
@@ -65,8 +65,8 @@ class RemoteConfigFragment : Fragment() {
 
         fixedBannerView = bannerView
 
-        val widthPx = dpToPx(FIXED_BANNER_WIDTH_DP)
-        val heightPx = dpToPx(FIXED_BANNER_HEIGHT_DP)
+        val widthPx = dpToPx(FIXED_CONTAINER_BANNER_WIDTH_DP)
+        val heightPx = dpToPx(FIXED_CONTAINER_BANNER_HEIGHT_DP)
 
         val params = FrameLayout.LayoutParams(
             widthPx,
