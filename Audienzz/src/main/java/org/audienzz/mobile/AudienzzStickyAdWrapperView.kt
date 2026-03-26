@@ -205,7 +205,47 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
         }
         adViewLayoutListener = null
         super.onDetachedFromWindow()
-        detachFromScrollView()
+        // Stop active animations — the window is gone so we can't post frames.
+        stopSettleTicker()
+        // Remove the global layout listener — its VTO dies with the window.
+        // Keep scrollViewRef / attachedNestedScrollView intact so that
+        // onAttachedToWindow can re-subscribe when the view returns on screen
+        // (e.g. bottom-nav tab switch with retained views).
+        removeGlobalLayoutListener()
+        // Regular ScrollView scroll listener is VTO-based — remove and re-add on reattach.
+        scrollChangedListener?.let {
+            scrollViewRef?.viewTreeObserver?.removeOnScrollChangedListener(it)
+        }
+        scrollChangedListener = null
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        // Re-wire the adView layout listener (was removed in onDetachedFromWindow).
+        adView?.let { view ->
+            val layoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                refreshTopCache()
+                updatePosition()
+            }
+            adViewLayoutListener = layoutListener
+            view.addOnLayoutChangeListener(layoutListener)
+        }
+        // Re-subscribe to NestedScrollView scroll events.
+        attachedNestedScrollView?.let { scrollView ->
+            addGlobalLayoutListener()
+            registerNestedWrapper(scrollView, this)
+            refreshTopCache()
+            updatePosition()
+        }
+        // Re-subscribe to regular ScrollView scroll events.
+        (scrollViewRef as? android.widget.ScrollView)?.let { scrollView ->
+            val listener = ViewTreeObserver.OnScrollChangedListener {
+                updatePosition()
+                startSettleTicker()
+            }
+            scrollChangedListener = listener
+            scrollView.viewTreeObserver.addOnScrollChangedListener(listener)
+        }
     }
 
     // MARK: - Private
@@ -324,15 +364,21 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
             scrollView: NestedScrollView,
             wrapper: AudienzzStickyAdWrapperView,
         ) {
+            val isFirstWrapper = !nestedWrappers.containsKey(scrollView)
             val wrappers = nestedWrappers.getOrPut(scrollView) { mutableSetOf() }
             wrappers.add(wrapper)
 
-            scrollView.setOnScrollChangeListener { _: NestedScrollView, _: Int, _: Int, _: Int, _: Int ->
-                val current = nestedWrappers[scrollView] ?: return@setOnScrollChangeListener
-                if (current.isEmpty()) return@setOnScrollChangeListener
-                current.forEach {
-                    it.updatePosition()
-                    it.startSettleTicker()
+            // Only set the scroll listener once per scroll view — it reads the wrapper
+            // set dynamically from nestedWrappers, so all wrappers registered later are
+            // automatically included without replacing the listener.
+            if (isFirstWrapper) {
+                scrollView.setOnScrollChangeListener { _: NestedScrollView, _: Int, _: Int, _: Int, _: Int ->
+                    val current = nestedWrappers[scrollView] ?: return@setOnScrollChangeListener
+                    if (current.isEmpty()) return@setOnScrollChangeListener
+                    current.forEach {
+                        it.updatePosition()
+                        it.startSettleTicker()
+                    }
                 }
             }
         }

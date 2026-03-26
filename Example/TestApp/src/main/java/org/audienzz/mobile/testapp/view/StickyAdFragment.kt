@@ -21,6 +21,7 @@ import org.audienzz.mobile.testapp.R
 class StickyAdFragment : Fragment() {
 
     private val stickyWrappers = mutableListOf<AudienzzStickyAdWrapperView>()
+    private val adViews = mutableListOf<AdManagerAdView>()
     private val adUnits = mutableListOf<AudienzzBannerAdUnit>()
 
     override fun onCreateView(
@@ -81,7 +82,7 @@ class StickyAdFragment : Fragment() {
             val adView = AdManagerAdView(context).apply {
                 adUnitId = config.gamConfig.adUnitPath
                 setAdSizes(AdSize(primarySize.width, primarySize.height))
-            }
+            }.also { adViews += it }
 
             val wrapper = AudienzzStickyAdWrapperView(
                 context = context,
@@ -108,7 +109,7 @@ class StickyAdFragment : Fragment() {
             bannerAdUnit.setAutoRefreshInterval(DEFAULT_REFRESH_SECONDS)
 
             AudienzzAdViewHandler(adView = adView, adUnit = bannerAdUnit)
-                .load { request, _ -> adView.loadAd(request) }
+                .load(withLazyLoading = false) { request, _ -> adView.loadAd(request) }
         }
     }
 
@@ -117,6 +118,8 @@ class StickyAdFragment : Fragment() {
         stickyWrappers.clear()
         adUnits.forEach { it.stopAutoRefresh() }
         adUnits.clear()
+        adViews.forEach { it.destroy() }
+        adViews.clear()
         super.onDestroyView()
     }
 
