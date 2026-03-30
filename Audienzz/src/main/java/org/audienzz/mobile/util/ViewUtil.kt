@@ -31,6 +31,35 @@ private fun View.getGlobalVisibleRectIgnoringSize(outRect: Rect): Boolean {
  *
  * @see [isVisibleOnScreen]
  */
+/**
+ * Registers a persistent visibility listener that fires [onBecameVisible] and [onBecameHidden]
+ * each time the view transitions between visible and hidden states.
+ *
+ * Unlike [addOnBecameVisibleOnScreenListener] this is NOT one-shot — it keeps tracking until
+ * the returned listener is manually removed from the [ViewTreeObserver].
+ */
+fun View.addContinuousVisibilityListener(
+    onBecameVisible: () -> Unit,
+    onBecameHidden: () -> Unit,
+): ViewTreeObserver.OnPreDrawListener {
+    var wasVisible = isVisibleOnScreen()
+    val listener = object : ViewTreeObserver.OnPreDrawListener {
+        override fun onPreDraw(): Boolean {
+            val isVisible = isVisibleOnScreen()
+            if (isVisible && !wasVisible) {
+                wasVisible = true
+                onBecameVisible()
+            } else if (!isVisible && wasVisible) {
+                wasVisible = false
+                onBecameHidden()
+            }
+            return true
+        }
+    }
+    viewTreeObserver.addOnPreDrawListener(listener)
+    return listener
+}
+
 fun View.addOnBecameVisibleOnScreenListener(listener: () -> Unit) {
     if (isVisibleOnScreen()) {
         listener()
