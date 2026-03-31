@@ -90,6 +90,27 @@ When `lazyLoading` is enabled, the SDK intelligently delays this process until t
 optimizing resource usage and improving performance. 
 It is done with 'ViewTreeObserver.OnPreDrawListener' which triggers ad loading when the view becomes visible. 
 
+Smart Refresh
+-------
+Smart Refresh makes banner auto-refresh viewport-aware: refresh is paused while the ad is off-screen, and resumes intelligently when it returns.
+
+When the ad scrolls back into view the SDK checks how long it was hidden:
+- **Stale** (hidden ≥ refresh interval) → a new ad is fetched immediately, then normal auto-refresh resumes.
+- **Not stale** (hidden < refresh interval) → the remaining time is waited before the next fetch, then normal auto-refresh resumes.
+
+Enable it by calling `enableSmartRefresh()` on the `AudienzzAdViewHandler` after calling `load()`:
+
+```kotlin
+val handler = AudienzzAdViewHandler(
+    adView = gamAdView,
+    adUnit = audienzzAdUnit,
+)
+handler.load(callback = { gamRequest, _ -> gamAdView.loadAd(gamRequest) })
+handler.enableSmartRefresh()
+```
+
+> **Note:** `enableSmartRefresh()` has no effect if no auto-refresh interval is set on the ad unit (i.e. `setAutoRefreshInterval()` was not called).
+
 API Reference
 ========
 
@@ -285,9 +306,11 @@ This class handles the loading of ads for a given `AdManagerAdView`.
 
 **Methods:**
 
-| Name   | Parameters                                                                                                               | Description  |
-|--------|--------------------------------------------------------------------------------------------------------------------------|--------------|
-| `load` | `withLazyLoading: Boolean`, `request: AdManagerAdRequest`, `callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit` | Loads an ad. |               
+| Name                  | Parameters                                                                                                               | Description                                                                                                                                 |
+|-----------------------|--------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `load`                | `withLazyLoading: Boolean`, `request: AdManagerAdRequest`, `callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit` | Loads an ad.                                                                                                                                |
+| `enableSmartRefresh`  |                                                                                                                          | Enables viewport-aware smart refresh: pauses auto-refresh while off-screen and force-refreshes when the ad returns if the interval elapsed. |
+| `disableSmartRefresh` |                                                                                                                          | Disables smart refresh and removes the visibility listener.                                                                                 |
 
 ### `AudienzzTargetingParams`
 
