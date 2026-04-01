@@ -2,14 +2,10 @@ package org.audienzz.mobile.event
 
 import android.util.Log
 import io.mockk.MockKAnnotations
-import io.mockk.coEvery
 import io.mockk.coVerify
-import io.mockk.coVerifySequence
 import io.mockk.every
 import io.mockk.impl.annotations.RelaxedMockK
-import io.mockk.just
 import io.mockk.mockkStatic
-import io.mockk.runs
 import io.mockk.verify
 import io.mockk.verifySequence
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -19,7 +15,6 @@ import org.audienzz.mobile.event.entity.EventType
 import org.audienzz.mobile.event.id.AdIdProvider
 import org.audienzz.mobile.event.id.CompanyIdProvider
 import org.audienzz.mobile.event.preferences.EventPreferences
-import org.audienzz.mobile.event.repository.local.LocalEventRepository
 import org.audienzz.mobile.event.repository.remote.RemoteEventRepository
 import org.audienzz.mobile.util.CurrentActivityTracker
 import org.junit.Before
@@ -29,9 +24,6 @@ import java.util.UUID
 internal class EventLoggerImplTest {
 
     private lateinit var logger: EventLogger
-
-    @RelaxedMockK
-    lateinit var localRepository: LocalEventRepository
 
     @RelaxedMockK
     lateinit var remoteRepository: RemoteEventRepository
@@ -71,13 +63,11 @@ internal class EventLoggerImplTest {
         every { UUID.randomUUID() } returns mockUUID
 
         every { preferences.getVisitorId() } returns null
-
         every { companyIdProvider.getCompanyId() } returns mockCompanyId
 
         dispatcher = StandardTestDispatcher()
 
         logger = EventLoggerImpl(
-            localRepository = localRepository,
             remoteRepository = remoteRepository,
             currentActivityTracker = currentActivityTracker,
             preferences = preferences,
@@ -88,7 +78,7 @@ internal class EventLoggerImplTest {
     }
 
     @Test
-    fun logEvent_saveLocally() {
+    fun logEvent_submitDirectly() {
         every { preferences.getVisitorId() } returns mockUUID.toString()
         every { adIdProvider.getAdId() } returns mockAdId
         val eventWithIds = mockEvent.copy(
@@ -102,32 +92,32 @@ internal class EventLoggerImplTest {
         logger.logEvent(mockEvent)
         dispatcher.scheduler.runCurrent()
 
-        coVerifySequence {
-            localRepository.saveEvent(eventWithIds)
+        coVerify(exactly = 1) {
+            remoteRepository.submit(eventWithIds)
         }
     }
 
     @Test
-    fun logEvent_screenImpression_adCreation() {
-        logger.logEvent(mockEvent.copy(eventType = EventType.AD_CREATION))
+    fun logEvent_pageImpression_headerLoaded() {
+        logger.logEvent(mockEvent.copy(eventType = EventType.HEADER_LOADED))
         dispatcher.scheduler.runCurrent()
 
         coVerify {
-            localRepository.saveEvent(
-                match { it.eventType == EventType.SCREEN_IMPRESSION },
+            remoteRepository.submit(
+                match { it.eventType == EventType.PAGE_IMPRESSION },
             )
         }
     }
 
     @Test
-    fun logEvent_screenImpression_loggedOnce() {
-        logger.logEvent(mockEvent.copy(eventType = EventType.AD_CREATION))
-        logger.logEvent(mockEvent.copy(eventType = EventType.AD_CREATION))
+    fun logEvent_pageImpression_loggedOnce() {
+        logger.logEvent(mockEvent.copy(eventType = EventType.HEADER_LOADED))
+        logger.logEvent(mockEvent.copy(eventType = EventType.HEADER_LOADED))
         dispatcher.scheduler.runCurrent()
 
         coVerify(exactly = 1) {
-            localRepository.saveEvent(
-                match { it.eventType == EventType.SCREEN_IMPRESSION },
+            remoteRepository.submit(
+                match { it.eventType == EventType.PAGE_IMPRESSION },
             )
         }
     }
@@ -149,56 +139,14 @@ internal class EventLoggerImplTest {
     }
 
     @Test
-    fun logEvent_sendBatch() {
-        val localEvents = listOf(mockEvent)
-        coEvery { localRepository.getEvents(any()) } returns localEvents
+    fun logEvent_errorDoesNotCrash() {
+        every { adIdProvider.getAdId() } returns mockAdId
 
-        dispatcher.scheduler.runCurrent()
         logger.logEvent(mockEvent)
-        dispatcher.scheduler.advanceTimeBy(600)
+        dispatcher.scheduler.runCurrent()
 
         coVerify(exactly = 1) {
-            localRepository.getEvents(100)
-            remoteRepository.batchUpload(localEvents)
-            localRepository.deleteEvents(localEvents)
-        }
-    }
-
-    @Test
-    fun logEvent_sendBatch_limitOverflow() {
-        val firstBatch = List(100) { mockEvent }
-        val secondBatch = List(10) { mockEvent }
-        coEvery { localRepository.getEvents(any()) } returns firstBatch
-
-        dispatcher.scheduler.runCurrent()
-        logger.logEvent(mockEvent)
-        dispatcher.scheduler.advanceTimeBy(600)
-        coEvery { localRepository.getEvents(any()) } returns secondBatch
-        dispatcher.scheduler.advanceTimeBy(600)
-
-        coVerifySequence {
-            remoteRepository.batchUpload(firstBatch)
-            remoteRepository.batchUpload(secondBatch)
-        }
-    }
-
-    @Test
-    fun logEvent_sendBatch_recoversAfterError() {
-        val localEvents = listOf(mockEvent)
-        coEvery { localRepository.getEvents(any()) } returns localEvents
-        coEvery { remoteRepository.batchUpload(any()) } throws Exception()
-
-        dispatcher.scheduler.runCurrent()
-        logger.logEvent(mockEvent)
-        dispatcher.scheduler.advanceTimeBy(600)
-        coVerify(exactly = 0) {
-            localRepository.deleteEvents(any())
-        }
-        coEvery { remoteRepository.batchUpload(any()) } just runs
-        dispatcher.scheduler.advanceTimeBy(600)
-
-        coVerify(exactly = 1) {
-            remoteRepository.batchUpload(localEvents)
+            remoteRepository.submit(any())
         }
     }
 }

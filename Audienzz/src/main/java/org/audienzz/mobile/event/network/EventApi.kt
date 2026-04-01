@@ -7,10 +7,6 @@ import retrofit2.http.POST
 
 interface EventApi {
 
-    @Headers("Content-Type: application/cloudevents-batch+json")
-    @POST("submit/batch")
-    suspend fun submitBatch(@Body events: List<EventContainerNetwork>)
-
     @Headers("Content-Type: application/cloudevents+json")
     @POST("submit")
     suspend fun submit(@Body event: EventContainerNetwork)

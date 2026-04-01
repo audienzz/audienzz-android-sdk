@@ -25,13 +25,16 @@ internal data class EventDomain(
 )
 
 internal enum class EventType(val nameString: String) {
-    BID_WINNER("mobile.bid_winner"),
-    AD_CLICK("mobile.ad_click"),
-    BID_REQUEST("mobile.bid_request"),
-    AD_CREATION("mobile.ad_creation"),
-    CLOSE_AD("mobile.close_ad"),
-    AD_FAILED_TO_LOAD("mobile.ad_failed_to_load"),
-    SCREEN_IMPRESSION("mobile.screen_impression"),
+    HEADER_LOADED("headerLoaded"),
+    PAGE_IMPRESSION("pageImpression"),
+    BID_REQUEST("bidRequest"),
+    BID_RESPONSE("bidResponse"),
+    BID_WON("bidWon"),
+    NO_BID("noBid"),
+    AD_IMPRESSION("adImpression"),
+    AD_VIEW("adView"),
+    AD_CLICK("adClick"),
+    VIEWABILITY_MEASURED("viewabilityMeasured"),
 }
 
 internal enum class AdType(val nameString: String) {

@@ -7,7 +7,6 @@ import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.api.rendering.listeners.AudienzzInterstitialAdUnitListener
 import org.audienzz.mobile.api.rendering.pluginrenderer.AudienzzPluginEventListener
 import org.audienzz.mobile.event.adClick
-import org.audienzz.mobile.event.closeAd
 import org.audienzz.mobile.event.eventLogger
 import org.audienzz.mobile.eventhandlers.AudienzzGamInterstitialEventHandler
 import org.audienzz.mobile.rendering.bidding.data.bid.AudienzzBid
@@ -159,7 +158,6 @@ class AudienzzInterstitialAdUnit(
                 }
 
                 override fun onAdClosed(interstitialAdUnit: InterstitialAdUnit?) {
-                    eventLogger?.closeAd(adUnitId = adUnitId)
                     interstitialAdUnit?.let {
                         adUnitListener.onAdClosed(AudienzzInterstitialAdUnit(it, adUnitId))
                     }
