@@ -113,14 +113,17 @@ abstract class BaseAdHolder(parent: ViewGroup) : Bindable, RecyclerView.ViewHold
     }
 
     protected fun showErrorDialog(context: Context, message: String) {
-        AlertDialog.Builder(context)
+        val dialog = AlertDialog.Builder(context)
             .setMessage(message)
             .setTitle(context.resources.getString(titleRes))
-            .setPositiveButton(context.resources.getString(R.string.error_close)) { dialog, _ ->
-                dialog.dismiss()
+            .setPositiveButton(context.resources.getString(R.string.error_close)) { d, _ ->
+                d.dismiss()
             }
             .create()
-            .show()
+        dialog.show()
+        dialog.window?.decorView?.postDelayed({
+            if (dialog.isShowing) dialog.dismiss()
+        }, AUTO_DISMISS_MS)
     }
 
     protected fun showFetchErrorDialog(context: Context, resultCode: AudienzzResultCode?) {
@@ -154,5 +157,6 @@ abstract class BaseAdHolder(parent: ViewGroup) : Bindable, RecyclerView.ViewHold
         private const val MARGIN_SIZE = 12f
         private const val TEXT_SIZE = 24f
         const val DEFAULT_REFRESH_TIME = 60
+        private const val AUTO_DISMISS_MS = 3_000L
     }
 }

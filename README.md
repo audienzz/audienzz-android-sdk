@@ -126,6 +126,9 @@ AudienzzAdViewHandler(adView = gamAdView, adUnit = audienzzAdUnit)
 Use `withLazyLoading = false` to load immediately on bind, and control how many items ahead RecyclerView pre-binds with `setInitialPrefetchItemCount`:
 
 ```kotlin
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+
 // In your RecyclerView.Adapter
 override fun onBindViewHolder(holder: AdViewHolder, position: Int) {
     AudienzzAdViewHandler(adView = holder.adView, adUnit = adUnit)
