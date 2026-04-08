@@ -153,6 +153,6 @@ abstract class BaseAdHolder(parent: ViewGroup) : Bindable, RecyclerView.ViewHold
         private const val TAG = "AdHolder"
         private const val MARGIN_SIZE = 12f
         private const val TEXT_SIZE = 24f
-        const val DEFAULT_REFRESH_TIME = 60
+        const val DEFAULT_REFRESH_TIME = 30
     }
 }
