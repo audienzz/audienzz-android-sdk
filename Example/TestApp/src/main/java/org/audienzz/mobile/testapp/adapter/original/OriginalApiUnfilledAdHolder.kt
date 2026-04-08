@@ -60,8 +60,11 @@ class OriginalApiUnfilledAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
                 adUnit = unfilledAdUnit!!,
             )
             adViewHandler = handler
+            // withLazyLoading = false: this view lives inside a RecyclerView cell which is
+            // only created just before it appears — prefetchMarginDp has no effect here.
+            // RecyclerView's own prefetch (setInitialPrefetchItemCount) handles early creation.
             handler.load(
-                prefetchMarginDp = config.config.prefetchDistanceDp ?: DEFAULT_PREFETCH_DISTANCE_DP,
+                withLazyLoading = false,
                 callback = { request, _ ->
                     adView.loadAd(request)
                 },
