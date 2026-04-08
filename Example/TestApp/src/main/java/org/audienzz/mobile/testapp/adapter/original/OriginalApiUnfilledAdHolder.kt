@@ -61,6 +61,7 @@ class OriginalApiUnfilledAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
             )
             adViewHandler = handler
             handler.load(
+                prefetchMarginDp = config.config.prefetchDistanceDp ?: DEFAULT_PREFETCH_DISTANCE_DP,
                 callback = { request, _ ->
                     adView.loadAd(request)
                 },

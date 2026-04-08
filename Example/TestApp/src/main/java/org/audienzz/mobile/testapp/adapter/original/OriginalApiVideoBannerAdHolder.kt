@@ -59,10 +59,13 @@ class OriginalApiVideoBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
                 adUnit = adUnit!!,
             )
             adViewHandler = handler
-            handler.load(callback = { request, resultCode ->
-                showFetchErrorDialog(adContainer.context, resultCode)
-                adView.loadAd(request)
-            })
+            handler.load(
+                prefetchMarginDp = config.config.prefetchDistanceDp ?: DEFAULT_PREFETCH_DISTANCE_DP,
+                callback = { request, resultCode ->
+                    showFetchErrorDialog(adContainer.context, resultCode)
+                    adView.loadAd(request)
+                },
+            )
             handler.enableSmartRefresh()
         }
     }

@@ -21,6 +21,8 @@ data class RemoteConfig(
     val adType: String,
     @SerialName("refreshTimeSeconds")
     val refreshTimeSeconds: Int? = null,
+    @SerialName("prefetchDistanceDp")
+    val prefetchDistanceDp: Int? = null,
 )
 
 @Serializable
