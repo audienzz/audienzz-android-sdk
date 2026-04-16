@@ -39,6 +39,13 @@ class AdsPageFragment : Fragment() {
         return binding.root
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (AudienzzPrebidMobile.isSdkInitialized) {
+            activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
+        }
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
@@ -106,6 +113,7 @@ class AdsPageFragment : Fragment() {
             AudienzzTargetingParams.isSubjectToGDPR = true
             adapter.submitList(createMockData())
             binding.progressBar.isVisible = false
+            activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
             setSchainObject(
                 """
                     { "source": 

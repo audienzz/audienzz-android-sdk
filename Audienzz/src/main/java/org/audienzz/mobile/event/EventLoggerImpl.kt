@@ -15,16 +15,13 @@ import org.audienzz.mobile.event.id.AdIdProvider
 import org.audienzz.mobile.event.id.CompanyIdProvider
 import org.audienzz.mobile.event.preferences.EventPreferences
 import org.audienzz.mobile.event.repository.remote.RemoteEventRepository
-import org.audienzz.mobile.util.CurrentActivityTracker
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 internal class EventLoggerImpl @Inject constructor(
     private val remoteRepository: RemoteEventRepository,
-    private val currentActivityTracker: CurrentActivityTracker,
     private val preferences: EventPreferences,
     private val adIdProvider: AdIdProvider,
     private val companyIdProvider: CompanyIdProvider,
@@ -32,13 +29,15 @@ internal class EventLoggerImpl @Inject constructor(
 ) : EventLogger, CoroutineScope {
 
     private val sessionId = generateUuidString()
+    private val sessionStartTimestamp = System.currentTimeMillis()
+
+    @Volatile
+    private var currentPageImpressionId: String? = null
 
     override val coroutineContext = dispatcher + SupervisorJob() +
         CoroutineExceptionHandler { _, throwable ->
             Log.e(TAG, "Unexpected coroutine error", throwable)
         }
-
-    private val loggedActivityImpressionsMap = ConcurrentHashMap<Int, Unit>()
 
     init {
         generateVisitorIdIfAbsent()
@@ -48,6 +47,16 @@ internal class EventLoggerImpl @Inject constructor(
         if (preferences.getVisitorId() == null) {
             preferences.setVisitorId(generateUuidString())
         }
+    }
+
+    override fun onScreenResumed(screenName: String) {
+        currentPageImpressionId = generateUuidString()
+        logEvent(
+            EventDomain(
+                eventType = EventType.PAGE_IMPRESSION,
+                screenName = screenName,
+            ),
+        )
     }
 
     override fun logEvent(event: EventDomain) {
@@ -61,32 +70,6 @@ internal class EventLoggerImpl @Inject constructor(
             } catch (throwable: Throwable) {
                 Log.e(TAG, "Failed to send event", throwable)
             }
-            logPageImpression(event)
-        }
-    }
-
-    private suspend fun logPageImpression(otherEvent: EventDomain) {
-        if (otherEvent.eventType != EventType.HEADER_LOADED) return
-        val activity = currentActivityTracker.currentActivity ?: run {
-            Log.d(TAG, "Current activity is null")
-            return
-        }
-        val identity = System.identityHashCode(currentActivityTracker.currentActivity)
-        val isImpressionLogged = loggedActivityImpressionsMap.putIfAbsent(identity, Unit) != null
-        if (isImpressionLogged) return
-        val event = EventDomain(
-            eventType = EventType.PAGE_IMPRESSION,
-            adUnitId = otherEvent.adUnitId,
-            adViewId = otherEvent.adViewId,
-            screenName = activity.componentName.className,
-        )
-        val eventWithIds = event.injectIds()
-        try {
-            remoteRepository.submit(eventWithIds)
-        } catch (exception: CancellationException) {
-            throw exception
-        } catch (throwable: Throwable) {
-            Log.e(TAG, "Failed to send page impression event", throwable)
         }
     }
 
@@ -98,7 +81,9 @@ internal class EventLoggerImpl @Inject constructor(
             visitorId = preferences.getVisitorId(),
             companyId = companyIdProvider.getCompanyId(),
             sessionId = this@EventLoggerImpl.sessionId,
+            sessionStartTimestamp = this@EventLoggerImpl.sessionStartTimestamp,
             deviceId = adIdProvider.getAdId(),
+            pageImpressionId = currentPageImpressionId,
         )
 
     companion object {

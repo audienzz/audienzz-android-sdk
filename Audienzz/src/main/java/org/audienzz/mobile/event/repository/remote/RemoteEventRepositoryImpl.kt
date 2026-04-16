@@ -11,6 +11,6 @@ internal class RemoteEventRepositoryImpl @Inject constructor(
 ) : RemoteEventRepository {
 
     override suspend fun submit(event: EventDomain) {
-        api.submit(mapper.toNetwork(event))
+        api.submit(listOf(mapper.toNetwork(event)))
     }
 }

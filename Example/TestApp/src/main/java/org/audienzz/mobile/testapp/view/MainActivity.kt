@@ -20,6 +20,7 @@ class MainActivity : AppCompatActivity() {
         setupTabs()
     }
 
+
     private fun setupTabs() {
         val adapter = TabPagerAdapter(this)
         binding.viewPager.adapter = adapter

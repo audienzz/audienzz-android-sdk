@@ -17,6 +17,8 @@ import org.audienzz.mobile.event.entity.EventType.NO_BID
 internal interface EventLogger {
 
     fun logEvent(event: EventDomain)
+
+    fun onScreenResumed(screenName: String)
 }
 
 internal val eventLogger: EventLogger?

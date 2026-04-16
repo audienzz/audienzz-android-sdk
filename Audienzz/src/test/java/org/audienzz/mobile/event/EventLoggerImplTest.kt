@@ -16,7 +16,6 @@ import org.audienzz.mobile.event.id.AdIdProvider
 import org.audienzz.mobile.event.id.CompanyIdProvider
 import org.audienzz.mobile.event.preferences.EventPreferences
 import org.audienzz.mobile.event.repository.remote.RemoteEventRepository
-import org.audienzz.mobile.util.CurrentActivityTracker
 import org.junit.Before
 import org.junit.Test
 import java.util.UUID
@@ -27,9 +26,6 @@ internal class EventLoggerImplTest {
 
     @RelaxedMockK
     lateinit var remoteRepository: RemoteEventRepository
-
-    @RelaxedMockK
-    lateinit var currentActivityTracker: CurrentActivityTracker
 
     @RelaxedMockK
     lateinit var preferences: EventPreferences
@@ -69,7 +65,6 @@ internal class EventLoggerImplTest {
 
         logger = EventLoggerImpl(
             remoteRepository = remoteRepository,
-            currentActivityTracker = currentActivityTracker,
             preferences = preferences,
             adIdProvider = adIdProvider,
             dispatcher = dispatcher,
@@ -81,44 +76,53 @@ internal class EventLoggerImplTest {
     fun logEvent_submitDirectly() {
         every { preferences.getVisitorId() } returns mockUUID.toString()
         every { adIdProvider.getAdId() } returns mockAdId
-        val eventWithIds = mockEvent.copy(
-            uuid = mockUUID.toString(),
-            visitorId = mockUUID.toString(),
-            sessionId = mockUUID.toString(),
-            companyId = mockCompanyId,
-            deviceId = mockAdId,
-        )
 
         logger.logEvent(mockEvent)
         dispatcher.scheduler.runCurrent()
 
         coVerify(exactly = 1) {
-            remoteRepository.submit(eventWithIds)
+            remoteRepository.submit(match {
+                it.uuid == mockUUID.toString() &&
+                    it.visitorId == mockUUID.toString() &&
+                    it.sessionId == mockUUID.toString() &&
+                    it.companyId == mockCompanyId &&
+                    it.deviceId == mockAdId &&
+                    it.sessionStartTimestamp != null
+            })
         }
     }
 
     @Test
-    fun logEvent_pageImpression_headerLoaded() {
-        logger.logEvent(mockEvent.copy(eventType = EventType.HEADER_LOADED))
-        dispatcher.scheduler.runCurrent()
-
-        coVerify {
-            remoteRepository.submit(
-                match { it.eventType == EventType.PAGE_IMPRESSION },
-            )
-        }
-    }
-
-    @Test
-    fun logEvent_pageImpression_loggedOnce() {
-        logger.logEvent(mockEvent.copy(eventType = EventType.HEADER_LOADED))
-        logger.logEvent(mockEvent.copy(eventType = EventType.HEADER_LOADED))
+    fun onScreenResumed_firesPageImpression() {
+        logger.onScreenResumed("com.example.MainActivity")
         dispatcher.scheduler.runCurrent()
 
         coVerify(exactly = 1) {
             remoteRepository.submit(
-                match { it.eventType == EventType.PAGE_IMPRESSION },
+                match {
+                    it.eventType == EventType.PAGE_IMPRESSION &&
+                        it.screenName == "com.example.MainActivity" &&
+                        it.pageImpressionId != null
+                },
             )
+        }
+    }
+
+    @Test
+    fun onScreenResumed_newPageImpressionIdEachCall() {
+        val ids = mutableListOf<String?>()
+        every { UUID.randomUUID() } returnsMany listOf(
+            mockUUID,
+            UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+            UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+        )
+
+        logger.onScreenResumed("com.example.ScreenA")
+        logger.onScreenResumed("com.example.ScreenB")
+        dispatcher.scheduler.runCurrent()
+
+        coVerify(exactly = 2) {
+            remoteRepository.submit(match { it.eventType == EventType.PAGE_IMPRESSION })
         }
     }
 
