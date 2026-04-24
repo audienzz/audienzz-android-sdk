@@ -17,6 +17,7 @@ import org.audienzz.mobile.original.callbacks.AudienzzRewardedAdLoadCallback
 
 /**
  * Returns true if the view's visibility is VISIBLE and it's located in screen rect.
+ * Used for initial lazy-load triggering — any part of the view being visible is enough.
  */
 fun View.isVisibleOnScreen() =
     visibility == View.VISIBLE && getGlobalVisibleRectIgnoringSize(Rect())
@@ -25,6 +26,24 @@ private fun View.getGlobalVisibleRectIgnoringSize(outRect: Rect): Boolean {
     val extraPadding = 1
     outRect.set(-extraPadding, -extraPadding, width + extraPadding, height + extraPadding)
     return parent == null || parent.getChildVisibleRect(this, outRect, null)
+}
+
+/**
+ * Returns true if the top edge of this view is within the visible screen area.
+ *
+ * Used for smart refresh — an ad counts as "visible" only when the top of the creative
+ * is actually on screen. This prevents spurious refreshes when just a pixel-sliver at
+ * the bottom edge of the viewport is in view (ad entering from below), or when the ad
+ * has nearly fully scrolled off the top.
+ */
+fun View.isTopVisibleOnScreen(): Boolean {
+    if (visibility != View.VISIBLE) return false
+    val windowRect = Rect()
+    getWindowVisibleDisplayFrame(windowRect)
+    val location = IntArray(2)
+    getLocationOnScreen(location)
+    val viewTop = location[1]
+    return viewTop in windowRect.top until windowRect.bottom
 }
 
 /**
@@ -44,10 +63,12 @@ fun View.addContinuousVisibilityListener(
     onBecameVisible: () -> Unit,
     onBecameHidden: () -> Unit,
 ): ViewTreeObserver.OnPreDrawListener {
-    var wasVisible = isVisibleOnScreen()
+    // Use top-edge check: smart refresh should only fire when the top of the ad is
+    // actually in the viewport, not when a single-pixel sliver is barely on screen.
+    var wasVisible = isTopVisibleOnScreen()
     val listener = object : ViewTreeObserver.OnPreDrawListener {
         override fun onPreDraw(): Boolean {
-            val isVisible = isVisibleOnScreen()
+            val isVisible = isTopVisibleOnScreen()
             if (isVisible && !wasVisible) {
                 wasVisible = true
                 onBecameVisible()
