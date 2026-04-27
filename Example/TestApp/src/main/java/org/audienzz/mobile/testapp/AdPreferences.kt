@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.core.content.edit
 import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_HTML_BANNER_ADS
 import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_INTERSTITIAL_ADS
+import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_LAZY_PREFETCH_BANNER
 import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_REWARDED_AD
 import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_UNFILLED_AD
 
@@ -20,6 +21,7 @@ object AdPreferences {
         HOLDER_TYPE_INTERSTITIAL_ADS,
         HOLDER_TYPE_REWARDED_AD,
         HOLDER_TYPE_UNFILLED_AD,
+        HOLDER_TYPE_LAZY_PREFETCH_BANNER,
 //        HOLDER_TYPE_IN_STREAM_AD, // - will be implement in the next versions
 //        HOLDER_TYPE_IN_NATIVE_STYLES_AD, // - will be implement in the next versions
 //        HOLDER_TYPE_IN_APP_AD, //- will be implement in the next versions

@@ -195,7 +195,10 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
             adUnit = adUnitLocal,
         )
         adViewHandler = handler
-        handler.load(withLazyLoading = false) { request, resultCode ->
+        handler.load(
+            withLazyLoading = true,
+            prefetchMarginDp = config.config.prefetchDistanceDp ?: DEFAULT_PREFETCH_DISTANCE_DP,
+        ) { request, resultCode ->
             Log.d(TAG, "Ad request prepared, resultCode=${resultCode ?: "unknown"}")
             adViewLocal.loadAd(request)
         }
@@ -245,5 +248,6 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     companion object {
         private const val TAG = "AudienzzRemoteConfigBannerView"
         private const val DEFAULT_REFRESH_SECONDS = 30
+        private const val DEFAULT_PREFETCH_DISTANCE_DP = 200
     }
 }
