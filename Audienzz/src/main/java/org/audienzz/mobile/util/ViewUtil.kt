@@ -29,21 +29,20 @@ private fun View.getGlobalVisibleRectIgnoringSize(outRect: Rect): Boolean {
 }
 
 /**
- * Returns true if the top edge of this view is within the visible screen area.
+ * Returns the fraction (0.0–1.0) of this view's height that is currently visible on screen.
  *
- * Used for smart refresh — an ad counts as "visible" only when the top of the creative
- * is actually on screen. This prevents spurious refreshes when just a pixel-sliver at
- * the bottom edge of the viewport is in view (ad entering from below), or when the ad
- * has nearly fully scrolled off the top.
+ * Uses [getGlobalVisibleRect] which clips the view's rect to the window's visible area,
+ * so the result naturally excludes system bars, keyboard, and off-screen portions.
+ *
+ * Returns 0 if the view is GONE/INVISIBLE, not yet measured, or fully off-screen.
  */
-fun View.isTopVisibleOnScreen(): Boolean {
-    if (visibility != View.VISIBLE) return false
-    val windowRect = Rect()
-    getWindowVisibleDisplayFrame(windowRect)
-    val location = IntArray(2)
-    getLocationOnScreen(location)
-    val viewTop = location[1]
-    return viewTop in windowRect.top until windowRect.bottom
+private fun View.visibleHeightFraction(): Float {
+    if (visibility != View.VISIBLE) return 0f
+    val totalHeight = measuredHeight
+    if (totalHeight <= 0) return 0f
+    val visibleRect = Rect()
+    if (!getGlobalVisibleRect(visibleRect)) return 0f
+    return visibleRect.height().toFloat() / totalHeight.toFloat()
 }
 
 /**
@@ -63,12 +62,13 @@ fun View.addContinuousVisibilityListener(
     onBecameVisible: () -> Unit,
     onBecameHidden: () -> Unit,
 ): ViewTreeObserver.OnPreDrawListener {
-    // Use top-edge check: smart refresh should only fire when the top of the ad is
-    // actually in the viewport, not when a single-pixel sliver is barely on screen.
-    var wasVisible = isTopVisibleOnScreen()
+    // Smart refresh fires only when at least 20% of the ad height is visible.
+    // This avoids triggering on a pixel-sliver when the ad is just entering or
+    // leaving the viewport.
+    var wasVisible = visibleHeightFraction() >= 0.2f
     val listener = object : ViewTreeObserver.OnPreDrawListener {
         override fun onPreDraw(): Boolean {
-            val isVisible = isTopVisibleOnScreen()
+            val isVisible = visibleHeightFraction() >= 0.2f
             if (isVisible && !wasVisible) {
                 wasVisible = true
                 onBecameVisible()
