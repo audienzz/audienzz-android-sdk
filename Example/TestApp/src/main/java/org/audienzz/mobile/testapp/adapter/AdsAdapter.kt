@@ -14,6 +14,7 @@ import org.audienzz.mobile.testapp.adapter.original.OriginalApiInterstitialAdHol
 import org.audienzz.mobile.testapp.adapter.original.OriginalApiMultiformatBannerAdHolder
 import org.audienzz.mobile.testapp.adapter.original.OriginalApiNativeAdHolder
 import org.audienzz.mobile.testapp.adapter.original.OriginalApiRewardedVideoAdHolder
+import org.audienzz.mobile.testapp.adapter.original.OriginalApiLazyPrefetchBannerAdHolder
 import org.audienzz.mobile.testapp.adapter.original.OriginalApiUnfilledAdHolder
 import org.audienzz.mobile.testapp.adapter.original.OriginalApiVideoBannerAdHolder
 import org.audienzz.mobile.testapp.adapter.rendering.RenderingApiBannerAdHolder
@@ -54,6 +55,7 @@ class AdsAdapter : ListAdapter<Int, RecyclerView.ViewHolder>(
             HOLDER_TYPE_RENDER_INTERSTITIAL_AD -> RenderingApiInterstitialAdHolder(parent)
             HOLDER_TYPE_RENDER_REWARDED_AD -> RenderingApiRewardedVideoAdHolder(parent)
             HOLDER_TYPE_RENDER_NATIVE_AD -> RenderingApiNativeAdHolder(parent)
+            HOLDER_TYPE_LAZY_PREFETCH_BANNER -> OriginalApiLazyPrefetchBannerAdHolder(parent)
             else -> throw InvalidParameterException()
         }
     }
@@ -109,5 +111,8 @@ class AdsAdapter : ListAdapter<Int, RecyclerView.ViewHolder>(
         const val HOLDER_TYPE_RENDER_INTERSTITIAL_AD = 12
         const val HOLDER_TYPE_RENDER_REWARDED_AD = 13
         const val HOLDER_TYPE_RENDER_NATIVE_AD = 14
+
+        // Advanced patterns
+        const val HOLDER_TYPE_LAZY_PREFETCH_BANNER = 15
     }
 }

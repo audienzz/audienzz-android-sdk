@@ -21,6 +21,7 @@ class OriginalApiUnfilledAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     override val titleRes: Int = R.string.original_api_unfilled
 
     private var unfilledAdUnit: AudienzzBannerAdUnit? = null
+    private var adViewHandler: AudienzzAdViewHandler? = null
 
     override fun createAds() {
         AudienzzPrebidMobile.getAdUnitConfig(BANNER_CONFIG_ID) { config ->
@@ -52,16 +53,23 @@ class OriginalApiUnfilledAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
             val parameters = AudienzzBannerParameters()
             parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
             unfilledAdUnit?.bannerParameters = parameters
-            unfilledAdUnit?.setAutoRefreshInterval(DEFAULT_REFRESH_TIME)
+            unfilledAdUnit?.setAutoRefreshInterval(config.config.refreshTimeSeconds ?: DEFAULT_REFRESH_TIME)
 
-            AudienzzAdViewHandler(
+            val handler = AudienzzAdViewHandler(
                 adView = adView,
                 adUnit = unfilledAdUnit!!,
-            ).load(
+            )
+            adViewHandler = handler
+            // withLazyLoading = false: this view lives inside a RecyclerView cell which is
+            // only created just before it appears — prefetchMarginDp has no effect here.
+            // RecyclerView's own prefetch (setInitialPrefetchItemCount) handles early creation.
+            handler.load(
+                withLazyLoading = false,
                 callback = { request, _ ->
                     adView.loadAd(request)
                 },
             )
+            handler.enableSmartRefresh()
         }
     }
 
@@ -111,6 +119,8 @@ class OriginalApiUnfilledAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     }
 
     override fun onDetach() {
+        adViewHandler?.disableSmartRefresh()
+        adViewHandler = null
         unfilledAdUnit?.stopAutoRefresh()
     }
 

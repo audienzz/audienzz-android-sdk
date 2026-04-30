@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
+import androidx.recyclerview.widget.LinearLayoutManager
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzPrebidMobile.setSchainObject
 import org.audienzz.mobile.AudienzzTargetingParams
@@ -46,6 +47,12 @@ class AdsPageFragment : Fragment() {
 
         adapter = AdsAdapter()
         binding.list.adapter = adapter
+
+        // Pre-bind 3 items beyond the last visible one so that ad demand fetches
+        // (withLazyLoading = false) complete before the item scrolls into view.
+        // Ad cells are tall (~300 dp), so 3 is enough to keep a useful prefetch buffer
+        // without wasting memory on off-screen work.
+        (binding.list.layoutManager as? LinearLayoutManager)?.initialPrefetchItemCount = 3
 
         initSdk()
 

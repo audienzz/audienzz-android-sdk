@@ -87,8 +87,91 @@ In this way the `load()` or `fetchDemand()` will be postponed until the view is 
 
 The `loadAd()` method, available on classes like `AudienzzAdViewHandler` and `AudienzzInterstitialAdHandler`, initiates the ad loading process.
 When `lazyLoading` is enabled, the SDK intelligently delays this process until the ad view is about to become visible to the user,
-optimizing resource usage and improving performance. 
-It is done with 'ViewTreeObserver.OnPreDrawListener' which triggers ad loading when the view becomes visible. 
+optimizing resource usage and improving performance.
+It is done with `ViewTreeObserver.OnPreDrawListener` which triggers ad loading when the view is within range.
+
+### Prefetch Margin
+
+The correct prefetch mechanism depends on the scroll container your ad lives in:
+
+| Container | Prefetch mechanism | How to configure |
+|---|---|---|
+| `ScrollView` / `NestedScrollView` | Distance-based (dp) | `prefetchMarginDp` on `load()` |
+| `RecyclerView` | Item-count-based | `LinearLayoutManager.setInitialPrefetchItemCount(n)` |
+
+**Why they differ:** In a `ScrollView` all views are laid out and attached to the view hierarchy upfront. The SDK's `ViewTreeObserver.OnPreDrawListener` can therefore detect "this view is now within Ndp of the visible area" at exactly the right scroll position and fire `fetchDemand` precisely N dp ahead.
+
+In a `RecyclerView` views are created and bound on-demand — only just before an item scrolls into view (typically 1 item ahead). By the time `onBindViewHolder` runs and `load()` is called, the view is already within ~40 dp of the viewport regardless of the `prefetchMarginDp` value, so the margin fires immediately and has no practical effect.
+
+#### ScrollView / NestedScrollView
+
+Use `withLazyLoading = true` with `prefetchMarginDp` to control how far ahead loading starts:
+
+```kotlin
+// Default — start loading 200 dp before the view enters the viewport
+AudienzzAdViewHandler(adView = gamAdView, adUnit = audienzzAdUnit)
+    .load(withLazyLoading = true, callback = { request, _ -> gamAdView.loadAd(request) })
+
+// Custom margin — start loading 600 dp ahead
+AudienzzAdViewHandler(adView = gamAdView, adUnit = audienzzAdUnit)
+    .load(withLazyLoading = true, prefetchMarginDp = 600, callback = { request, _ -> gamAdView.loadAd(request) })
+
+// Exact visibility — load only when the view is actually on screen
+AudienzzAdViewHandler(adView = gamAdView, adUnit = audienzzAdUnit)
+    .load(withLazyLoading = true, prefetchMarginDp = 0, callback = { request, _ -> gamAdView.loadAd(request) })
+```
+
+#### RecyclerView
+
+Use `withLazyLoading = false` to load immediately on bind, and control how many items ahead RecyclerView pre-binds with `setInitialPrefetchItemCount`:
+
+```kotlin
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+
+// In your RecyclerView.Adapter
+override fun onBindViewHolder(holder: AdViewHolder, position: Int) {
+    AudienzzAdViewHandler(adView = holder.adView, adUnit = adUnit)
+        .load(withLazyLoading = false, callback = { request, _ -> holder.adView.loadAd(request) })
+}
+
+// Increase how many items RecyclerView pre-binds ahead of the viewport (default is 2)
+(recyclerView.layoutManager as? LinearLayoutManager)?.setInitialPrefetchItemCount(4)
+```
+
+Smart Refresh
+-------
+Smart Refresh makes banner auto-refresh viewport-aware: refresh is paused while the ad is off-screen, and resumes intelligently when it returns.
+
+When the ad scrolls back into view the SDK checks how long it was hidden:
+- **Stale** (hidden ≥ refresh interval) → a new ad is fetched immediately, then normal auto-refresh resumes.
+- **Not stale** (hidden < refresh interval) → the remaining time is waited before the next fetch, then normal auto-refresh resumes.
+
+Enable it by calling `enableSmartRefresh()` on the `AudienzzAdViewHandler` after calling `load()`:
+
+```kotlin
+// Set an auto-refresh interval — required for smart refresh to have any effect
+audienzzAdUnit.setAutoRefreshInterval(30) // seconds (min 30, max 120)
+
+val handler = AudienzzAdViewHandler(
+    adView = gamAdView,
+    adUnit = audienzzAdUnit,
+)
+handler.load(callback = { gamRequest, _ -> gamAdView.loadAd(gamRequest) })
+handler.enableSmartRefresh()
+```
+
+When the fragment or activity is destroyed, disable smart refresh to remove the internal `ViewTreeObserver` listener and avoid memory leaks:
+
+```kotlin
+override fun onDestroyView() {
+    super.onDestroyView()
+    handler.disableSmartRefresh()
+    audienzzAdUnit.destroy()
+}
+```
+
+> **Note:** `enableSmartRefresh()` has no effect if no auto-refresh interval is set on the ad unit (i.e. `setAutoRefreshInterval()` was not called).
 
 API Reference
 ========
@@ -285,9 +368,11 @@ This class handles the loading of ads for a given `AdManagerAdView`.
 
 **Methods:**
 
-| Name   | Parameters                                                                                                               | Description  |
-|--------|--------------------------------------------------------------------------------------------------------------------------|--------------|
-| `load` | `withLazyLoading: Boolean`, `request: AdManagerAdRequest`, `callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit` | Loads an ad. |               
+| Name                  | Parameters                                                                                                                                                                    | Description                                                                                                                                 |
+|-----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `load`                | `withLazyLoading: Boolean`, `prefetchMarginDp: Int = 200`, `gamRequestBuilder: AdManagerAdRequest.Builder`, `callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit`     | Loads an ad. When `withLazyLoading` is true, loading starts `prefetchMarginDp` dp before the view enters the viewport (default 200 dp; pass 0 for exact-visibility behaviour). |
+| `enableSmartRefresh`  |                                                                                                                                                                               | Enables viewport-aware smart refresh: pauses auto-refresh while off-screen and force-refreshes when the ad returns if the interval elapsed. |
+| `disableSmartRefresh` |                                                                                                                                                                               | Disables smart refresh and removes the visibility listener.                                                                                 |
 
 ### `AudienzzTargetingParams`
 

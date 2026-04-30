@@ -40,7 +40,6 @@ import org.audienzz.mobile.testapp.adapter.BaseAdHolder
 import org.audienzz.mobile.testapp.constants.SizeConstants
 import org.audienzz.mobile.testapp.utils.NativeAdUtils
 import java.util.EnumSet
-import java.util.Random
 
 class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
@@ -48,6 +47,7 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
 
     private var adUnit: AudienzzBannerAdUnit? = null
     private var adUnitMultiformat: AudienzzPrebidAdUnit? = null
+    private var adViewHandler: AudienzzAdViewHandler? = null
 
     override fun createAds() {
         createBannerAd()
@@ -67,7 +67,7 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
                 SizeConstants.MEDIUM_BANNER_HEIGHT,
                 EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO),
             )
-            adUnit?.setAutoRefreshInterval(DEFAULT_REFRESH_TIME)
+            adUnit?.setAutoRefreshInterval(config.config.refreshTimeSeconds ?: DEFAULT_REFRESH_TIME)
 
             val parameters = AudienzzBannerParameters()
             parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
@@ -88,13 +88,22 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
             adContainer.addView(adView)
             addBottomMargin(adView)
 
-            AudienzzAdViewHandler(
+            val handler = AudienzzAdViewHandler(
                 adView = adView,
                 adUnit = adUnit!!,
-            ).load(callback = { request, resultCode ->
-                showFetchErrorDialog(adContainer.context, resultCode)
-                adView.loadAd(request)
-            })
+            )
+            adViewHandler = handler
+            // withLazyLoading = false: this view lives inside a RecyclerView cell which is
+            // only created just before it appears — prefetchMarginDp has no effect here.
+            // RecyclerView's own prefetch (setInitialPrefetchItemCount) handles early creation.
+            handler.load(
+                withLazyLoading = false,
+                callback = { request, resultCode ->
+                    showFetchErrorDialog(adContainer.context, resultCode)
+                    adView.loadAd(request)
+                },
+            )
+            handler.enableSmartRefresh()
         }
     }
 
@@ -292,6 +301,8 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
     }
 
     override fun onDetach() {
+        adViewHandler?.disableSmartRefresh()
+        adViewHandler = null
         adUnit?.destroy()
         adUnitMultiformat?.destroy()
     }
