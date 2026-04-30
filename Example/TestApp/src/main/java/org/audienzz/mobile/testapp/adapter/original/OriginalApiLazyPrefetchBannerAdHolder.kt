@@ -58,6 +58,7 @@ class OriginalApiLazyPrefetchBannerAdHolder(parent: ViewGroup) : BaseAdHolder(pa
     override val titleRes = R.string.original_api_lazy_prefetch_banner_title
 
     private var adUnit: AudienzzBannerAdUnit? = null
+    private var handler: AudienzzAdViewHandler? = null
 
     override fun createAds() {
         AudienzzPrebidMobile.getAdUnitConfig(BANNER_CONFIG_ID) { config ->
@@ -82,7 +83,7 @@ class OriginalApiLazyPrefetchBannerAdHolder(parent: ViewGroup) : BaseAdHolder(pa
             adContainer.addView(adView)
             addBottomMargin(adView)
 
-            val handler = AudienzzAdViewHandler(
+            handler = AudienzzAdViewHandler(
                 adView = adView,
                 adUnit = adUnit!!,
             )
@@ -91,7 +92,7 @@ class OriginalApiLazyPrefetchBannerAdHolder(parent: ViewGroup) : BaseAdHolder(pa
             // prefetchMarginDp has no effect inside RecyclerView because the ViewHolder
             // is created close to the screen by design. RecyclerView's own prefetch
             // (setInitialPrefetchItemCount) is the correct mechanism to pre-bind items ahead.
-            handler.load(
+            handler?.load(
                 withLazyLoading = false,
                 callback = { request, resultCode ->
                     showFetchErrorDialog(adContainer.context, resultCode)
@@ -101,7 +102,7 @@ class OriginalApiLazyPrefetchBannerAdHolder(parent: ViewGroup) : BaseAdHolder(pa
 
             // Smart refresh works correctly in RecyclerView: pauses auto-refresh when the
             // item is scrolled off-screen, resumes (or force-refreshes if stale) on return.
-            handler.enableSmartRefresh()
+            handler?.enableSmartRefresh()
         }
     }
 
@@ -110,6 +111,9 @@ class OriginalApiLazyPrefetchBannerAdHolder(parent: ViewGroup) : BaseAdHolder(pa
     }
 
     override fun onDetach() {
+        // disableSmartRefresh() removes the ViewTreeObserver listener — must be called
+        // when the ViewHolder is recycled to avoid listener leaks.
+        handler?.disableSmartRefresh()
         adUnit?.stopAutoRefresh()
     }
 

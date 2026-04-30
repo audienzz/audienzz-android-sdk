@@ -150,12 +150,25 @@ When the ad scrolls back into view the SDK checks how long it was hidden:
 Enable it by calling `enableSmartRefresh()` on the `AudienzzAdViewHandler` after calling `load()`:
 
 ```kotlin
+// Set an auto-refresh interval — required for smart refresh to have any effect
+audienzzAdUnit.setAutoRefreshInterval(30) // seconds (min 30, max 120)
+
 val handler = AudienzzAdViewHandler(
     adView = gamAdView,
     adUnit = audienzzAdUnit,
 )
 handler.load(callback = { gamRequest, _ -> gamAdView.loadAd(gamRequest) })
 handler.enableSmartRefresh()
+```
+
+When the fragment or activity is destroyed, disable smart refresh to remove the internal `ViewTreeObserver` listener and avoid memory leaks:
+
+```kotlin
+override fun onDestroyView() {
+    super.onDestroyView()
+    handler.disableSmartRefresh()
+    audienzzAdUnit.destroy()
+}
 ```
 
 > **Note:** `enableSmartRefresh()` has no effect if no auto-refresh interval is set on the ad unit (i.e. `setAutoRefreshInterval()` was not called).
