@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/remoteConfigScrollView"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:overScrollMode="never">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- ═══════════════════════════════ Section 1: Banner ══════════════════════════════ -->
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:text="Fixed Size Banner"
+            android:textColor="#212121"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.04" />
+
+        <FrameLayout
+            android:id="@+id/bannerContainer1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:minHeight="50dp"
+            android:background="@drawable/bg_ad_slot" />
+
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para1" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para2" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para3" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para4" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para5" />
+
+        <!-- ══════════════════════════ Section 2: Sticky Banner ════════════════════════════ -->
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:text="Sticky Banner"
+            android:textColor="#212121"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.04" />
+
+        <FrameLayout
+            android:id="@+id/stickyContainer1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:background="@drawable/bg_ad_slot" />
+
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para6" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para7" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para8" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para9" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para10" />
+
+        <!-- ═══════════════════════════ Section 3: Adaptive Banner ═════════════════════════ -->
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:text="Adaptive Banner"
+            android:textColor="#212121"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.04" />
+
+        <FrameLayout
+            android:id="@+id/bannerContainer2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:minHeight="50dp"
+            android:background="@drawable/bg_ad_slot" />
+
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para11" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para12" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para13" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para14" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para15" />
+
+        <!-- ══════════════════════════ Section 4: Sticky Banner ════════════════════════════ -->
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:text="Sticky Banner"
+            android:textColor="#212121"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.04" />
+
+        <FrameLayout
+            android:id="@+id/stickyContainer2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:background="@drawable/bg_ad_slot" />
+
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para16" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para17" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para18" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para19" />
+        <include layout="@layout/item_sticky_paragraph" android:id="@+id/para20" />
+
+        <!-- ═══════════════════════════════ Interstitial ════════════════════════════════════ -->
+
+        <Button
+            android:id="@+id/btnLoadInterstitial"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="24dp"
+            android:text="Load Interstitial" />
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>
