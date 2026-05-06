@@ -6,6 +6,17 @@ data class AudienzzVideoParameters internal constructor(
     internal val prebidVideoParameters: VideoParameters,
 ) {
 
+    init {
+        if (prebidVideoParameters.api == null) {
+            prebidVideoParameters.api = listOf(
+                AudienzzSignals.Api.MRAID_1,
+                AudienzzSignals.Api.MRAID_2,
+                AudienzzSignals.Api.MRAID_3,
+                AudienzzSignals.Api.OMID_1,
+            ).map { it.prebidApi }
+        }
+    }
+
     /**
      * List of supported API frameworks for this impression. If an API is not explicitly listed,
      * it is assumed not to be supported.

@@ -173,6 +173,8 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
 
         val parameters = AudienzzBannerParameters().apply {
             api = listOf(
+                AudienzzSignals.Api.MRAID_1,
+                AudienzzSignals.Api.MRAID_2,
                 AudienzzSignals.Api.MRAID_3,
                 AudienzzSignals.Api.OMID_1,
             )
