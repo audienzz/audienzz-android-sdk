@@ -171,6 +171,76 @@ class AudienzzAdViewHandler(
         )
     }
 
+    /**
+     * Called by the Flutter Dart visibility layer when the ad becomes hidden (< 20% on screen).
+     * Cancels any pending scheduled refresh and stops Prebid's auto-refresh timer.
+     *
+     * Designed to be driven from outside (e.g. Flutter's RenderBox.localToGlobal() polling)
+     * instead of the native [enableSmartRefresh] OnPreDrawListener, which is unreliable inside
+     * Flutter because the platform view is never physically moved when a Flutter scroll occurs.
+     */
+    fun pauseSmartRefresh() {
+        Log.d(TAG, "pauseSmartRefresh() adUnitId=${adView.adUnitId} — pausing, cancelling pending refresh")
+        pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
+        pendingRefreshRunnable = null
+        adUnit.stopAutoRefresh()
+    }
+
+    /**
+     * Called by the Flutter Dart visibility layer when the ad becomes visible (≥ 20% on screen).
+     * Implements stale-aware logic identical to the [enableSmartRefresh] onBecameVisible block:
+     * - If the ad content is stale (elapsed ≥ refresh interval) → force-fetch demand immediately.
+     * - Otherwise → schedule the next fetch for the remaining interval, then resume auto-refresh.
+     *
+     * This corrects the plain [org.audienzz.mobile.AudienzzAdUnit.resumeAutoRefresh] call which
+     * resets Prebid's timer to 0, ignoring however long the ad has already been displayed.
+     */
+    fun resumeSmartRefresh() {
+        val request = storedRequest ?: run {
+            Log.w(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — storedRequest is null, skipping")
+            return
+        }
+        val callback = storedCallback ?: run {
+            Log.w(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — storedCallback is null, skipping")
+            return
+        }
+
+        pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
+        pendingRefreshRunnable = null
+
+        if (lastRefreshTime == 0L) {
+            // First demand fetch hasn't completed yet — just restart Prebid's timer normally.
+            Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — no prior fetch, resuming timer from scratch")
+            adUnit.resumeAutoRefresh()
+            return
+        }
+
+        val refreshIntervalMs = adUnit.autoRefreshTime.toLong()
+        if (refreshIntervalMs <= 0) {
+            Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — no refresh interval set, resuming")
+            adUnit.resumeAutoRefresh()
+            return
+        }
+
+        val elapsed = System.currentTimeMillis() - lastRefreshTime
+        val remaining = maxOf(0L, refreshIntervalMs - elapsed)
+
+        if (remaining == 0L) {
+            Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — ad is STALE (elapsed=${elapsed}ms >= interval=${refreshIntervalMs}ms), force-refreshing now")
+            fetchDemand(request, callback)
+            adUnit.resumeAutoRefresh()
+        } else {
+            Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — ad is fresh (elapsed=${elapsed}ms, remaining=${remaining}ms), scheduling refresh in ${remaining}ms")
+            val runnable = Runnable {
+                Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — scheduled refresh fired after ${remaining}ms delay")
+                fetchDemand(request, callback)
+                adUnit.resumeAutoRefresh()
+            }
+            pendingRefreshRunnable = runnable
+            refreshHandler.postDelayed(runnable, remaining)
+        }
+    }
+
     /** Stops smart refresh tracking started by [enableSmartRefresh]. */
     fun disableSmartRefresh() {
         Log.d(TAG, "disableSmartRefresh() adUnitId=${adView.adUnitId}")
