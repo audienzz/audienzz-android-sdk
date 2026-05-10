@@ -333,16 +333,20 @@ This object contains methods to initialize the SDK and configure global settings
 
 **Methods:**
 
-| Name                                | Parameters                                                                                                                               | Description                                                                                                                                                                                                                                                                                   |
-|-------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `initializeSdk`                     | `context: Context`, `companyId: String`, ` enablePpid: Boolean = false`, `sdkInitializationListener: AudienzzSdkInitializationListener?` | Initializes the SDK. When enablePPID is true - SDK will automatically generate unique identifier, store it in Shared Preferences and add it to all Google Ad Manager requests as a Publisher Provided identifier. On additional methods to work with PPID look at [PpidManager](#ppidmanager) |
-| `addStoredBidResponse`              | `bidder: String`, `responseId: String`                                                                                                   | Adds a stored bid response.                                                                                                                                                                                                                                                                   |
-| `clearStoredBidResponses`           |                                                                                                                                          | Clears all stored bid responses.                                                                                                                                                                                                                                                              |
-| `checkGoogleMobileAdsCompatibility` | `googleAdsVersion: String`                                                                                                               | Checks compatibility with Google Mobile Ads.                                                                                                                                                                                                                                                  |
-| `registerPluginRenderer`            | `prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer`                                                                         | Registers a plugin renderer.                                                                                                                                                                                                                                                                  |
-| `unregisterPluginRenderer`          | `prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer`                                                                         | Unregisters a plugin renderer.                                                                                                                                                                                                                                                                |
-| `containsPluginRenderer`            | `prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer`                                                                         | Checks if a plugin renderer is registered.                                                                                                                                                                                                                                                    |
-| `setSchainObject`                   | `schain: String`                                                                                                                         | Method used to set Schain object for all ad requests. For example on usage refer to [AdsPageFragment](Example/TestApp/src/main/java/org/audienzz/mobile/testapp/view/AdsPageFragment.kt)                                                                                                      |
+| Name                                | Parameters                                                                                                                                                                          | Description                                                                                                                                                                                                                                                                                   |
+|-------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `initializeSdk`                     | `context: Context`, `companyId: String`, `enablePpid: Boolean = false`, `appVolume: Float = 0f`, `sdkInitializationListener: AudienzzSdkInitializationListener?`                   | Initializes the SDK. When enablePPID is true - SDK will automatically generate unique identifier, store it in Shared Preferences and add it to all Google Ad Manager requests as a Publisher Provided identifier. On additional methods to work with PPID look at [PpidManager](#ppidmanager) |
+| `initializeRemoteSdk`               | `context: Context`, `publisherId: String`, `enablePpid: Boolean = false`, `sdkInitializationListener: AudienzzSdkInitializationListener?`                                           | Initializes the SDK with remote configuration support, fetching ad unit configs from the Audienzz backend using the publisher ID.                                                                                                                                                             |
+| `onScreenResumed`                   | `activity: Activity`                                                                                                                                                                | Call in every Activity or Fragment's `onResume()` to track screen impressions. Fires a `pageImpression` analytics event and generates a new page impression ID shared by all ad events on that screen visit. See [Analytics & Screen Tracking](#analytics--screen-tracking).                  |
+| `getAdUnitConfig`                   | `configId: String`, `callback: (RemoteAdUnitConfig?) -> Unit`                                                                                                                       | Fetches a remote ad unit configuration by its ID. The SDK must have been initialized via `initializeRemoteSdk` first.                                                                                                                                                                         |
+| `setAppVolume`                      | `volume: Float`                                                                                                                                                                     | Sets the global app volume for Google Mobile Ads ad audio. Range: 0.0 (muted) – 1.0 (full device volume). Can be called at any time after SDK initialization.                                                                                                                                 |
+| `addStoredBidResponse`              | `bidder: String`, `responseId: String`                                                                                                                                              | Adds a stored bid response.                                                                                                                                                                                                                                                                   |
+| `clearStoredBidResponses`           |                                                                                                                                                                                     | Clears all stored bid responses.                                                                                                                                                                                                                                                              |
+| `checkGoogleMobileAdsCompatibility` | `googleAdsVersion: String`                                                                                                                                                          | Checks compatibility with Google Mobile Ads.                                                                                                                                                                                                                                                  |
+| `registerPluginRenderer`            | `prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer`                                                                                                                    | Registers a plugin renderer.                                                                                                                                                                                                                                                                  |
+| `unregisterPluginRenderer`          | `prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer`                                                                                                                    | Unregisters a plugin renderer.                                                                                                                                                                                                                                                                |
+| `containsPluginRenderer`            | `prebidMobilePluginRenderer: AudienzzPrebidMobilePluginRenderer`                                                                                                                    | Checks if a plugin renderer is registered.                                                                                                                                                                                                                                                    |
+| `setSchainObject`                   | `schain: String`                                                                                                                                                                    | Method used to set Schain object for all ad requests. For example on usage refer to [AdsPageFragment](Example/TestApp/src/main/java/org/audienzz/mobile/testapp/view/AdsPageFragment.kt)                                                                                                      |
 
 ### `PpidManager`
 
@@ -522,7 +526,7 @@ Before using remote configuration ads, ensure the SDK is properly initialized:
 // 1. Configure remote URL and publisher ID
 RemoteConfigManager.initialize(
     publisherId = "YOUR_PUBLISHER_ID", // Will be provided for you
-    remoteUrl = "https://dev-api.adnz.co/api/ws-sdk-config/public/v1/" // Audienzz remove config URL
+    remoteUrl = "https://api.adnz.co/api/ws-sdk-config/public/v1/" // Audienzz remote config URL
 )
 
 // 2. Initialize SDK with remote configuration support
@@ -634,6 +638,46 @@ remoteInterstitial.setListener(object : AudienzzRemoteConfigInterstitial.Listene
 
 // 3. Load the ad
 remoteInterstitial.load()
+```
+
+Analytics & Screen Tracking
+========
+
+The SDK automatically collects ad performance analytics (bid requests, bid responses, impressions, clicks, etc.) and sends them to the Audienzz analytics backend. No additional setup is required for ad-level events.
+
+### Screen Impression Tracking
+
+To associate ad events with a specific screen visit and enable `pageImpression` tracking, call `onScreenResumed` in every Activity or Fragment that shows ads:
+
+```kotlin
+// In an Activity:
+override fun onResume() {
+    super.onResume()
+    AudienzzPrebidMobile.onScreenResumed(this)
+}
+```
+
+```kotlin
+// In a Fragment:
+override fun onResume() {
+    super.onResume()
+    activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
+}
+```
+
+Each call to `onScreenResumed` fires a `pageImpression` event and generates a fresh `pageImpressionId`. All ad events fired after that call (on the same screen visit) are automatically tagged with that ID, allowing the backend to correlate them.
+
+Call this **after** the SDK has been initialized. If you use `initializeRemoteSdk`, call it inside the initialization callback on first launch:
+
+```kotlin
+AudienzzPrebidMobile.initializeRemoteSdk(
+    context = applicationContext,
+    publisherId = "YOUR_PUBLISHER_ID",
+) { status ->
+    if (status == AudienzzInitializationStatus.SUCCEEDED) {
+        AudienzzPrebidMobile.onScreenResumed(this)
+    }
+}
 ```
 
 Troubleshooting

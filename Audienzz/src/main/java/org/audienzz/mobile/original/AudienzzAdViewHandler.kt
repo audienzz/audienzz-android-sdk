@@ -11,13 +11,15 @@ import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.event.adClick
-import org.audienzz.mobile.event.adCreation
-import org.audienzz.mobile.event.adFailedToLoad
+import org.audienzz.mobile.event.adImpression
 import org.audienzz.mobile.event.bidRequest
-import org.audienzz.mobile.event.bidWinner
+import org.audienzz.mobile.event.bidResponse
+import org.audienzz.mobile.event.bidWon
 import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
+import org.audienzz.mobile.event.headerLoaded
+import org.audienzz.mobile.event.noBid
 import org.audienzz.mobile.event.util.adSubtype
 import org.audienzz.mobile.util.addContinuousVisibilityListener
 import org.audienzz.mobile.util.adViewId
@@ -44,7 +46,7 @@ class AudienzzAdViewHandler(
     private var storedCallback: ((AdManagerAdRequest, AudienzzResultCode?) -> Unit)? = null
 
     init {
-        eventLogger?.adCreation(
+        eventLogger?.headerLoaded(
             adViewId = adView.adViewId,
             adUnitId = adView.adUnitId,
             sizes = adView.adSizes?.asIterable()?.sizeString,
@@ -279,7 +281,7 @@ class AudienzzAdViewHandler(
             lastRefreshTime = System.currentTimeMillis()
             setEventsListenerToAdView()
             callback.invoke(request, resultCode)
-            eventLogger?.bidWinner(
+            eventLogger?.bidResponse(
                 adViewId = adView.adViewId,
                 adUnitId = adView.adUnitId,
                 sizes = adView.adSizes?.asIterable()?.sizeString,
@@ -290,8 +292,34 @@ class AudienzzAdViewHandler(
                 isAutorefresh = isAutorefresh,
                 isRefresh = isRefresh,
                 resultCode = resultCode?.toString(),
-                targetKeywords = request.keywords.toList(),
             )
+            if (resultCode == AudienzzResultCode.SUCCESS) {
+                eventLogger?.bidWon(
+                    adViewId = adView.adViewId,
+                    adUnitId = adView.adUnitId,
+                    sizes = adView.adSizes?.asIterable()?.sizeString,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                    autorefreshTime = autorefreshTime,
+                    isAutorefresh = isAutorefresh,
+                    isRefresh = isRefresh,
+                    targetKeywords = request.keywords.toList(),
+                )
+            } else {
+                eventLogger?.noBid(
+                    adViewId = adView.adViewId,
+                    adUnitId = adView.adUnitId,
+                    sizes = adView.adSizes?.asIterable()?.sizeString,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                    autorefreshTime = autorefreshTime,
+                    isAutorefresh = isAutorefresh,
+                    isRefresh = isRefresh,
+                    resultCode = resultCode?.toString(),
+                )
+            }
         }
     }
 
@@ -318,14 +346,16 @@ class AudienzzAdViewHandler(
 
             override fun onAdImpression() {
                 actualListener?.onAdImpression()
+                eventLogger?.adImpression(
+                    adUnitId = adView.adUnitId,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                )
             }
 
             override fun onAdFailedToLoad(error: LoadAdError) {
                 actualListener?.onAdFailedToLoad(error)
-                eventLogger?.adFailedToLoad(
-                    adUnitId = adView.adUnitId,
-                    errorMessage = error.message,
-                )
             }
 
             override fun onAdSwipeGestureClicked() {

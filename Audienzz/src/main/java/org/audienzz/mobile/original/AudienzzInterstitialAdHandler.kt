@@ -10,14 +10,15 @@ import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.event.adClick
-import org.audienzz.mobile.event.adCreation
-import org.audienzz.mobile.event.adFailedToLoad
+import org.audienzz.mobile.event.adImpression
 import org.audienzz.mobile.event.bidRequest
-import org.audienzz.mobile.event.bidWinner
-import org.audienzz.mobile.event.closeAd
+import org.audienzz.mobile.event.bidResponse
+import org.audienzz.mobile.event.bidWon
 import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
+import org.audienzz.mobile.event.headerLoaded
+import org.audienzz.mobile.event.noBid
 import org.audienzz.mobile.original.callbacks.AudienzzFullScreenContentCallback
 import org.audienzz.mobile.original.callbacks.AudienzzInterstitialAdLoadCallback
 
@@ -27,7 +28,7 @@ class AudienzzInterstitialAdHandler(
 ) {
 
     init {
-        eventLogger?.adCreation(
+        eventLogger?.headerLoaded(
             adUnitId = adUnitId,
             adType = AdType.INTERSTITIAL,
             adSubtype = adUnit.getSubType(),
@@ -72,8 +73,18 @@ class AudienzzInterstitialAdHandler(
             )
                 .build()
         adUnit.fetchDemand(request) { resultCode ->
+            eventLogger?.bidResponse(
+                adUnitId = adUnitId,
+                adType = AdType.INTERSTITIAL,
+                adSubtype = adUnit.getSubType(),
+                apiType = ApiType.ORIGINAL,
+                autorefreshTime = adUnit.autoRefreshTime.toLong(),
+                isAutorefresh = adUnit.autoRefreshTime > 0,
+                isRefresh = false,
+                resultCode = resultCode?.toString(),
+            )
             if (resultCode == AudienzzResultCode.SUCCESS) {
-                eventLogger?.bidWinner(
+                eventLogger?.bidWon(
                     adUnitId = adUnitId,
                     adType = AdType.INTERSTITIAL,
                     adSubtype = adUnit.getSubType(),
@@ -81,8 +92,18 @@ class AudienzzInterstitialAdHandler(
                     autorefreshTime = adUnit.autoRefreshTime.toLong(),
                     isAutorefresh = adUnit.autoRefreshTime > 0,
                     isRefresh = false,
-                    resultCode = resultCode.toString(),
                     targetKeywords = request.keywords.toList(),
+                )
+            } else {
+                eventLogger?.noBid(
+                    adUnitId = adUnitId,
+                    adType = AdType.INTERSTITIAL,
+                    adSubtype = adUnit.getSubType(),
+                    apiType = ApiType.ORIGINAL,
+                    autorefreshTime = adUnit.autoRefreshTime.toLong(),
+                    isAutorefresh = adUnit.autoRefreshTime > 0,
+                    isRefresh = false,
+                    resultCode = resultCode?.toString(),
                 )
             }
             resultCallback(
@@ -112,7 +133,6 @@ class AudienzzInterstitialAdHandler(
                         override fun onAdDismissedFullScreenContent() {
                             super.onAdDismissedFullScreenContent()
                             fullScreenContentCallback?.onAdDismissedFullScreenContent()
-                            eventLogger?.closeAd(adUnitId)
                         }
 
                         override fun onAdFailedToShowFullScreenContent(error: AdError) {
@@ -123,6 +143,12 @@ class AudienzzInterstitialAdHandler(
                         override fun onAdImpression() {
                             super.onAdImpression()
                             fullScreenContentCallback?.onAdImpression()
+                            eventLogger?.adImpression(
+                                adUnitId = adUnitId,
+                                adType = AdType.INTERSTITIAL,
+                                adSubtype = adUnit.getSubType(),
+                                apiType = ApiType.ORIGINAL,
+                            )
                         }
 
                         override fun onAdShowedFullScreenContent() {
@@ -135,7 +161,6 @@ class AudienzzInterstitialAdHandler(
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                 super.onAdFailedToLoad(loadAdError)
                 adLoadCallback?.onAdFailedToLoad(loadAdError)
-                eventLogger?.adFailedToLoad(adUnitId = adUnitId, errorMessage = loadAdError.message)
             }
         }
     }

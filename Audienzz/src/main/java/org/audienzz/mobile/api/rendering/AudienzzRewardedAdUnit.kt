@@ -5,13 +5,11 @@ import org.audienzz.mobile.AudienzzReward
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.api.rendering.listeners.AudienzzRewardedAdUnitListener
 import org.audienzz.mobile.event.adClick
-import org.audienzz.mobile.event.adCreation
-import org.audienzz.mobile.event.adFailedToLoad
-import org.audienzz.mobile.event.closeAd
 import org.audienzz.mobile.event.entity.AdSubtype
 import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
+import org.audienzz.mobile.event.headerLoaded
 import org.audienzz.mobile.eventhandlers.AudienzzGamRewardedEventHandler
 import org.audienzz.mobile.rendering.bidding.data.bid.AudienzzBid
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzRewardedEventHandler
@@ -37,7 +35,7 @@ class AudienzzRewardedAdUnit internal constructor(
     ) : this(RewardedAdUnit(context, configId, getRewardedEventHandler(eventHandler))) {
         this.eventHandler = eventHandler
         (eventHandler as? AudienzzGamRewardedEventHandler)?.adUnitId?.let {
-            eventLogger?.adCreation(
+            eventLogger?.headerLoaded(
                 adUnitId = it,
                 adType = AdType.REWARDED,
                 adSubtype = AdSubtype.VIDEO,
@@ -134,12 +132,6 @@ class AudienzzRewardedAdUnit internal constructor(
                 }
 
                 override fun onAdFailed(rewardedAdUnit: RewardedAdUnit?, exception: AdException?) {
-                    if (adUnitId != null) {
-                        eventLogger?.adFailedToLoad(
-                            adUnitId = adUnitId,
-                            errorMessage = exception?.message,
-                        )
-                    }
                     listener.onAdFailed(
                         rewardedAdUnit?.let { AudienzzRewardedAdUnit(it) },
                         exception?.let { AudienzzAdException(it) },
@@ -154,9 +146,6 @@ class AudienzzRewardedAdUnit internal constructor(
                 }
 
                 override fun onAdClosed(rewardedAdUnit: RewardedAdUnit?) {
-                    if (adUnitId != null) {
-                        eventLogger?.closeAd(adUnitId = adUnitId)
-                    }
                     listener.onAdClosed(rewardedAdUnit?.let { AudienzzRewardedAdUnit(it) })
                 }
 
