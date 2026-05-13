@@ -8,14 +8,14 @@ prebid = "3.3.1"
 # GMS
 gms-ads = "25.1.0"
 # kotlin
-kotlin = "2.0.0"
+kotlin = "2.2.0"
 kotlin-coroutines = "1.8.1"
 kotlin-immutable-collections = "0.3.7"
 kotlin-atomic = "0.21.0"
 kotlin-serialization-json = "1.6.3"
-kotlin-ksp = "2.0.0-1.0.21"
+kotlin-ksp = "2.2.0-2.0.2"
 # storage
-room = "2.5.2"
+room = "2.8.4"
 # network
 retrofit = "2.11.0"
 retrofit-json-converter = "1.0.0"
