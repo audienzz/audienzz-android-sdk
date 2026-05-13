@@ -4,9 +4,9 @@ gradle-android = "8.2.2"
 maven-publish = "0.29.0"
 nmcp = "0.0.7"
 # prebid
-prebid = "3.0.1"
+prebid = "3.3.1"
 # GMS
-gms-ads = "24.3.0"
+gms-ads = "25.1.0"
 # kotlin
 kotlin = "2.0.0"
 kotlin-coroutines = "1.8.1"
