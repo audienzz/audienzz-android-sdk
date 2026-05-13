@@ -74,6 +74,7 @@ class AudienzzAdViewHandler(
         gamRequestBuilder: AdManagerAdRequest.Builder = AdManagerAdRequest.Builder(),
         callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit,
     ) {
+        adUnit.activatePrebidImpressionTracker(adView)
         val ppid = AudienzzPrebidMobile.ppidManager?.getPpid()
         if (ppid != null) {
             gamRequestBuilder.setPublisherProvidedId(ppid)

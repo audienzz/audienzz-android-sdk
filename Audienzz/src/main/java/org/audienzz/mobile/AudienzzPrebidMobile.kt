@@ -288,6 +288,8 @@ object AudienzzPrebidMobile {
         customStatusEndpoint = "https://ib.adnxs.com/status"
         isShareGeoLocation = true
         enabledAssignNativeAssetId = true
+        AudienzzTargetingParams.omidPartnerName = "Google"
+        AudienzzTargetingParams.omidPartnerVersion = MobileAds.getVersion().toString()
     }
 
     private fun getPrebidMobilePluginRendererCached(

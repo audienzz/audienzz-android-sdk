@@ -13,7 +13,7 @@ class AudienzzNativeDataAsset internal constructor(
             prebidNativeDataAsset.dataType = value?.prebidDataType
         }
 
-    var len: Int
+    var len: Int?
         get() = prebidNativeDataAsset.len
         set(value) {
             prebidNativeDataAsset.len = value
