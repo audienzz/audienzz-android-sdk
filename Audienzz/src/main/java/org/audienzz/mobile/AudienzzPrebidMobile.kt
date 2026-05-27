@@ -384,8 +384,9 @@ object AudienzzPrebidMobile {
                 companyId = publisherConfig?.ortbConfig?.schainConfig?.sellerId ?: "1"
 
                 val baseUrl = publisherConfig?.prebidServerConfig?.url ?: audienzzHost.hostUrl
-                val prebidServerUrl = if (isPbsDebug && !baseUrl.contains("test=1")) {
-                    if (baseUrl.contains("?")) "$baseUrl&test=1" else "$baseUrl?test=1"
+                val prebidServerUrl = if (isPbsDebug) {
+                    val sep = if (baseUrl.contains("?")) "&" else "?"
+                    if (baseUrl.contains("test=1")) baseUrl else "$baseUrl${sep}test=1"
                 } else {
                     baseUrl
                 }
@@ -476,6 +477,11 @@ object AudienzzPrebidMobile {
     private fun registerActivityCallbacks(context: Context) {
         (context.applicationContext as? Application)
             ?.registerActivityLifecycleCallbacks(CURRENT_ACTIVITY_TRACKER)
+    }
+
+    @JvmStatic
+    fun setPrebidServerHost(url: String) {
+        PrebidMobile.getPrebidServerHost().setHostUrl(url)
     }
 
     @JvmStatic
