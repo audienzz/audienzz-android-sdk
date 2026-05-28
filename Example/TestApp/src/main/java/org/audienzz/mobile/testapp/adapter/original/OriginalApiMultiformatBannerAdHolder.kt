@@ -70,7 +70,12 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
             adUnit?.setAutoRefreshInterval(config.config.refreshTimeSeconds ?: DEFAULT_REFRESH_TIME)
 
             val parameters = AudienzzBannerParameters()
-            parameters.api = listOf(AudienzzSignals.Api.MRAID_3, AudienzzSignals.Api.OMID_1)
+            parameters.api = listOf(
+                AudienzzSignals.Api.MRAID_1,
+                AudienzzSignals.Api.MRAID_2,
+                AudienzzSignals.Api.MRAID_3,
+                AudienzzSignals.Api.OMID_1,
+            )
             adUnit?.bannerParameters = parameters
             adUnit?.videoParameters = AudienzzVideoParameters(listOf("video/mp4"))
 

@@ -8,6 +8,10 @@ class AudienzzBannerAdUnit internal constructor(
     private val adUnit: BannerAdUnit,
 ) : AudienzzBannerBaseAdUnit(adUnit) {
 
+    init {
+        adUnit.bannerParameters = AudienzzBannerParameters().prebidBannerParameters
+    }
+
     constructor(
         configId: String,
         width: Int,
