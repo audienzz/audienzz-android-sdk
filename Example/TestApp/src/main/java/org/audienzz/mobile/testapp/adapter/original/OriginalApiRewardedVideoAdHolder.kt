@@ -123,6 +123,11 @@ class OriginalApiRewardedVideoAdHolder(parent: ViewGroup) : BaseAdHolder(parent)
 
     private fun configureVideoParameters(): AudienzzVideoParameters {
         return AudienzzVideoParameters(listOf("video/mp4")).apply {
+            api = listOf(
+                AudienzzSignals.Api.VPAID_1,
+                AudienzzSignals.Api.VPAID_2,
+                AudienzzSignals.Api.OMID_1,
+            )
             protocols = listOf(AudienzzSignals.Protocols.VAST_2_0)
             playbackMethod = listOf(AudienzzSignals.PlaybackMethod.AutoPlaySoundOff)
         }
