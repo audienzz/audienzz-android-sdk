@@ -20,7 +20,7 @@ ksp {
 android {
     compileSdk = libs.versions.sdk.compile.get().toInt()
     buildToolsVersion = libs.versions.build.tools.version.get()
-    version = "0.1.1"
+    version = "0.1.2"
 
     defaultConfig {
         namespace = "org.audienzz"
