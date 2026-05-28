@@ -105,7 +105,11 @@ class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) 
     private fun configureVideoParameters(): AudienzzVideoParameters {
         return AudienzzVideoParameters(listOf("video/x-flv", "video/mp4")).apply {
             placement = AudienzzSignals.Placement.Interstitial
-            api = listOf(AudienzzSignals.Api.VPAID_1, AudienzzSignals.Api.VPAID_2)
+            api = listOf(
+                AudienzzSignals.Api.VPAID_1,
+                AudienzzSignals.Api.VPAID_2,
+                AudienzzSignals.Api.OMID_1,
+            )
             maxBitrate = VideoConstants.MAX_BITRATE
             minBitrate = VideoConstants.MIN_BITRATE
             maxDuration = VideoConstants.MAX_DURATION

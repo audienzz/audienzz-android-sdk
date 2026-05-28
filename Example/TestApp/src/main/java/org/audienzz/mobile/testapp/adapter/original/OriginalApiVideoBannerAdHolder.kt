@@ -78,6 +78,7 @@ class OriginalApiVideoBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
             api = listOf(
                 AudienzzSignals.Api.VPAID_1,
                 AudienzzSignals.Api.VPAID_2,
+                AudienzzSignals.Api.OMID_1,
             )
             maxBitrate = VideoConstants.MAX_BITRATE
             minBitrate = VideoConstants.MIN_BITRATE
