@@ -83,7 +83,13 @@ class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) 
                     EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO),
                 )
                 adUnit.setMinSizePercentage(DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT)
-                adUnit.videoParameters = AudienzzVideoParameters(listOf("video/mp4"))
+                adUnit.videoParameters = AudienzzVideoParameters(listOf("video/mp4")).apply {
+                    api = listOf(
+                        AudienzzSignals.Api.VPAID_1,
+                        AudienzzSignals.Api.VPAID_2,
+                        AudienzzSignals.Api.OMID_1,
+                    )
+                }
 
                 AudienzzInterstitialAdHandler(adUnit, config.gamConfig.adUnitPath).load(
                     adLoadCallback = createAdLoadCallback(),
