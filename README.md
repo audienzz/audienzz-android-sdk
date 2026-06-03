@@ -374,6 +374,34 @@ This class handles the loading of ads for a given `AdManagerAdView`.
 | `enableSmartRefresh`  |                                                                                                                                                                               | Enables viewport-aware smart refresh: pauses auto-refresh while off-screen and force-refreshes when the ad returns if the interval elapsed. |
 | `disableSmartRefresh` |                                                                                                                                                                               | Disables smart refresh and removes the visibility listener.                                                                                 |
 
+### `AudienzzStickyAdWrapperView`
+
+A `FrameLayout` that reserves a block of vertical space in the layout and keeps the child ad view pinned within that space — sliding it via `translationY` as the user scrolls — so the ad stays visible for as long as possible before naturally scrolling off-screen.
+
+**Constructor:**
+
+| Name | Parameters | Description |
+|---|---|---|
+| `AudienzzStickyAdWrapperView` | `context: Context`, `attrs: AttributeSet? = null`, `defStyleAttr: Int = 0`, `maxHeightDp: Int = 600` | Creates a sticky wrapper. `maxHeightDp` is the vertical space reserved in the layout (default 600 dp). |
+
+**Properties:**
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `maxHeight` | `Int` | converted from `maxHeightDp` | Height in pixels reserved in the layout. Settable at runtime; triggers `requestLayout()`. |
+| `stickyTopOffset` | `Int?` | `null` | Y offset in pixels from the top of the scroll viewport where the ad sticks. `null` resolves to 0. |
+| `isStickyEnabled` | `Boolean` | `true` | Enables or disables sticky positioning at runtime. When `false` the child stays at position 0. |
+| `isVisibilityGateEnabled` | `Boolean` | `false` | When `true`, skips scroll calculations while the wrapper is more than one viewport height off-screen. |
+
+**Methods:**
+
+| Name | Parameters | Description |
+|---|---|---|
+| `setAdView(view: View)` | `view: View` | Sets the ad view to make sticky. Replaces any previously set view. |
+| `attachToScrollView(scrollView: NestedScrollView)` | `scrollView: NestedScrollView` | Attaches sticky scroll tracking to a `NestedScrollView`. |
+| `attachToScrollView(scrollView: ScrollView)` | `scrollView: ScrollView` | Attaches sticky scroll tracking to a standard `ScrollView`. |
+| `detachFromScrollView()` | — | Removes all scroll listeners and stops position updates. Call in `onDestroyView()`. |
+
 ### `AudienzzTargetingParams`
 
 This object is used to set targeting parameters for ad requests.
@@ -635,6 +663,124 @@ remoteInterstitial.setListener(object : AudienzzRemoteConfigInterstitial.Listene
 // 3. Load the ad
 remoteInterstitial.load()
 ```
+
+Sticky Ad
+========
+
+`AudienzzStickyAdWrapperView` makes any ad view sticky within a scroll view. It reserves a fixed block of vertical space in the layout, and the ad view floats within that space — staying visible as the user scrolls past — before naturally scrolling off-screen once it reaches the edge of the reserved area.
+
+### Layout
+
+Place the wrapper's container inside your `NestedScrollView` (or `ScrollView`) at the position where the ad should appear. The wrapper will reserve exactly `maxHeightDp` pixels of vertical space:
+
+```xml
+<androidx.core.widget.NestedScrollView
+    android:id="@+id/scrollView"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <!-- content above the ad -->
+
+        <FrameLayout
+            android:id="@+id/stickyContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <!-- content that scrolls past the sticky ad -->
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>
+```
+
+### Code (Remote Config banner)
+
+```kotlin
+private lateinit var sticky: AudienzzStickyAdWrapperView
+private lateinit var banner: AudienzzRemoteBannerView
+
+private fun loadStickyAd() {
+    // 1. Create the ad view
+    banner = AudienzzRemoteBannerView(requireContext(), "YOUR_CONFIG_ID")
+
+    // Optional: listen to ad events via the underlying banner view
+    banner.setAdListener(object : AdListener() {
+        override fun onAdLoaded() { /* ad ready */ }
+        override fun onAdFailedToLoad(error: LoadAdError) { /* handle error */ }
+    })
+
+    // 2. Create the sticky wrapper
+    sticky = AudienzzStickyAdWrapperView(
+        context = requireContext(),
+        maxHeightDp = 300,  // vertical space reserved in the layout
+    ).apply {
+        setAdView(banner)
+    }
+
+    // 3. Add it to the container
+    binding.stickyContainer.addView(
+        sticky,
+        FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+        ),
+    )
+
+    // 4. Attach to the scroll view and load
+    sticky.attachToScrollView(binding.scrollView)
+    banner.loadAd()
+}
+```
+
+### Code (manual banner)
+
+The wrapper is not limited to remote config ads — it works with any view:
+
+```kotlin
+val gamAdView = AdManagerAdView(context).apply {
+    adUnitId = GAM_AD_UNIT_ID
+    setAdSizes(AdSize(320, 50))
+}
+
+val audienzzAdUnit = AudienzzBannerAdUnit(PREBID_CONFIG_ID, 320, 50)
+
+val sticky = AudienzzStickyAdWrapperView(context, maxHeightDp = 150).apply {
+    setAdView(gamAdView)
+}
+
+binding.stickyContainer.addView(sticky, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+sticky.attachToScrollView(binding.scrollView)
+
+AudienzzAdViewHandler(adView = gamAdView, adUnit = audienzzAdUnit)
+    .load(callback = { request, _ -> gamAdView.loadAd(request) })
+```
+
+### Cleanup
+
+Always detach the wrapper and destroy the ad view when the fragment or activity is destroyed to avoid memory leaks:
+
+```kotlin
+override fun onDestroyView() {
+    sticky.detachFromScrollView()
+    banner.destroy()
+    super.onDestroyView()
+}
+```
+
+### Configuration options
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `maxHeightDp` | `Int` (constructor) | `600` | Vertical space reserved in the layout in dp. |
+| `maxHeight` | `Int` (property) | converted from `maxHeightDp` | Same as above but in pixels; settable at runtime. |
+| `stickyTopOffset` | `Int?` | `null` (= 0) | Y offset in pixels from the top of the viewport where the ad sticks. Use this to account for a toolbar or status bar. |
+| `isStickyEnabled` | `Boolean` | `true` | Disable sticky positioning at runtime without removing the view. |
+| `isVisibilityGateEnabled` | `Boolean` | `false` | Skip position calculations when the wrapper is more than one screen-height away from the viewport. Enable for pages with many ads. |
 
 Troubleshooting
 ========
