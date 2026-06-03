@@ -1,6 +1,5 @@
 package org.audienzz.mobile
 
-import android.view.View
 import androidx.annotation.IntRange
 import org.audienzz.mobile.api.data.AudienzzBidInfo
 import org.prebid.mobile.AdUnit
@@ -71,7 +70,4 @@ abstract class AudienzzAdUnit internal constructor(
         adUnit.fetchDemand(onFetchDemandResult)
     }
 
-    fun activatePrebidImpressionTracker(adView: View) {
-        adUnit.activatePrebidImpressionTracker(adView)
-    }
 }

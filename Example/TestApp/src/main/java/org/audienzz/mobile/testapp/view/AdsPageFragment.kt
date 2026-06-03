@@ -11,8 +11,6 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzPrebidMobile.setSchainObject
-import com.google.android.gms.ads.MobileAds
-import com.google.android.gms.ads.RequestConfiguration
 import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.api.data.AudienzzInitializationStatus
 import org.audienzz.mobile.testapp.AdPreferences
@@ -94,11 +92,6 @@ class AdsPageFragment : Fragment() {
                 remoteUrl = "https://api.adnz.co/api/ws-sdk-config/public/v1"
             )
 
-            MobileAds.setRequestConfiguration(
-                RequestConfiguration.Builder()
-                    .setTestDeviceIds(listOf("6438F34630D3F45456C0F0F8F701712E"))
-                    .build()
-            )
             AudienzzPrebidMobile.isPbsDebug = true
             AudienzzPrebidMobile.initializeRemoteSdk(
                 requireContext().applicationContext,

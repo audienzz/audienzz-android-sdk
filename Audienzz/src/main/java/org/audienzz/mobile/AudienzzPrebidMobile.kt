@@ -303,8 +303,6 @@ object AudienzzPrebidMobile {
 
     /**
      * Initializes the main SDK classes and makes request to Prebid server to check its status.
-     * You have to set host url ({@link PrebidMobile#setPrebidServerHost(Host)}) before calling
-     * this method.
      * If you use custom /status endpoint set it with
      * ({@link PrebidMobile#setCustomStatusEndpoint(String)}) before starting initialization.
      * <p>
@@ -477,11 +475,6 @@ object AudienzzPrebidMobile {
     private fun registerActivityCallbacks(context: Context) {
         (context.applicationContext as? Application)
             ?.registerActivityLifecycleCallbacks(CURRENT_ACTIVITY_TRACKER)
-    }
-
-    @JvmStatic
-    fun setPrebidServerHost(url: String) {
-        PrebidMobile.getPrebidServerHost().setHostUrl(url)
     }
 
     @JvmStatic
