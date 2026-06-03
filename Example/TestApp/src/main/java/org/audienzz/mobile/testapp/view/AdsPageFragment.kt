@@ -75,7 +75,10 @@ class AdsPageFragment : Fragment() {
 
     private fun initSdk() {
         if (AudienzzPrebidMobile.isSdkInitialized) {
-            AudienzzTargetingParams.isSubjectToGDPR = true
+            // NOTE: isSubjectToGDPR intentionally unset in test app.
+            // Without a real CMP the consent string is empty, which causes DSPs to refuse to bid.
+            // In production, a CMP writes IABTCF_TCString / IABTCF_gdprApplies to SharedPrefs
+            // and you should NOT override them here.
             binding.progressBar.isVisible = false
             adapter.submitList(createMockData())
             return
@@ -110,7 +113,14 @@ class AdsPageFragment : Fragment() {
 
     private fun handleInitializationStatus(status: AudienzzInitializationStatus) {
         if (status == AudienzzInitializationStatus.SUCCEEDED) {
-            AudienzzTargetingParams.isSubjectToGDPR = true
+            // Override bundle/storeUrl set by remote config (com.example.app) with real app package
+            AudienzzTargetingParams.bundleName = requireContext().packageName
+            AudienzzTargetingParams.storeUrl =
+                "https://play.google.com/store/apps/details?id=${requireContext().packageName}"
+            // NOTE: isSubjectToGDPR intentionally unset in test app.
+            // Without a real CMP the consent string is empty, which causes DSPs to refuse to bid.
+            // In production, a CMP writes IABTCF_TCString / IABTCF_gdprApplies to SharedPrefs
+            // and you should NOT override them here.
             adapter.submitList(createMockData())
             binding.progressBar.isVisible = false
             setSchainObject(

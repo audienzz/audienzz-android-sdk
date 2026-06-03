@@ -13,10 +13,6 @@ open class AudienzzAdException internal constructor(
 
     constructor(type: String, message: String) : this(AdException(type, message))
 
-    fun setMessage(msg: String) {
-        prebidAdException.setMessage(msg)
-    }
-
     companion object {
 
         const val INTERNAL_ERROR = "SDK internal error"

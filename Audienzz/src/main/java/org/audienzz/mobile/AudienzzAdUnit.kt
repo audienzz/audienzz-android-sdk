@@ -69,4 +69,5 @@ abstract class AudienzzAdUnit internal constructor(
             OnFetchDemandResult { bidInfo -> listener(AudienzzBidInfo(bidInfo)) }
         adUnit.fetchDemand(onFetchDemandResult)
     }
+
 }
