@@ -17,10 +17,12 @@ ksp {
     arg(RoomSchemaArgProvider(File(projectDir, "schemas")))
 }
 
+val audienzzSdkVersion = "0.1.2"
+
 android {
     compileSdk = libs.versions.sdk.compile.get().toInt()
     buildToolsVersion = libs.versions.build.tools.version.get()
-    version = "0.1.2"
+    version = audienzzSdkVersion
 
     defaultConfig {
         namespace = "org.audienzz"
@@ -29,6 +31,11 @@ android {
             "String",
             "EVENTS_BASE_URL",
             "\"https://dev-api.adnz.co/api/ws-event-ingester/\"",
+        )
+        buildConfigField(
+            "String",
+            "AUDIENZZ_SDK_VERSION",
+            "\"$audienzzSdkVersion\"",
         )
     }
 
