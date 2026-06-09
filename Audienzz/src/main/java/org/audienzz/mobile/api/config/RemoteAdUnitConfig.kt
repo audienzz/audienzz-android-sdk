@@ -23,6 +23,13 @@ data class RemoteConfig(
     val refreshTimeSeconds: Int? = null,
     @SerialName("prefetchDistanceDp")
     val prefetchDistanceDp: Int? = null,
+    /** Reserved height (dp) for the sticky ad wrapper. null falls back to the SDK default (600). */
+    @SerialName("stickyMaxHeight")
+    val stickyMaxHeight: Int? = null,
+    /** Y offset (dp) from the scroll viewport top where the sticky ad should pin.
+     *  null falls back to 0. */
+    @SerialName("stickyTopOffset")
+    val stickyTopOffset: Int? = null,
 )
 
 @Serializable
