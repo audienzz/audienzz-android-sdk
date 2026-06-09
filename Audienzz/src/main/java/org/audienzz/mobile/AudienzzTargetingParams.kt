@@ -353,24 +353,43 @@ object AudienzzTargetingParams {
         TargetingParams.setGlobalOrtbConfig(config.toString())
     }
 
-    private val SDK_META_ORTB: JSONObject = JSONObject().apply {
-        put(
-            "app",
-            JSONObject().apply {
-                put(
-                    "ext",
-                    JSONObject().apply {
-                        put(
-                            "audienzz",
-                            JSONObject().apply {
-                                put("sdk", "android")
-                                put("v", BuildConfig.AUDIENZZ_SDK_VERSION)
-                            },
-                        )
-                    },
-                )
-            },
-        )
+    /** Extra fields contributed by a bridge SDK (e.g. "rn_v" → "0.4.1"). */
+    private val bridgeOrtbFields = mutableMapOf<String, String>()
+
+    /** Always-present ORTB metadata — native SDK identity + any bridge version. */
+    private val SDK_META_ORTB: JSONObject
+        get() {
+            val audienzz = JSONObject().apply {
+                put("sdk", "android")
+                put("v", BuildConfig.AUDIENZZ_SDK_VERSION)
+                bridgeOrtbFields.forEach { (k, v) -> put(k, v) }
+            }
+            return JSONObject().apply {
+                put("app", JSONObject().apply {
+                    put("ext", JSONObject().apply {
+                        put("audienzz", audienzz)
+                    })
+                })
+            }
+        }
+
+    /**
+     * Set a bridge-layer SDK identity key (e.g. "au_rn_v", "au_flutter_v").
+     *
+     * The key is stored as a reserved GAM targeting entry (wins over any
+     * publisher-set value and cannot be removed via removeGlobalTargeting /
+     * clearGlobalTargeting) and is also embedded in app.ext.audienzz in every
+     * Prebid bid request.
+     *
+     * The ORTB sub-key is derived by stripping the "au_" prefix:
+     *   "au_rn_v" → ext.audienzz.rn_v
+     */
+    @JvmStatic
+    fun setBridgeTargeting(key: String, value: String) {
+        CUSTOM_TARGETING_MANAGER.setReservedTargeting(key, value)
+        val ortbKey = if (key.startsWith("au_")) key.removePrefix("au_") else key
+        bridgeOrtbFields[ortbKey] = value
+        setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
     }
 
     /** Add a key-value global targeting */
@@ -387,9 +406,10 @@ object AudienzzTargetingParams {
         setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
     }
 
-    /** Remove targeting for a key */
+    /** Remove targeting for a key — silently skips SDK-reserved keys. */
     @JvmStatic
     fun removeGlobalTargeting(key: String) {
+        // CustomTargetingManager.removeCustomTargeting already skips reserved keys
         CUSTOM_TARGETING_MANAGER.removeCustomTargeting(key)
         setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
     }

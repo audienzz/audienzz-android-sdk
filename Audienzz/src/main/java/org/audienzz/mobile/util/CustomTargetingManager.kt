@@ -8,6 +8,10 @@ class CustomTargetingManager(
 ) {
     private val targetingMap = mutableMapOf<String, String>()
 
+    /** Keys set by SDK/bridge init — invisible to publishers.
+     *  Cannot be removed via removeCustomTargeting / clearCustomTargeting. */
+    private val reservedTargetingMap = mutableMapOf<String, String>()
+
     /** Add single key-value targeting */
     fun addCustomTargeting(key: String, value: String) {
         targetingMap[key] = value
@@ -18,12 +22,21 @@ class CustomTargetingManager(
         targetingMap[key] = values.joinToString(",")
     }
 
-    /** Remove targeting for specific key */
+    /** Store a reserved (SDK-internal) key-value. Never cleared by publisher calls. */
+    fun setReservedTargeting(key: String, value: String) {
+        reservedTargetingMap[key] = value
+    }
+
+    /** Returns true if the key is in the reserved map. */
+    fun isReserved(key: String): Boolean = reservedTargetingMap.containsKey(key)
+
+    /** Remove targeting for specific key — silently skips reserved keys. */
     fun removeCustomTargeting(key: String) {
+        if (isReserved(key)) return
         targetingMap.remove(key)
     }
 
-    /** Clear all targeting */
+    /** Clear all targeting — preserves reserved keys. */
     fun clearCustomTargeting() {
         targetingMap.clear()
     }
@@ -73,14 +86,7 @@ class CustomTargetingManager(
     fun applyToGamRequestBuilder(
         requestBuilder: AdManagerAdRequest.Builder,
     ): AdManagerAdRequest.Builder {
-        // Always inject SDK metadata first so it is present in every GAM request
-        // regardless of whether the publisher configured any custom targeting.
-        // These values are used for GAM reporting and version-based line-item targeting.
-        requestBuilder.addCustomTargeting("au_sdk", sdkPlatform)
-        if (sdkVersion.isNotEmpty()) {
-            requestBuilder.addCustomTargeting("au_v", sdkVersion)
-        }
-
+        // Publisher keys first, then SDK keys — reserved keys always win.
         targetingMap.forEach { (key, value) ->
             if (value.contains(",")) {
                 requestBuilder.addCustomTargeting(key, value.split(","))
@@ -89,9 +95,19 @@ class CustomTargetingManager(
             }
         }
 
+        // SDK-owned keys applied after publisher keys so they always win.
+        requestBuilder.addCustomTargeting("au_sdk", sdkPlatform)
+        if (sdkVersion.isNotEmpty()) {
+            requestBuilder.addCustomTargeting("au_v", sdkVersion)
+        }
+        reservedTargetingMap.forEach { (key, value) ->
+            requestBuilder.addCustomTargeting(key, value)
+        }
+
         Log.d(TAG, "GAM custom targeting applied:")
         Log.d(TAG, "  au_sdk = $sdkPlatform")
         if (sdkVersion.isNotEmpty()) Log.d(TAG, "  au_v   = $sdkVersion")
+        reservedTargetingMap.forEach { (key, value) -> Log.d(TAG, "  $key = $value [reserved]") }
         targetingMap.forEach { (key, value) -> Log.d(TAG, "  $key = $value") }
 
         return requestBuilder
