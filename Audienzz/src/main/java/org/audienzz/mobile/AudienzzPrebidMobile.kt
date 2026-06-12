@@ -332,7 +332,7 @@ object AudienzzPrebidMobile {
     fun initializeSdk(
         context: Context,
         companyId: String,
-        enablePpid: Boolean = false,
+        enablePpid: Boolean? = null,
         prebidServerUrl: String? = null,
         @FloatRange(from = 0.0, to = 1.0) appVolume: Float = 0f,
         sdkInitializationListener: AudienzzSdkInitializationListener?,
@@ -342,7 +342,8 @@ object AudienzzPrebidMobile {
             sdkInitializationListener?.onInitializationComplete(
                 AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
             )
-            ppidManager?.setAutomaticPpidEnabled(enablePpid)
+            // Only apply client override if explicitly provided; otherwise priority chain resolves.
+            enablePpid?.let { ppidManager?.setAutomaticPpidEnabled(it) }
         }
         registerActivityCallbacks(context)
         MainComponent.init(context)
@@ -365,7 +366,7 @@ object AudienzzPrebidMobile {
     fun initializeRemoteSdk(
         context: Context,
         publisherId: String,
-        enablePpid: Boolean = false,
+        enablePpid: Boolean? = null,
         sdkInitializationListener: AudienzzSdkInitializationListener?,
     ) {
         registerActivityCallbacks(context)
@@ -403,7 +404,9 @@ object AudienzzPrebidMobile {
                     sdkInitializationListener?.onInitializationComplete(
                         AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
                     )
-                    ppidManager?.setAutomaticPpidEnabled(enablePpid)
+                    // Apply backend setting first, then client override if provided.
+                    ppidManager?.setBackendPpidEnabled(publisherConfig?.ppidEnabled)
+                    enablePpid?.let { ppidManager?.setAutomaticPpidEnabled(it) }
                 }
 
                 configureGam(context, publisherConfig?.gamConfig)

@@ -17,6 +17,10 @@ data class PublisherConfig(
     val androidConfig: AndroidConfig? = null,
     @SerialName("ios")
     val iosConfig: IosConfig? = null,
+    /** Backend-controlled PPID enable flag. null when absent in the remote payload.
+     *  Priority: client override > this value > SDK default (true). */
+    @SerialName("ppidEnabled")
+    val ppidEnabled: Boolean? = null,
 )
 
 /**
