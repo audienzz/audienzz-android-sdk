@@ -23,6 +23,18 @@ data class RemoteConfig(
     val refreshTimeSeconds: Int? = null,
     @SerialName("prefetchDistanceDp")
     val prefetchDistanceDp: Int? = null,
+    @SerialName("nativeAdConfig")
+    val nativeAdConfig: RemoteNativeConfig? = null,
+)
+
+@Serializable
+data class RemoteNativeConfig(
+    @SerialName("enabled")
+    val enabled: Boolean = false,
+    @SerialName("heightAndroid")
+    val heightAndroid: Int? = null,
+    @SerialName("heightIOS")
+    val heightIOS: Int? = null,
 )
 
 @Serializable

@@ -27,6 +27,11 @@ import androidx.fragment.app.Fragment
 import org.audienzz.mobile.AudienzzRemoteBannerView
 import org.audienzz.mobile.AudienzzRemoteConfigInterstitial
 import org.audienzz.mobile.AudienzzStickyAdWrapperView
+import org.audienzz.mobile.api.config.RemoteAdUnitConfig
+import org.audienzz.mobile.api.config.RemoteConfig
+import org.audienzz.mobile.api.config.RemoteGamConfig
+import org.audienzz.mobile.api.config.RemoteNativeConfig
+import org.audienzz.mobile.api.config.RemotePrebidConfig
 import org.audienzz.mobile.testapp.R
 
 /**
@@ -61,14 +66,14 @@ class RemoteConfigStickyFragment : Fragment() {
 
         scrollView = view.findViewById(R.id.remoteConfigScrollView)
 
-        // Section 1 — plain banner (non-sticky)
-        loadBannerInto(view.findViewById(R.id.bannerContainer1), BANNER_CONFIG_ID)
+        // Section 1 — native ad (non-sticky, locally-built config)
+        loadNativeInto(view.findViewById(R.id.bannerContainer1))
 
         // Section 2 — sticky banner
         loadStickyBannerInto(view.findViewById(R.id.stickyContainer1), BANNER_CONFIG_ID)
 
-        // Section 3 — adaptive banner (non-sticky)
-        loadBannerInto(view.findViewById(R.id.bannerContainer2), ADAPTIVE_CONFIG_ID)
+        // Section 3 — native ad (non-sticky, locally-built config)
+        loadNativeInto(view.findViewById(R.id.bannerContainer2))
 
         // Section 4 — sticky banner
         loadStickyBannerInto(view.findViewById(R.id.stickyContainer2), BANNER_CONFIG_ID)
@@ -79,6 +84,43 @@ class RemoteConfigStickyFragment : Fragment() {
     }
 
     // ── Ad loading helpers ─────────────────────────────────────────────────────────────────────
+
+    private fun loadNativeInto(container: FrameLayout) {
+        val nativeView = AudienzzRemoteBannerView(requireContext(), adConfigId = "native-local")
+        nativeView.nativeAdHeightDp = NATIVE_HEIGHT_DP
+        remoteBannerViews += nativeView
+        container.removeAllViews()
+        container.addView(
+            nativeView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        nativeView.loadAdWithConfig(buildNativeConfig())
+    }
+
+    private fun buildNativeConfig() = RemoteAdUnitConfig(
+        id = NATIVE_LOCAL_ID,
+        config = RemoteConfig(
+            adType = "banner",
+            refreshTimeSeconds = NATIVE_REFRESH_SECONDS,
+            prefetchDistanceDp = null,
+            nativeAdConfig = RemoteNativeConfig(
+                enabled = true,
+                heightAndroid = NATIVE_HEIGHT_DP,
+                heightIOS = NATIVE_HEIGHT_DP,
+            ),
+        ),
+        gamConfig = RemoteGamConfig(
+            NATIVE_AD_UNIT_PATH,
+            listOf("300x250"),
+        ),
+        prebidConfig = RemotePrebidConfig(
+            NATIVE_PLACEMENT_ID,
+            listOf("300x250"),
+        ),
+    )
 
     private fun loadBannerInto(container: FrameLayout, configId: String) {
         val banner = AudienzzRemoteBannerView(requireContext(), configId)
@@ -146,5 +188,14 @@ class RemoteConfigStickyFragment : Fragment() {
         const val ADAPTIVE_CONFIG_ID = "48"
         const val INTERSTITIAL_CONFIG_ID = "47"
         const val STICKY_MAX_HEIGHT_DP = 300
+
+        // ── Local native test config (backend can't be changed yet) ──
+        const val NATIVE_LOCAL_ID = 999
+        const val NATIVE_REFRESH_SECONDS = 30
+        const val NATIVE_HEIGHT_DP = 300
+
+        // TODO: confirm the exact ad unit path shown in GAM (network/parent/code).
+        const val NATIVE_AD_UNIT_PATH = "/96628199/de_audienzz.ch_v2/native-test"
+        const val NATIVE_PLACEMENT_ID = "37825204"
     }
 }

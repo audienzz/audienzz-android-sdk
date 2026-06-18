@@ -247,3 +247,5 @@ fun View.lazyAdLoader(
 }
 
 fun Resources.pxToDp(@Px px: Int): Int = (px / displayMetrics.density).toInt()
+
+fun Resources.dpToPx(dp: Int): Int = (dp * displayMetrics.density).toInt()

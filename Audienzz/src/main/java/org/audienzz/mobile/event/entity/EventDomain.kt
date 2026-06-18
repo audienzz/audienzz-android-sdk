@@ -38,6 +38,7 @@ internal enum class AdType(val nameString: String) {
     BANNER("BANNER"),
     INTERSTITIAL("INTERSTITIAL"),
     REWARDED("REWARDED"),
+    NATIVE("NATIVE"),
 }
 
 internal enum class AdSubtype(val nameString: String) {
