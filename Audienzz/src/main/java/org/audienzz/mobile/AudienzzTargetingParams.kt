@@ -387,6 +387,14 @@ object AudienzzTargetingParams {
         setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
     }
 
+    /** Replace the value set for an existing key */
+    @JvmStatic
+    fun updateGlobalTargeting(key: String, value: Set<String>) {
+        CUSTOM_TARGETING_MANAGER.removeCustomTargeting(key)
+        CUSTOM_TARGETING_MANAGER.addCustomTargeting(key, value)
+        setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
+    }
+
     /** Remove targeting for a key */
     @JvmStatic
     fun removeGlobalTargeting(key: String) {
