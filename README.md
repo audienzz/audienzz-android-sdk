@@ -87,8 +87,91 @@ In this way the `load()` or `fetchDemand()` will be postponed until the view is 
 
 The `loadAd()` method, available on classes like `AudienzzAdViewHandler` and `AudienzzInterstitialAdHandler`, initiates the ad loading process.
 When `lazyLoading` is enabled, the SDK intelligently delays this process until the ad view is about to become visible to the user,
-optimizing resource usage and improving performance. 
-It is done with 'ViewTreeObserver.OnPreDrawListener' which triggers ad loading when the view becomes visible. 
+optimizing resource usage and improving performance.
+It is done with `ViewTreeObserver.OnPreDrawListener` which triggers ad loading when the view is within range.
+
+### Prefetch Margin
+
+The correct prefetch mechanism depends on the scroll container your ad lives in:
+
+| Container | Prefetch mechanism | How to configure |
+|---|---|---|
+| `ScrollView` / `NestedScrollView` | Distance-based (dp) | `prefetchMarginDp` on `load()` |
+| `RecyclerView` | Item-count-based | `LinearLayoutManager.setInitialPrefetchItemCount(n)` |
+
+**Why they differ:** In a `ScrollView` all views are laid out and attached to the view hierarchy upfront. The SDK's `ViewTreeObserver.OnPreDrawListener` can therefore detect "this view is now within Ndp of the visible area" at exactly the right scroll position and fire `fetchDemand` precisely N dp ahead.
+
+In a `RecyclerView` views are created and bound on-demand — only just before an item scrolls into view (typically 1 item ahead). By the time `onBindViewHolder` runs and `load()` is called, the view is already within ~40 dp of the viewport regardless of the `prefetchMarginDp` value, so the margin fires immediately and has no practical effect.
+
+#### ScrollView / NestedScrollView
+
+Use `withLazyLoading = true` with `prefetchMarginDp` to control how far ahead loading starts:
+
+```kotlin
+// Default — start loading 200 dp before the view enters the viewport
+AudienzzAdViewHandler(adView = gamAdView, adUnit = audienzzAdUnit)
+    .load(withLazyLoading = true, callback = { request, _ -> gamAdView.loadAd(request) })
+
+// Custom margin — start loading 600 dp ahead
+AudienzzAdViewHandler(adView = gamAdView, adUnit = audienzzAdUnit)
+    .load(withLazyLoading = true, prefetchMarginDp = 600, callback = { request, _ -> gamAdView.loadAd(request) })
+
+// Exact visibility — load only when the view is actually on screen
+AudienzzAdViewHandler(adView = gamAdView, adUnit = audienzzAdUnit)
+    .load(withLazyLoading = true, prefetchMarginDp = 0, callback = { request, _ -> gamAdView.loadAd(request) })
+```
+
+#### RecyclerView
+
+Use `withLazyLoading = false` to load immediately on bind, and control how many items ahead RecyclerView pre-binds with `setInitialPrefetchItemCount`:
+
+```kotlin
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+
+// In your RecyclerView.Adapter
+override fun onBindViewHolder(holder: AdViewHolder, position: Int) {
+    AudienzzAdViewHandler(adView = holder.adView, adUnit = adUnit)
+        .load(withLazyLoading = false, callback = { request, _ -> holder.adView.loadAd(request) })
+}
+
+// Increase how many items RecyclerView pre-binds ahead of the viewport (default is 2)
+(recyclerView.layoutManager as? LinearLayoutManager)?.setInitialPrefetchItemCount(4)
+```
+
+Smart Refresh
+-------
+Smart Refresh makes banner auto-refresh viewport-aware: refresh is paused while the ad is off-screen, and resumes intelligently when it returns.
+
+When the ad scrolls back into view the SDK checks how long it was hidden:
+- **Stale** (hidden ≥ refresh interval) → a new ad is fetched immediately, then normal auto-refresh resumes.
+- **Not stale** (hidden < refresh interval) → the remaining time is waited before the next fetch, then normal auto-refresh resumes.
+
+Enable it by calling `enableSmartRefresh()` on the `AudienzzAdViewHandler` after calling `load()`:
+
+```kotlin
+// Set an auto-refresh interval — required for smart refresh to have any effect
+audienzzAdUnit.setAutoRefreshInterval(30) // seconds (min 30, max 120)
+
+val handler = AudienzzAdViewHandler(
+    adView = gamAdView,
+    adUnit = audienzzAdUnit,
+)
+handler.load(callback = { gamRequest, _ -> gamAdView.loadAd(gamRequest) })
+handler.enableSmartRefresh()
+```
+
+When the fragment or activity is destroyed, disable smart refresh to remove the internal `ViewTreeObserver` listener and avoid memory leaks:
+
+```kotlin
+override fun onDestroyView() {
+    super.onDestroyView()
+    handler.disableSmartRefresh()
+    audienzzAdUnit.destroy()
+}
+```
+
+> **Note:** `enableSmartRefresh()` has no effect if no auto-refresh interval is set on the ad unit (i.e. `setAutoRefreshInterval()` was not called).
 
 API Reference
 ========
@@ -289,9 +372,39 @@ This class handles the loading of ads for a given `AdManagerAdView`.
 
 **Methods:**
 
-| Name   | Parameters                                                                                                               | Description  |
-|--------|--------------------------------------------------------------------------------------------------------------------------|--------------|
-| `load` | `withLazyLoading: Boolean`, `request: AdManagerAdRequest`, `callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit` | Loads an ad. |               
+| Name                  | Parameters                                                                                                                                                                    | Description                                                                                                                                 |
+|-----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| `load`                | `withLazyLoading: Boolean`, `prefetchMarginDp: Int = 200`, `gamRequestBuilder: AdManagerAdRequest.Builder`, `callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit`     | Loads an ad. When `withLazyLoading` is true, loading starts `prefetchMarginDp` dp before the view enters the viewport (default 200 dp; pass 0 for exact-visibility behaviour). |
+| `enableSmartRefresh`  |                                                                                                                                                                               | Enables viewport-aware smart refresh: pauses auto-refresh while off-screen and force-refreshes when the ad returns if the interval elapsed. |
+| `disableSmartRefresh` |                                                                                                                                                                               | Disables smart refresh and removes the visibility listener.                                                                                 |
+
+### `AudienzzStickyAdWrapperView`
+
+A `FrameLayout` that reserves a block of vertical space in the layout and keeps the child ad view pinned within that space — sliding it via `translationY` as the user scrolls — so the ad stays visible for as long as possible before naturally scrolling off-screen.
+
+**Constructor:**
+
+| Name | Parameters | Description |
+|---|---|---|
+| `AudienzzStickyAdWrapperView` | `context: Context`, `attrs: AttributeSet? = null`, `defStyleAttr: Int = 0`, `maxHeightDp: Int = 600` | Creates a sticky wrapper. `maxHeightDp` is the vertical space reserved in the layout (default 600 dp). |
+
+**Properties:**
+
+| Name | Type | Default | Description |
+|---|---|---|---|
+| `maxHeight` | `Int` | converted from `maxHeightDp` | Height in pixels reserved in the layout. Settable at runtime; triggers `requestLayout()`. |
+| `stickyTopOffset` | `Int?` | `null` | Y offset in pixels from the top of the scroll viewport where the ad sticks. `null` resolves to 0. |
+| `isStickyEnabled` | `Boolean` | `true` | Enables or disables sticky positioning at runtime. When `false` the child stays at position 0. |
+| `isVisibilityGateEnabled` | `Boolean` | `false` | When `true`, skips scroll calculations while the wrapper is more than one viewport height off-screen. |
+
+**Methods:**
+
+| Name | Parameters | Description |
+|---|---|---|
+| `setAdView(view: View)` | `view: View` | Sets the ad view to make sticky. Replaces any previously set view. |
+| `attachToScrollView(scrollView: NestedScrollView)` | `scrollView: NestedScrollView` | Attaches sticky scroll tracking to a `NestedScrollView`. |
+| `attachToScrollView(scrollView: ScrollView)` | `scrollView: ScrollView` | Attaches sticky scroll tracking to a standard `ScrollView`. |
+| `detachFromScrollView()` | — | Removes all scroll listeners and stops position updates. Call in `onDestroyView()`. |
 
 ### `AudienzzTargetingParams`
 
@@ -594,6 +707,124 @@ AudienzzPrebidMobile.initializeRemoteSdk(
     }
 }
 ```
+
+Sticky Ad
+========
+
+`AudienzzStickyAdWrapperView` makes any ad view sticky within a scroll view. It reserves a fixed block of vertical space in the layout, and the ad view floats within that space — staying visible as the user scrolls past — before naturally scrolling off-screen once it reaches the edge of the reserved area.
+
+### Layout
+
+Place the wrapper's container inside your `NestedScrollView` (or `ScrollView`) at the position where the ad should appear. The wrapper will reserve exactly `maxHeightDp` pixels of vertical space:
+
+```xml
+<androidx.core.widget.NestedScrollView
+    android:id="@+id/scrollView"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <!-- content above the ad -->
+
+        <FrameLayout
+            android:id="@+id/stickyContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <!-- content that scrolls past the sticky ad -->
+
+    </LinearLayout>
+
+</androidx.core.widget.NestedScrollView>
+```
+
+### Code (Remote Config banner)
+
+```kotlin
+private lateinit var sticky: AudienzzStickyAdWrapperView
+private lateinit var banner: AudienzzRemoteBannerView
+
+private fun loadStickyAd() {
+    // 1. Create the ad view
+    banner = AudienzzRemoteBannerView(requireContext(), "YOUR_CONFIG_ID")
+
+    // Optional: listen to ad events via the underlying banner view
+    banner.setAdListener(object : AdListener() {
+        override fun onAdLoaded() { /* ad ready */ }
+        override fun onAdFailedToLoad(error: LoadAdError) { /* handle error */ }
+    })
+
+    // 2. Create the sticky wrapper
+    sticky = AudienzzStickyAdWrapperView(
+        context = requireContext(),
+        maxHeightDp = 300,  // vertical space reserved in the layout
+    ).apply {
+        setAdView(banner)
+    }
+
+    // 3. Add it to the container
+    binding.stickyContainer.addView(
+        sticky,
+        FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+        ),
+    )
+
+    // 4. Attach to the scroll view and load
+    sticky.attachToScrollView(binding.scrollView)
+    banner.loadAd()
+}
+```
+
+### Code (manual banner)
+
+The wrapper is not limited to remote config ads — it works with any view:
+
+```kotlin
+val gamAdView = AdManagerAdView(context).apply {
+    adUnitId = GAM_AD_UNIT_ID
+    setAdSizes(AdSize(320, 50))
+}
+
+val audienzzAdUnit = AudienzzBannerAdUnit(PREBID_CONFIG_ID, 320, 50)
+
+val sticky = AudienzzStickyAdWrapperView(context, maxHeightDp = 150).apply {
+    setAdView(gamAdView)
+}
+
+binding.stickyContainer.addView(sticky, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+sticky.attachToScrollView(binding.scrollView)
+
+AudienzzAdViewHandler(adView = gamAdView, adUnit = audienzzAdUnit)
+    .load(callback = { request, _ -> gamAdView.loadAd(request) })
+```
+
+### Cleanup
+
+Always detach the wrapper and destroy the ad view when the fragment or activity is destroyed to avoid memory leaks:
+
+```kotlin
+override fun onDestroyView() {
+    sticky.detachFromScrollView()
+    banner.destroy()
+    super.onDestroyView()
+}
+```
+
+### Configuration options
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `maxHeightDp` | `Int` (constructor) | `600` | Vertical space reserved in the layout in dp. |
+| `maxHeight` | `Int` (property) | converted from `maxHeightDp` | Same as above but in pixels; settable at runtime. |
+| `stickyTopOffset` | `Int?` | `null` (= 0) | Y offset in pixels from the top of the viewport where the ad sticks. Use this to account for a toolbar or status bar. |
+| `isStickyEnabled` | `Boolean` | `true` | Disable sticky positioning at runtime without removing the view. |
+| `isVisibilityGateEnabled` | `Boolean` | `false` | Skip position calculations when the wrapper is more than one screen-height away from the viewport. Enable for pages with many ads. |
 
 Troubleshooting
 ========

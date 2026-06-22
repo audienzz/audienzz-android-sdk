@@ -23,6 +23,7 @@ class OriginalApiVideoBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     override val titleRes = R.string.original_api_video_banner_title
 
     private var adUnit: AudienzzBannerAdUnit? = null
+    private var adViewHandler: AudienzzAdViewHandler? = null
 
     override fun createAds() {
         AudienzzPrebidMobile.getAdUnitConfig(BANNER_CONFIG_ID) { config ->
@@ -38,6 +39,7 @@ class OriginalApiVideoBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
                 EnumSet.of(AudienzzAdUnitFormat.VIDEO),
             )
             adUnit?.videoParameters = configureVideoParameters()
+            adUnit?.setAutoRefreshInterval(config.config.refreshTimeSeconds ?: DEFAULT_REFRESH_TIME)
 
             val adView = AdManagerAdView(adContainer.context)
             adView.adUnitId = gamPath
@@ -52,13 +54,22 @@ class OriginalApiVideoBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
             adContainer.addView(adView)
             addBottomMargin(adView)
 
-            AudienzzAdViewHandler(
+            val handler = AudienzzAdViewHandler(
                 adView = adView,
                 adUnit = adUnit!!,
-            ).load(callback = { request, resultCode ->
-                showFetchErrorDialog(adContainer.context, resultCode)
-                adView.loadAd(request)
-            })
+            )
+            adViewHandler = handler
+            // withLazyLoading = false: this view lives inside a RecyclerView cell which is
+            // only created just before it appears — prefetchMarginDp has no effect here.
+            // RecyclerView's own prefetch (setInitialPrefetchItemCount) handles early creation.
+            handler.load(
+                withLazyLoading = false,
+                callback = { request, resultCode ->
+                    showFetchErrorDialog(adContainer.context, resultCode)
+                    adView.loadAd(request)
+                },
+            )
+            handler.enableSmartRefresh()
         }
     }
 
@@ -67,6 +78,7 @@ class OriginalApiVideoBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
             api = listOf(
                 AudienzzSignals.Api.VPAID_1,
                 AudienzzSignals.Api.VPAID_2,
+                AudienzzSignals.Api.OMID_1,
             )
             maxBitrate = VideoConstants.MAX_BITRATE
             minBitrate = VideoConstants.MIN_BITRATE
@@ -103,6 +115,8 @@ class OriginalApiVideoBannerAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
     }
 
     override fun onDetach() {
+        adViewHandler?.disableSmartRefresh()
+        adViewHandler = null
         adUnit?.stopAutoRefresh()
     }
 

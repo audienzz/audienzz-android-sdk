@@ -9,6 +9,7 @@ data class AudienzzBannerParameters internal constructor(
     init {
         if (prebidBannerParameters.api == null) {
             prebidBannerParameters.api = listOf(
+                AudienzzSignals.Api.MRAID_1,
                 AudienzzSignals.Api.MRAID_2,
                 AudienzzSignals.Api.MRAID_3,
                 AudienzzSignals.Api.OMID_1,

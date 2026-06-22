@@ -20,7 +20,6 @@ class MainActivity : AppCompatActivity() {
         setupTabs()
     }
 
-
     private fun setupTabs() {
         val adapter = TabPagerAdapter(this)
         binding.viewPager.adapter = adapter
@@ -30,7 +29,8 @@ class MainActivity : AppCompatActivity() {
                 0 -> "Ads page"
                 1 -> "Targeting page"
                 2 -> "Remote Config"
-                3 -> "Sticky Ad"
+                3 -> "Legacy (v0.0.13)"
+                4 -> "Non-Remote"
                 else -> "Tab ${position + 1}"
             }
         }.attach()
@@ -38,15 +38,15 @@ class MainActivity : AppCompatActivity() {
 }
 
 class TabPagerAdapter(fragmentActivity: FragmentActivity) : FragmentStateAdapter(fragmentActivity) {
-    override fun getItemCount(): Int = 4
+    override fun getItemCount(): Int = 5
 
     override fun createFragment(position: Int): Fragment {
         return when (position) {
             0 -> AdsPageFragment()
             1 -> TargetingPageFragment()
-            2 -> RemoteConfigFragment()
-            3 -> StickyAdFragment()
-//            4 -> NativePageFragment()
+            2 -> RemoteConfigStickyFragment()
+            3 -> LegacyAdsPageFragment()
+            4 -> NonRemoteBannersFragment()
             else -> AdsPageFragment()
         }
     }

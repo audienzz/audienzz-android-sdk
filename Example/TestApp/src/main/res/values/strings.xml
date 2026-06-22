@@ -11,6 +11,8 @@
     <string name="original_api_native_styles_title">Original API Native styles Ad</string>
     <string name="original_api_in_app_title">Original API In App Ad</string>
     <string name="original_api_unfilled">Original API Unfilled Ad</string>
+    <string name="original_api_lazy_prefetch_banner_title">Original API Banner (Lazy Load + Smart Refresh)</string>
+    <string name="non_remote_banner_title">Non-Remote Banner (Standard Load)</string>
     <string name="remote_config_banner_title">Remote Config API Banner</string>
 
     <string name="rendering_api_banner_title">Rendering API HTML Banner</string>

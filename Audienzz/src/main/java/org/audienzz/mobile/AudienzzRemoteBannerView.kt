@@ -40,6 +40,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
 
     private var adUnit: AudienzzBannerAdUnit? = null
     private var adView: AdManagerAdView? = null
+    private var adViewHandler: AudienzzAdViewHandler? = null
     private var externalAdListener: AdListener? = null
 
     init {
@@ -55,6 +56,8 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     }
 
     fun destroy() {
+        adViewHandler?.disableSmartRefresh()
+        adViewHandler = null
         adUnit?.stopAutoRefresh()
         adUnit = null
         adView?.destroy()
@@ -170,6 +173,8 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
 
         val parameters = AudienzzBannerParameters().apply {
             api = listOf(
+                AudienzzSignals.Api.MRAID_1,
+                AudienzzSignals.Api.MRAID_2,
                 AudienzzSignals.Api.MRAID_3,
                 AudienzzSignals.Api.OMID_1,
             )
@@ -182,20 +187,24 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         ).apply {
             bannerParameters = parameters
 
-            config.config.refreshTimeSeconds?.let { seconds ->
-                setAutoRefreshInterval(seconds)
-            }
+            setAutoRefreshInterval(config.config.refreshTimeSeconds ?: DEFAULT_REFRESH_SECONDS)
         }
 
         adUnit = adUnitLocal
 
-        AudienzzAdViewHandler(
+        val handler = AudienzzAdViewHandler(
             adView = adViewLocal,
             adUnit = adUnitLocal,
-        ).load(withLazyLoading = false) { request, resultCode ->
+        )
+        adViewHandler = handler
+        handler.load(
+            withLazyLoading = true,
+            prefetchMarginDp = config.config.prefetchDistanceDp ?: DEFAULT_PREFETCH_DISTANCE_DP,
+        ) { request, resultCode ->
             Log.d(TAG, "Ad request prepared, resultCode=${resultCode ?: "unknown"}")
             adViewLocal.loadAd(request)
         }
+        handler.enableSmartRefresh()
     }
 
     private fun createAdListener() = object : AdListener() {
@@ -240,5 +249,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
 
     companion object {
         private const val TAG = "AudienzzRemoteConfigBannerView"
+        private const val DEFAULT_REFRESH_SECONDS = 30
+        private const val DEFAULT_PREFETCH_DISTANCE_DP = 200
     }
 }

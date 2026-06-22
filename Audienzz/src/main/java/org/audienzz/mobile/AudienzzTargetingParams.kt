@@ -2,6 +2,7 @@ package org.audienzz.mobile
 
 import CustomTargetingManager
 import android.util.Pair
+import org.audienzz.BuildConfig
 import org.audienzz.mobile.rendering.models.openrtb.bidRequests.AudienzzExt
 import org.json.JSONObject
 import org.prebid.mobile.ExternalUserId
@@ -14,7 +15,10 @@ import org.prebid.mobile.TargetingParams
  */
 @Suppress("TooManyFunctions")
 object AudienzzTargetingParams {
-    internal val CUSTOM_TARGETING_MANAGER = CustomTargetingManager()
+    internal val CUSTOM_TARGETING_MANAGER = CustomTargetingManager(
+        sdkPlatform = "android",
+        sdkVersion = BuildConfig.AUDIENZZ_SDK_VERSION,
+    )
 
     /**
      * User latitude and longitude
@@ -333,7 +337,7 @@ object AudienzzTargetingParams {
     fun setGlobalOrtbConfig(ortbConfig: JSONObject) {
         val schainObject = AudienzzPrebidMobile.schainObject
 
-        val config: JSONObject = if (schainObject != null) {
+        var config: JSONObject = if (schainObject != null) {
             AudienzzUtil.mergeJsonObjects(
                 schainObject,
                 ortbConfig,
@@ -341,7 +345,32 @@ object AudienzzTargetingParams {
         } else {
             ortbConfig
         }
+
+        // Always embed Audienzz SDK metadata in app.ext.audienzz so every
+        // Prebid request carries the SDK identifier and version.
+        config = AudienzzUtil.mergeJsonObjects(config, SDK_META_ORTB)
+
         TargetingParams.setGlobalOrtbConfig(config.toString())
+    }
+
+    private val SDK_META_ORTB: JSONObject = JSONObject().apply {
+        put(
+            "app",
+            JSONObject().apply {
+                put(
+                    "ext",
+                    JSONObject().apply {
+                        put(
+                            "audienzz",
+                            JSONObject().apply {
+                                put("sdk", "android")
+                                put("v", BuildConfig.AUDIENZZ_SDK_VERSION)
+                            },
+                        )
+                    },
+                )
+            },
+        )
     }
 
     /** Add a key-value global targeting */

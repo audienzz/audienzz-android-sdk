@@ -290,6 +290,8 @@ object AudienzzPrebidMobile {
         customStatusEndpoint = "https://ib.adnxs.com/status"
         isShareGeoLocation = true
         enabledAssignNativeAssetId = true
+        AudienzzTargetingParams.omidPartnerName = "Google"
+        AudienzzTargetingParams.omidPartnerVersion = MobileAds.getVersion().toString()
     }
 
     private fun getPrebidMobilePluginRendererCached(
@@ -303,8 +305,6 @@ object AudienzzPrebidMobile {
 
     /**
      * Initializes the main SDK classes and makes request to Prebid server to check its status.
-     * You have to set host url ({@link PrebidMobile#setPrebidServerHost(Host)}) before calling
-     * this method.
      * If you use custom /status endpoint set it with
      * ({@link PrebidMobile#setCustomStatusEndpoint(String)}) before starting initialization.
      * <p>
@@ -384,8 +384,9 @@ object AudienzzPrebidMobile {
                 companyId = publisherConfig?.ortbConfig?.schainConfig?.sellerId ?: "1"
 
                 val baseUrl = publisherConfig?.prebidServerConfig?.url ?: audienzzHost.hostUrl
-                val prebidServerUrl = if (isPbsDebug && !baseUrl.contains("test=1")) {
-                    if (baseUrl.contains("?")) "$baseUrl&test=1" else "$baseUrl?test=1"
+                val prebidServerUrl = if (isPbsDebug) {
+                    val sep = if (baseUrl.contains("?")) "&" else "?"
+                    if (baseUrl.contains("test=1")) baseUrl else "$baseUrl${sep}test=1"
                 } else {
                     baseUrl
                 }

@@ -1,7 +1,11 @@
+import android.util.Log
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import org.json.JSONObject
 
-class CustomTargetingManager {
+class CustomTargetingManager(
+    private val sdkPlatform: String = "android",
+    private val sdkVersion: String = "",
+) {
     private val targetingMap = mutableMapOf<String, String>()
 
     /** Add single key-value targeting */
@@ -69,6 +73,14 @@ class CustomTargetingManager {
     fun applyToGamRequestBuilder(
         requestBuilder: AdManagerAdRequest.Builder,
     ): AdManagerAdRequest.Builder {
+        // Always inject SDK metadata first so it is present in every GAM request
+        // regardless of whether the publisher configured any custom targeting.
+        // These values are used for GAM reporting and version-based line-item targeting.
+        requestBuilder.addCustomTargeting("au_sdk", sdkPlatform)
+        if (sdkVersion.isNotEmpty()) {
+            requestBuilder.addCustomTargeting("au_v", sdkVersion)
+        }
+
         targetingMap.forEach { (key, value) ->
             if (value.contains(",")) {
                 requestBuilder.addCustomTargeting(key, value.split(","))
@@ -76,6 +88,16 @@ class CustomTargetingManager {
                 requestBuilder.addCustomTargeting(key, value)
             }
         }
+
+        Log.d(TAG, "GAM custom targeting applied:")
+        Log.d(TAG, "  au_sdk = $sdkPlatform")
+        if (sdkVersion.isNotEmpty()) Log.d(TAG, "  au_v   = $sdkVersion")
+        targetingMap.forEach { (key, value) -> Log.d(TAG, "  $key = $value") }
+
         return requestBuilder
+    }
+
+    private companion object {
+        const val TAG = "AUCustomTargeting"
     }
 }

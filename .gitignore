@@ -79,3 +79,7 @@ captures/
 .idea/AndroidProjectSystem.xml
 .idea/deploymentTargetSelector.xml
 /.idea
+
+### Internal planning docs (not shipped)
+ANALYTICS_PLAN.md
+ANALYTICS_LIFECYCLE.md

@@ -1,3 +1,6 @@
+// This fragment is an exact copy of AdsPageFragment.kt from SDK tag v0.0.13.
+// Used to verify backward compatibility — does not set initialPrefetchItemCount
+// and does not include HOLDER_TYPE_LAZY_PREFETCH_BANNER in the ad list.
 package org.audienzz.mobile.testapp.view
 
 import android.os.Bundle
@@ -8,22 +11,24 @@ import android.view.ViewGroup
 import androidx.core.view.isVisible
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
-import androidx.recyclerview.widget.LinearLayoutManager
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzPrebidMobile.setSchainObject
 import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.api.data.AudienzzInitializationStatus
-import org.audienzz.mobile.testapp.AdPreferences
 import org.audienzz.mobile.testapp.App
 import org.audienzz.mobile.testapp.BuildConfig
-import org.audienzz.mobile.testapp.adapter.AdsAdapter
-import org.audienzz.mobile.testapp.adapter.AdsAdapter.Companion.HOLDER_TYPE_DEFAULT
+import org.audienzz.mobile.testapp.adapter.LegacyAdsAdapter
+import org.audienzz.mobile.testapp.adapter.LegacyAdsAdapter.Companion.HOLDER_TYPE_DEFAULT
+import org.audienzz.mobile.testapp.adapter.LegacyAdsAdapter.Companion.HOLDER_TYPE_HTML_BANNER_ADS
+import org.audienzz.mobile.testapp.adapter.LegacyAdsAdapter.Companion.HOLDER_TYPE_INTERSTITIAL_ADS
+import org.audienzz.mobile.testapp.adapter.LegacyAdsAdapter.Companion.HOLDER_TYPE_REWARDED_AD
+import org.audienzz.mobile.testapp.adapter.LegacyAdsAdapter.Companion.HOLDER_TYPE_UNFILLED_AD
 import org.audienzz.mobile.testapp.databinding.AdsPageFragmentBinding
 import org.audienzz.mobile.util.remote.RemoteConfigManager
 
-class AdsPageFragment : Fragment() {
+class LegacyAdsPageFragment : Fragment() {
 
-    private lateinit var adapter: AdsAdapter
+    private lateinit var adapter: LegacyAdsAdapter
     private lateinit var binding: AdsPageFragmentBinding
 
     override fun onCreateView(
@@ -40,39 +45,26 @@ class AdsPageFragment : Fragment() {
         return binding.root
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (AudienzzPrebidMobile.isSdkInitialized) {
-            activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
-        }
-    }
-
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
         binding.progressBar.isVisible = true
 
-        adapter = AdsAdapter()
+        adapter = LegacyAdsAdapter()
         binding.list.adapter = adapter
 
-        // Pre-bind 3 items beyond the last visible one so that ad demand fetches
-        // (withLazyLoading = false) complete before the item scrolls into view.
-        // Ad cells are tall (~300 dp), so 3 is enough to keep a useful prefetch buffer
-        // without wasting memory on off-screen work.
-        (binding.list.layoutManager as? LinearLayoutManager)?.initialPrefetchItemCount = 3
+        // NOTE: initialPrefetchItemCount is NOT set here — this is the v0.0.13 behaviour.
 
         initSdk()
 
         binding.hideAllButton.setOnClickListener {
-            AdPreferences.setAllAdTypesEnabled(requireContext(), false)
-            adapter.submitList(AdPreferences.getAllAdTypes().toList()) {
+            adapter.submitList(emptyList()) {
                 binding.list.scrollToPosition(0)
             }
         }
 
         binding.showAllButton.setOnClickListener {
-            AdPreferences.setAllAdTypesEnabled(requireContext(), true)
-            adapter.submitList(createMockData().toList()) {
+            adapter.submitList(createMockData()) {
                 binding.list.scrollToPosition(0)
             }
         }
@@ -82,10 +74,7 @@ class AdsPageFragment : Fragment() {
 
     private fun initSdk() {
         if (AudienzzPrebidMobile.isSdkInitialized) {
-            // NOTE: isSubjectToGDPR intentionally unset in test app.
-            // Without a real CMP the consent string is empty, which causes DSPs to refuse to bid.
-            // In production, a CMP writes IABTCF_TCString / IABTCF_gdprApplies to SharedPrefs
-            // and you should NOT override them here.
+            AudienzzTargetingParams.isSubjectToGDPR = true
             binding.progressBar.isVisible = false
             adapter.submitList(createMockData())
             return
@@ -120,20 +109,12 @@ class AdsPageFragment : Fragment() {
 
     private fun handleInitializationStatus(status: AudienzzInitializationStatus) {
         if (status == AudienzzInitializationStatus.SUCCEEDED) {
-            // Override bundle/storeUrl set by remote config (com.example.app) with real app package
-            AudienzzTargetingParams.bundleName = requireContext().packageName
-            AudienzzTargetingParams.storeUrl =
-                "https://play.google.com/store/apps/details?id=${requireContext().packageName}"
-            // NOTE: isSubjectToGDPR intentionally unset in test app.
-            // Without a real CMP the consent string is empty, which causes DSPs to refuse to bid.
-            // In production, a CMP writes IABTCF_TCString / IABTCF_gdprApplies to SharedPrefs
-            // and you should NOT override them here.
+            AudienzzTargetingParams.isSubjectToGDPR = true
             adapter.submitList(createMockData())
             binding.progressBar.isVisible = false
-            activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
             setSchainObject(
                 """
-                    { "source": 
+                    { "source":
                         { "schain": {
                             "ver": "1.0",
                             "complete": 1,
@@ -145,7 +126,7 @@ class AdsPageFragment : Fragment() {
                                 }
                               ]
                             }
-                        } 
+                        }
                     }
                 """.trimMargin(),
             )
@@ -156,13 +137,17 @@ class AdsPageFragment : Fragment() {
         }
     }
 
-    private fun createMockData(): List<Int> {
-        val enabledAdTypes = AdPreferences.getEnabledAdTypes(requireContext())
-        return buildList {
-            addAll(enabledAdTypes)
-            addAll(List(50) { HOLDER_TYPE_DEFAULT })
-            addAll(enabledAdTypes)
-        }
+    // v0.0.13 ad list — no HOLDER_TYPE_LAZY_PREFETCH_BANNER
+    private fun createMockData(): List<Int> = buildList {
+        add(HOLDER_TYPE_HTML_BANNER_ADS)
+        add(HOLDER_TYPE_INTERSTITIAL_ADS)
+        add(HOLDER_TYPE_REWARDED_AD)
+        add(HOLDER_TYPE_UNFILLED_AD)
+        addAll(List(50) { HOLDER_TYPE_DEFAULT })
+        add(HOLDER_TYPE_HTML_BANNER_ADS)
+        add(HOLDER_TYPE_INTERSTITIAL_ADS)
+        add(HOLDER_TYPE_REWARDED_AD)
+        add(HOLDER_TYPE_UNFILLED_AD)
     }
 
     companion object {
