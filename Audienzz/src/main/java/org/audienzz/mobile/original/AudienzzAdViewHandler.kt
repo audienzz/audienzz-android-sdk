@@ -6,6 +6,7 @@ import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import com.google.android.gms.ads.admanager.AdManagerAdView
+import com.google.android.gms.ads.admanager.AppEventListener
 import org.audienzz.mobile.AudienzzAdUnit
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
@@ -35,6 +36,21 @@ class AudienzzAdViewHandler(
 ) {
     companion object {
         private const val TAG = "AudienzzAdViewHandler"
+
+        /** Prebid targeting key carrying the winning bidder of the Prebid auction. */
+        private const val HB_BIDDER_KEY = "hb_bidder"
+
+        /**
+         * App-event name the GAM Prebid line item must send when it wins. If your GAM line item
+         * uses a different key, change it here.
+         */
+        private const val PREBID_APP_EVENT = "Prebid"
+
+        /** Fallback bidder_code when the Prebid line item won but hb_bidder was unavailable. */
+        private const val PREBID_BIDDER = "prebid"
+
+        /** bidder_code reported when the ad server (Google/AdX/direct) rendered instead of Prebid. */
+        private const val AD_SERVER_BIDDER = "google"
     }
 
     private var isFirstDemandFetch = true
@@ -49,6 +65,12 @@ class AudienzzAdViewHandler(
 
     // Viewability tracking (viewability.start / viewability.success)
     private var viewabilityTracker: ViewabilityTracker? = null
+
+    // Render-winner detection (bidder_code / winner_bidder_code on adImpression).
+    // prebidWinningBidder = hb_bidder from the Prebid auction; prebidLineItemWon is flipped true
+    // when the GAM Prebid line item announces itself via an app event. Both reset per auction.
+    private var prebidWinningBidder: String? = null
+    private var prebidLineItemWon: Boolean = false
 
     /**
      * Executes ad loading if no request is running.
@@ -263,6 +285,10 @@ class AudienzzAdViewHandler(
         isFirstDemandFetch = false
         Log.d(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — isRefresh=$isRefresh, autorefresh=${autorefreshTime}ms")
 
+        // New auction → reset render-winner state until the bid result / GAM report back.
+        prebidLineItemWon = false
+        prebidWinningBidder = null
+
         eventLogger?.bidRequest(
             adViewId = adView.adViewId,
             adUnitId = adView.adUnitId,
@@ -291,6 +317,7 @@ class AudienzzAdViewHandler(
                 resultCode = resultCode?.toString(),
             )
             if (resultCode == AudienzzResultCode.SUCCESS) {
+                prebidWinningBidder = request.prebidKeyword(HB_BIDDER_KEY)
                 eventLogger?.bidWon(
                     adViewId = adView.adViewId,
                     adUnitId = adView.adUnitId,
@@ -321,6 +348,18 @@ class AudienzzAdViewHandler(
     }
 
     private fun setEventsListenerToAdView() {
+        // GAM fires an app event when the Prebid line item wins the ad-server auction; absence of
+        // it by impression time means a non-Prebid (Google/ad-server) creative rendered. Chain any
+        // listener the publisher already set.
+        val actualAppEventListener = adView.appEventListener
+        adView.appEventListener = AppEventListener { name, info ->
+            actualAppEventListener?.onAppEvent(name, info)
+            if (name.equals(PREBID_APP_EVENT, ignoreCase = true)) {
+                Log.d(TAG, "onAppEvent($name) — Prebid line item won for ${adView.adUnitId}")
+                prebidLineItemWon = true
+            }
+        }
+
         val actualListener: AdListener? = adView.adListener
         adView.adListener = object : AdListener() {
 
@@ -343,11 +382,14 @@ class AudienzzAdViewHandler(
 
             override fun onAdImpression() {
                 actualListener?.onAdImpression()
+                val bidder = resolveBidderCode()
                 eventLogger?.adImpression(
                     adUnitId = adView.adUnitId,
                     adType = AdType.BANNER,
                     adSubtype = adUnit.adFormats.adSubtype,
                     apiType = ApiType.ORIGINAL,
+                    bidderCode = bidder,
+                    winnerBidderCode = bidder,
                 )
                 startViewabilityTracking()
             }
@@ -388,5 +430,29 @@ class AudienzzAdViewHandler(
             },
         ).also { viewabilityTracker = it }
         tracker.start()
+    }
+
+    /**
+     * Resolves which demand actually rendered in GAM, for `bidder_code` / `winner_bidder_code`:
+     * - Prebid line item won (the GAM app event fired) → the Prebid winning bidder (`hb_bidder`)
+     * - otherwise → the ad server ([AD_SERVER_BIDDER], i.e. Google/AdX/direct)
+     *
+     * **Reliability:** the Prebid case depends on the GAM Prebid line item being configured to emit
+     * an app event named [PREBID_APP_EVENT]. Without that adops setup, every render is attributed to
+     * [AD_SERVER_BIDDER]. `ResponseInfo` is read only for diagnostic logging.
+     */
+    private fun resolveBidderCode(): String =
+        if (prebidLineItemWon) {
+            prebidWinningBidder ?: PREBID_BIDDER
+        } else {
+            adView.responseInfo?.loadedAdapterResponseInfo?.adSourceName?.let { adSource ->
+                Log.d(TAG, "adImpression — ad server rendered for ${adView.adUnitId}, adSource=$adSource")
+            }
+            AD_SERVER_BIDDER
+        }
+
+    private fun AdManagerAdRequest.prebidKeyword(key: String): String? {
+        customTargeting?.getString(key)?.let { return it }
+        return keywords.firstOrNull { it.startsWith("$key:") }?.substringAfter(":")
     }
 }

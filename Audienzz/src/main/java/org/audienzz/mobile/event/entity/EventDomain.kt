@@ -25,6 +25,8 @@ internal data class EventDomain(
     val apiType: ApiType? = null,
     val errorMessage: String? = null,
     val screenName: String? = null,
+    val bidderCode: String? = null,
+    val winnerBidderCode: String? = null,
 )
 
 internal enum class EventType(val nameString: String) {

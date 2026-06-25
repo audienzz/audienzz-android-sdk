@@ -147,6 +147,8 @@ internal fun EventLogger.adImpression(
     adType: AdType,
     adSubtype: AdSubtype,
     apiType: ApiType,
+    bidderCode: String? = null,
+    winnerBidderCode: String? = null,
 ) {
     logEvent(
         EventDomain(
@@ -155,6 +157,8 @@ internal fun EventLogger.adImpression(
             adType = adType,
             adSubtype = adSubtype,
             apiType = apiType,
+            bidderCode = bidderCode,
+            winnerBidderCode = winnerBidderCode,
         ),
     )
 }
