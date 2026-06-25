@@ -34,9 +34,9 @@ internal enum class EventType(val nameString: String) {
     BID_WON("bidWon"),
     NO_BID("noBid"),
     AD_IMPRESSION("adImpression"),
-    AD_VIEW("adView"),
     AD_CLICK("adClick"),
-    VIEWABILITY_MEASURED("viewabilityMeasured"),
+    VIEWABILITY_START("viewability.start"),
+    VIEWABILITY_SUCCESS("viewability.success"),
 }
 
 internal enum class AdType(val nameString: String) {

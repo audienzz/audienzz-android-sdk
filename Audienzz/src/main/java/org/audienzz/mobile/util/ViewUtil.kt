@@ -36,7 +36,7 @@ private fun View.getGlobalVisibleRectIgnoringSize(outRect: Rect): Boolean {
  *
  * Returns 0 if the view is GONE/INVISIBLE, not yet measured, or fully off-screen.
  */
-private fun View.visibleHeightFraction(): Float {
+internal fun View.visibleHeightFraction(): Float {
     if (visibility != View.VISIBLE) return 0f
     val totalHeight = measuredHeight
     if (totalHeight <= 0) return 0f

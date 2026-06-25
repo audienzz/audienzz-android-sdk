@@ -21,6 +21,9 @@ import org.audienzz.mobile.event.eventLogger
 import org.audienzz.mobile.event.headerLoaded
 import org.audienzz.mobile.event.noBid
 import org.audienzz.mobile.event.util.adSubtype
+import org.audienzz.mobile.event.viewabilityStart
+import org.audienzz.mobile.event.viewabilitySuccess
+import org.audienzz.mobile.util.ViewabilityTracker
 import org.audienzz.mobile.util.addContinuousVisibilityListener
 import org.audienzz.mobile.util.adViewId
 import org.audienzz.mobile.util.addOnBecameVisibleOnScreenListener
@@ -44,6 +47,9 @@ class AudienzzAdViewHandler(
     private var pendingRefreshRunnable: Runnable? = null
     private var storedRequest: AdManagerAdRequest? = null
     private var storedCallback: ((AdManagerAdRequest, AudienzzResultCode?) -> Unit)? = null
+
+    // Viewability tracking (viewability.start / viewability.success)
+    private var viewabilityTracker: ViewabilityTracker? = null
 
     init {
         eventLogger?.headerLoaded(
@@ -254,6 +260,9 @@ class AudienzzAdViewHandler(
         smartRefreshListener = null
         pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
         pendingRefreshRunnable = null
+        // disableSmartRefresh() is the teardown hook called from the ad view's destroy().
+        viewabilityTracker?.stop()
+        viewabilityTracker = null
     }
 
     private fun fetchDemand(
@@ -352,6 +361,7 @@ class AudienzzAdViewHandler(
                     adSubtype = adUnit.adFormats.adSubtype,
                     apiType = ApiType.ORIGINAL,
                 )
+                startViewabilityTracking()
             }
 
             override fun onAdFailedToLoad(error: LoadAdError) {
@@ -362,5 +372,33 @@ class AudienzzAdViewHandler(
                 actualListener?.onAdSwipeGestureClicked()
             }
         }
+    }
+
+    /**
+     * Starts (or restarts, on a refreshed creative) viewability tracking for the rendered ad.
+     * Fires `viewability.start` when the banner first becomes ≥50% visible and
+     * `viewability.success` once it stays ≥50% visible for one continuous second.
+     */
+    private fun startViewabilityTracking() {
+        val tracker = viewabilityTracker ?: ViewabilityTracker(
+            view = adView,
+            onStart = {
+                eventLogger?.viewabilityStart(
+                    adUnitId = adView.adUnitId,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                )
+            },
+            onSuccess = {
+                eventLogger?.viewabilitySuccess(
+                    adUnitId = adView.adUnitId,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                )
+            },
+        ).also { viewabilityTracker = it }
+        tracker.start()
     }
 }

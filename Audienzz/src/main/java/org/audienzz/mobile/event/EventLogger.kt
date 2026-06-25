@@ -7,12 +7,13 @@ import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.entity.EventDomain
 import org.audienzz.mobile.event.entity.EventType.AD_CLICK
 import org.audienzz.mobile.event.entity.EventType.AD_IMPRESSION
-import org.audienzz.mobile.event.entity.EventType.AD_VIEW
 import org.audienzz.mobile.event.entity.EventType.BID_REQUEST
 import org.audienzz.mobile.event.entity.EventType.BID_RESPONSE
 import org.audienzz.mobile.event.entity.EventType.BID_WON
 import org.audienzz.mobile.event.entity.EventType.HEADER_LOADED
 import org.audienzz.mobile.event.entity.EventType.NO_BID
+import org.audienzz.mobile.event.entity.EventType.VIEWABILITY_START
+import org.audienzz.mobile.event.entity.EventType.VIEWABILITY_SUCCESS
 
 internal interface EventLogger {
 
@@ -180,7 +181,7 @@ internal fun EventLogger.adImpression(
     )
 }
 
-internal fun EventLogger.adView(
+internal fun EventLogger.viewabilityStart(
     adUnitId: String,
     adType: AdType,
     adSubtype: AdSubtype,
@@ -188,7 +189,24 @@ internal fun EventLogger.adView(
 ) {
     logEvent(
         EventDomain(
-            eventType = AD_VIEW,
+            eventType = VIEWABILITY_START,
+            adUnitId = adUnitId,
+            adType = adType,
+            adSubtype = adSubtype,
+            apiType = apiType,
+        ),
+    )
+}
+
+internal fun EventLogger.viewabilitySuccess(
+    adUnitId: String,
+    adType: AdType,
+    adSubtype: AdSubtype,
+    apiType: ApiType,
+) {
+    logEvent(
+        EventDomain(
+            eventType = VIEWABILITY_SUCCESS,
             adUnitId = adUnitId,
             adType = adType,
             adSubtype = adSubtype,
