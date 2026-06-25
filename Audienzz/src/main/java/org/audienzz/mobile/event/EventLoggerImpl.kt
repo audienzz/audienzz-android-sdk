@@ -16,6 +16,7 @@ import org.audienzz.mobile.event.id.CompanyIdProvider
 import org.audienzz.mobile.event.preferences.EventPreferences
 import org.audienzz.mobile.event.repository.remote.RemoteEventRepository
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,6 +31,10 @@ internal class EventLoggerImpl @Inject constructor(
 
     private val sessionId = generateUuidString()
     private val sessionStartTimestamp = System.currentTimeMillis()
+
+    // Monotonic per-session counter so the backend can order events regardless of the
+    // order in which the async POSTs actually arrive. Starts at 0, +1 per logged event.
+    private val sessionSequence = AtomicInteger(0)
 
     @Volatile
     private var currentPageImpressionId: String? = null
@@ -60,8 +65,10 @@ internal class EventLoggerImpl @Inject constructor(
     }
 
     override fun logEvent(event: EventDomain) {
+        // Assign the sequence synchronously, in call order, before the coroutine launches.
+        val sequencedEvent = event.copy(sessionSequence = sessionSequence.getAndIncrement())
         launch {
-            val eventWithIds = event.injectIds()
+            val eventWithIds = sequencedEvent.injectIds()
             Log.d(TAG, "logEvent: $eventWithIds")
             try {
                 remoteRepository.submit(eventWithIds)

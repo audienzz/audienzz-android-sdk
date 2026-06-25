@@ -31,6 +31,7 @@ internal class EventNetworkMapper @Inject constructor(
             pageImpressionId = event.pageImpressionId,
             sessionId = event.sessionId,
             sessionStartTimestamp = event.sessionStartTimestamp,
+            sessionSequence = event.sessionSequence ?: 0,
             eventTimestamp = dateFormatter.format(Date(event.timestamp)),
             locale = Locale.getDefault().toLanguageTag(),
             zoneOffsetSeconds = zoneOffsetSeconds,

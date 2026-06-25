@@ -12,6 +12,7 @@ data class EventNetwork(
     @SerialName("page_impression_id") val pageImpressionId: String?,
     @SerialName("session_id") val sessionId: String?,
     @SerialName("session_start_timestamp") val sessionStartTimestamp: Long?,
+    @SerialName("session_sequence") val sessionSequence: Int,
     @SerialName("event_timestamp") val eventTimestamp: String,
     @SerialName("locale") val locale: String,
     @SerialName("zone_offset_seconds") val zoneOffsetSeconds: Int,

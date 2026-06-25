@@ -7,6 +7,7 @@ internal data class EventDomain(
     val companyId: String? = null,
     val sessionId: String? = null,
     val sessionStartTimestamp: Long? = null,
+    val sessionSequence: Int? = null,
     val deviceId: String? = null,
     val pageImpressionId: String? = null,
     val eventType: EventType? = null,
