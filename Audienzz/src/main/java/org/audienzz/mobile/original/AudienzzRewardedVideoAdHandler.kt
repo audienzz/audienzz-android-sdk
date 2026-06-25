@@ -18,7 +18,6 @@ import org.audienzz.mobile.event.entity.AdSubtype
 import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
-import org.audienzz.mobile.event.headerLoaded
 import org.audienzz.mobile.event.noBid
 import org.audienzz.mobile.original.callbacks.AudienzzFullScreenContentCallback
 import org.audienzz.mobile.original.callbacks.AudienzzRewardedAdLoadCallback
@@ -27,15 +26,6 @@ class AudienzzRewardedVideoAdHandler(
     private val adUnit: AudienzzRewardedVideoAdUnit,
     private val adUnitId: String,
 ) {
-
-    init {
-        eventLogger?.headerLoaded(
-            adUnitId = adUnitId,
-            adType = AdType.REWARDED,
-            adSubtype = AdSubtype.VIDEO,
-            apiType = ApiType.ORIGINAL,
-        )
-    }
 
     /**
      * @param fullScreenContentCallback use for work with callbacks from Rewarded ad

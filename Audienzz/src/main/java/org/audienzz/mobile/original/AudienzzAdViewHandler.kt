@@ -18,7 +18,6 @@ import org.audienzz.mobile.event.bidWon
 import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
-import org.audienzz.mobile.event.headerLoaded
 import org.audienzz.mobile.event.noBid
 import org.audienzz.mobile.event.util.adSubtype
 import org.audienzz.mobile.event.viewabilityStart
@@ -50,17 +49,6 @@ class AudienzzAdViewHandler(
 
     // Viewability tracking (viewability.start / viewability.success)
     private var viewabilityTracker: ViewabilityTracker? = null
-
-    init {
-        eventLogger?.headerLoaded(
-            adViewId = adView.adViewId,
-            adUnitId = adView.adUnitId,
-            sizes = adView.adSizes?.asIterable()?.sizeString,
-            adType = AdType.BANNER,
-            adSubtype = adUnit.adFormats.adSubtype,
-            apiType = ApiType.ORIGINAL,
-        )
-    }
 
     /**
      * Executes ad loading if no request is running.

@@ -14,7 +14,6 @@ import org.audienzz.mobile.event.entity.AdSubtype
 import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
-import org.audienzz.mobile.event.headerLoaded
 import org.audienzz.mobile.event.noBid
 import org.audienzz.mobile.util.audienzzSizeString
 
@@ -24,15 +23,6 @@ class AudienzzMultiformatAdHandler(
 ) {
 
     private var isFirstDemandFetch = true
-
-    init {
-        eventLogger?.headerLoaded(
-            adUnitId = adUnitId,
-            adType = AdType.BANNER,
-            adSubtype = AdSubtype.MULTIFORMAT,
-            apiType = ApiType.ORIGINAL,
-        )
-    }
 
     @JvmOverloads fun load(
         gamRequestBuilder: AdManagerAdRequest.Builder = AdManagerAdRequest.Builder(),

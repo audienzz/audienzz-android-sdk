@@ -10,7 +10,6 @@ import org.audienzz.mobile.event.entity.EventType.AD_IMPRESSION
 import org.audienzz.mobile.event.entity.EventType.BID_REQUEST
 import org.audienzz.mobile.event.entity.EventType.BID_RESPONSE
 import org.audienzz.mobile.event.entity.EventType.BID_WON
-import org.audienzz.mobile.event.entity.EventType.HEADER_LOADED
 import org.audienzz.mobile.event.entity.EventType.NO_BID
 import org.audienzz.mobile.event.entity.EventType.VIEWABILITY_START
 import org.audienzz.mobile.event.entity.EventType.VIEWABILITY_SUCCESS
@@ -24,27 +23,6 @@ internal interface EventLogger {
 
 internal val eventLogger: EventLogger?
     get() = MainComponent.eventLogger
-
-internal fun EventLogger.headerLoaded(
-    adViewId: String? = null,
-    adUnitId: String,
-    sizes: String? = null,
-    adType: AdType,
-    adSubtype: AdSubtype,
-    apiType: ApiType,
-) {
-    logEvent(
-        EventDomain(
-            eventType = HEADER_LOADED,
-            adViewId = adViewId,
-            adUnitId = adUnitId,
-            sizes = sizes,
-            adType = adType,
-            adSubtype = adSubtype,
-            apiType = apiType,
-        ),
-    )
-}
 
 @Suppress("LongParameterList")
 internal fun EventLogger.bidRequest(

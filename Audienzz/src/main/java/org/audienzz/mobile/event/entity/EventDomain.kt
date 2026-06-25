@@ -27,7 +27,6 @@ internal data class EventDomain(
 )
 
 internal enum class EventType(val nameString: String) {
-    HEADER_LOADED("headerLoaded"),
     PAGE_IMPRESSION("pageImpression"),
     BID_REQUEST("bidRequest"),
     BID_RESPONSE("bidResponse"),

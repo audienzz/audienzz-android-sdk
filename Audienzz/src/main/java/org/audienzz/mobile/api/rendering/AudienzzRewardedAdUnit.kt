@@ -5,11 +5,7 @@ import org.audienzz.mobile.AudienzzReward
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.api.rendering.listeners.AudienzzRewardedAdUnitListener
 import org.audienzz.mobile.event.adClick
-import org.audienzz.mobile.event.entity.AdSubtype
-import org.audienzz.mobile.event.entity.AdType
-import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
-import org.audienzz.mobile.event.headerLoaded
 import org.audienzz.mobile.eventhandlers.AudienzzGamRewardedEventHandler
 import org.audienzz.mobile.rendering.bidding.data.bid.AudienzzBid
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzRewardedEventHandler
@@ -34,14 +30,6 @@ class AudienzzRewardedAdUnit internal constructor(
         eventHandler: AudienzzRewardedEventHandler,
     ) : this(RewardedAdUnit(context, configId, getRewardedEventHandler(eventHandler))) {
         this.eventHandler = eventHandler
-        (eventHandler as? AudienzzGamRewardedEventHandler)?.adUnitId?.let {
-            eventLogger?.headerLoaded(
-                adUnitId = it,
-                adType = AdType.REWARDED,
-                adSubtype = AdSubtype.VIDEO,
-                apiType = ApiType.RENDER,
-            )
-        }
         setRewardedAdUnitListener(object : AudienzzRewardedAdUnitListener {})
     }
 
