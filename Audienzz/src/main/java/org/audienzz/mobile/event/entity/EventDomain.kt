@@ -27,6 +27,10 @@ internal data class EventDomain(
     val screenName: String? = null,
     val bidderCode: String? = null,
     val winnerBidderCode: String? = null,
+    val timeToRespond: Long? = null,
+    val priceBucket: String? = null,
+    val hbSize: String? = null,
+    val hbFormat: String? = null,
 )
 
 internal enum class EventType(val nameString: String) {

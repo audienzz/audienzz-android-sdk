@@ -79,6 +79,10 @@ internal class EventNetworkMapper @Inject constructor(
         event.errorMessage?.let { put("error_message", it) }
         event.bidderCode?.let { put("bidder_code", it) }
         event.winnerBidderCode?.let { put("winner_bidder_code", it) }
+        event.timeToRespond?.let { put("time_to_respond", it.toString()) }
+        event.priceBucket?.let { put("price_bucket", it) }
+        event.hbSize?.let { put("hb_size", it) }
+        event.hbFormat?.let { put("hb_format", it) }
     }
 
     companion object {

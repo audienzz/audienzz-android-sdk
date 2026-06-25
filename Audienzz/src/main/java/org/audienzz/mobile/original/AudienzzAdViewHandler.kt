@@ -28,6 +28,7 @@ import org.audienzz.mobile.util.addContinuousVisibilityListener
 import org.audienzz.mobile.util.adViewId
 import org.audienzz.mobile.util.addOnBecameVisibleOnScreenListener
 import org.audienzz.mobile.util.addPrefetchMarginListener
+import org.audienzz.mobile.util.prebidKeyword
 import org.audienzz.mobile.util.sizeString
 
 class AudienzzAdViewHandler(
@@ -37,8 +38,11 @@ class AudienzzAdViewHandler(
     companion object {
         private const val TAG = "AudienzzAdViewHandler"
 
-        /** Prebid targeting key carrying the winning bidder of the Prebid auction. */
+        /** Prebid targeting keys describing the winning bid. */
         private const val HB_BIDDER_KEY = "hb_bidder"
+        private const val HB_PB_KEY = "hb_pb"
+        private const val HB_SIZE_KEY = "hb_size"
+        private const val HB_FORMAT_KEY = "hb_format"
 
         /**
          * App-event name the GAM Prebid line item must send when it wins. If your GAM line item
@@ -288,6 +292,7 @@ class AudienzzAdViewHandler(
         // New auction → reset render-winner state until the bid result / GAM report back.
         prebidLineItemWon = false
         prebidWinningBidder = null
+        val requestStartMs = System.currentTimeMillis()
 
         eventLogger?.bidRequest(
             adViewId = adView.adViewId,
@@ -315,6 +320,7 @@ class AudienzzAdViewHandler(
                 isAutorefresh = isAutorefresh,
                 isRefresh = isRefresh,
                 resultCode = resultCode?.toString(),
+                timeToRespond = System.currentTimeMillis() - requestStartMs,
             )
             if (resultCode == AudienzzResultCode.SUCCESS) {
                 prebidWinningBidder = request.prebidKeyword(HB_BIDDER_KEY)
@@ -329,6 +335,9 @@ class AudienzzAdViewHandler(
                     isAutorefresh = isAutorefresh,
                     isRefresh = isRefresh,
                     targetKeywords = request.keywords.toList(),
+                    priceBucket = request.prebidKeyword(HB_PB_KEY),
+                    hbSize = request.prebidKeyword(HB_SIZE_KEY),
+                    hbFormat = request.prebidKeyword(HB_FORMAT_KEY),
                 )
             } else {
                 eventLogger?.noBid(
@@ -450,9 +459,4 @@ class AudienzzAdViewHandler(
             }
             AD_SERVER_BIDDER
         }
-
-    private fun AdManagerAdRequest.prebidKeyword(key: String): String? {
-        customTargeting?.getString(key)?.let { return it }
-        return keywords.firstOrNull { it.startsWith("$key:") }?.substringAfter(":")
-    }
 }

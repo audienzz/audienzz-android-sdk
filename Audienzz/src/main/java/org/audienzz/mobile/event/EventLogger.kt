@@ -64,6 +64,7 @@ internal fun EventLogger.bidResponse(
     adType: AdType,
     adSubtype: AdSubtype,
     apiType: ApiType,
+    timeToRespond: Long? = null,
 ) {
     logEvent(
         EventDomain(
@@ -78,6 +79,7 @@ internal fun EventLogger.bidResponse(
             adType = adType,
             adSubtype = adSubtype,
             apiType = apiType,
+            timeToRespond = timeToRespond,
         ),
     )
 }
@@ -94,6 +96,9 @@ internal fun EventLogger.bidWon(
     adType: AdType,
     adSubtype: AdSubtype,
     apiType: ApiType,
+    priceBucket: String? = null,
+    hbSize: String? = null,
+    hbFormat: String? = null,
 ) {
     logEvent(
         EventDomain(
@@ -108,6 +113,9 @@ internal fun EventLogger.bidWon(
             adType = adType,
             adSubtype = adSubtype,
             apiType = apiType,
+            priceBucket = priceBucket,
+            hbSize = hbSize,
+            hbFormat = hbFormat,
         ),
     )
 }
