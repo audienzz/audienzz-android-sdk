@@ -1,6 +1,8 @@
 package org.audienzz.mobile.event.network.mapper
 
 import android.content.Context
+import android.content.pm.PackageManager
+import org.audienzz.BuildConfig
 import org.audienzz.mobile.event.entity.EventDomain
 import org.audienzz.mobile.event.network.entity.EventNetwork
 import java.text.SimpleDateFormat
@@ -17,6 +19,16 @@ internal class EventNetworkMapper @Inject constructor(
             timeZone = TimeZone.getTimeZone("UTC")
         }
 
+    // App metadata is constant for the process — resolve once.
+    private val appPackageName: String = context.packageName
+    private val appVersion: String? = runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+    }.getOrNull()
+    private val appTitle: String? = runCatching {
+        context.applicationInfo.loadLabel(context.packageManager).toString()
+    }.getOrNull()
+    private val userAgent: String? = System.getProperty("http.agent")
+
     fun toNetwork(event: EventDomain): EventNetwork {
         val metrics = context.resources.displayMetrics
         val screenWidthDp = (metrics.widthPixels / metrics.density).toInt()
@@ -31,7 +43,7 @@ internal class EventNetworkMapper @Inject constructor(
             pageImpressionId = event.pageImpressionId,
             sessionId = event.sessionId,
             sessionStartTimestamp = event.sessionStartTimestamp,
-            sessionSequence = event.sessionSequence ?: 0,
+            sessionSeq = event.sessionSequence ?: 0,
             eventTimestamp = dateFormatter.format(Date(event.timestamp)),
             locale = Locale.getDefault().toLanguageTag(),
             zoneOffsetSeconds = zoneOffsetSeconds,
@@ -39,14 +51,21 @@ internal class EventNetworkMapper @Inject constructor(
             screenWidth = screenWidthDp,
             viewportHeight = screenHeightDp,
             viewportWidth = screenWidthDp,
-            pageUrl = event.screenName,
+            deviceId = event.deviceId,
+            userAgent = userAgent,
+            sdkName = SDK_NAME,
+            sdkVersion = BuildConfig.AUDIENZZ_SDK_VERSION,
+            appPackageName = appPackageName,
+            appVersion = appVersion,
+            appTitle = appTitle,
+            screenName = event.screenName,
+            pageUrl = null,
             visitorId = event.visitorId,
             attributes = buildAttributes(event),
         )
     }
 
     private fun buildAttributes(event: EventDomain): Map<String, String> = buildMap {
-        event.deviceId?.let { put("device_id", it) }
         event.adUnitId?.let { put("ad_unit_id", it) }
         event.resultCode?.let { put("result_code", it) }
         event.sizes?.let { put("sizes", it) }
@@ -58,5 +77,9 @@ internal class EventNetworkMapper @Inject constructor(
         event.isRefresh?.let { put("refresh", it.toString()) }
         event.targetKeywords?.let { put("target_keywords", it.joinToString(",")) }
         event.errorMessage?.let { put("error_message", it) }
+    }
+
+    companion object {
+        private const val SDK_NAME = "android"
     }
 }
