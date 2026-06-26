@@ -291,12 +291,7 @@ class AudienzzAdViewHandler(
         isFirstDemandFetch = false
         Log.d(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — isRefresh=$isRefresh, autorefresh=${autorefreshTime}ms")
 
-        // New auction → reset render-winner state until the bid result / GAM report back.
-        prebidLineItemWon = false
-        prebidWinningBidder = null
-        lastWinningBid = null
         val requestStartMs = System.currentTimeMillis()
-
         eventLogger?.bidRequest(
             adViewId = adView.adViewId,
             adUnitId = adView.adUnitId,
@@ -308,7 +303,30 @@ class AudienzzAdViewHandler(
             isAutorefresh = isAutorefresh,
             isRefresh = isRefresh,
         )
+
+        // Prebid re-invokes this listener on every auto-refresh without re-entering fetchDemand().
+        // The first invocation pairs with the bidRequest above; each later one is a refresh auction
+        // that emits its own bidRequest so the bidRequest/bidResponse funnel stays balanced.
+        var isFirstAuction = true
         adUnit.fetchDemand(request) { resultCode ->
+            val auctionIsRefresh = isRefresh || !isFirstAuction
+            if (!isFirstAuction) {
+                eventLogger?.bidRequest(
+                    adViewId = adView.adViewId,
+                    adUnitId = adView.adUnitId,
+                    sizes = adView.adSizes?.asIterable()?.sizeString,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                    autorefreshTime = autorefreshTime,
+                    isAutorefresh = isAutorefresh,
+                    isRefresh = true,
+                )
+            }
+            // New auction → reset render-winner state until the GAM render / app event report back.
+            prebidLineItemWon = false
+            prebidWinningBidder = null
+            lastWinningBid = null
             lastRefreshTime = System.currentTimeMillis()
             setEventsListenerToAdView()
             callback.invoke(request, resultCode)
@@ -321,9 +339,11 @@ class AudienzzAdViewHandler(
                 apiType = ApiType.ORIGINAL,
                 autorefreshTime = autorefreshTime,
                 isAutorefresh = isAutorefresh,
-                isRefresh = isRefresh,
+                isRefresh = auctionIsRefresh,
                 resultCode = resultCode?.toString(),
-                timeToRespond = System.currentTimeMillis() - requestStartMs,
+                // Only the initial auction has a measurable request→response delta; Prebid does not
+                // expose the start time of an internal refresh.
+                timeToRespond = if (isFirstAuction) System.currentTimeMillis() - requestStartMs else null,
             )
             if (resultCode == AudienzzResultCode.SUCCESS) {
                 prebidWinningBidder = request.prebidKeyword(HB_BIDDER_KEY)
@@ -338,8 +358,7 @@ class AudienzzAdViewHandler(
                     apiType = ApiType.ORIGINAL,
                     autorefreshTime = autorefreshTime,
                     isAutorefresh = isAutorefresh,
-                    isRefresh = isRefresh,
-                    targetKeywords = request.keywords.toList(),
+                    isRefresh = auctionIsRefresh,
                     priceBucket = request.prebidKeyword(HB_PB_KEY),
                     hbSize = request.prebidKeyword(HB_SIZE_KEY),
                     hbFormat = request.prebidKeyword(HB_FORMAT_KEY),
@@ -359,10 +378,11 @@ class AudienzzAdViewHandler(
                     apiType = ApiType.ORIGINAL,
                     autorefreshTime = autorefreshTime,
                     isAutorefresh = isAutorefresh,
-                    isRefresh = isRefresh,
+                    isRefresh = auctionIsRefresh,
                     resultCode = resultCode?.toString(),
                 )
             }
+            isFirstAuction = false
         }
     }
 

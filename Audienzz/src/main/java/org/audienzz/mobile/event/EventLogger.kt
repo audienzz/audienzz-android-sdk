@@ -88,7 +88,6 @@ internal fun EventLogger.bidResponse(
 internal fun EventLogger.bidWon(
     adUnitId: String,
     adViewId: String? = null,
-    targetKeywords: List<String>?,
     isAutorefresh: Boolean,
     autorefreshTime: Long = 0,
     isRefresh: Boolean,
@@ -110,7 +109,6 @@ internal fun EventLogger.bidWon(
             eventType = BID_WON,
             adUnitId = adUnitId,
             adViewId = adViewId,
-            targetKeywords = targetKeywords,
             isAutorefresh = isAutorefresh,
             autorefreshTime = autorefreshTime,
             isRefresh = isRefresh,

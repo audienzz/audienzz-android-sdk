@@ -15,7 +15,6 @@ internal data class EventDomain(
     val resultCode: String? = null,
     val adUnitId: String? = null,
     val adViewId: String? = null,
-    val targetKeywords: List<String>? = null,
     val isAutorefresh: Boolean? = null,
     val autorefreshTime: Long? = null,
     val isRefresh: Boolean? = null,

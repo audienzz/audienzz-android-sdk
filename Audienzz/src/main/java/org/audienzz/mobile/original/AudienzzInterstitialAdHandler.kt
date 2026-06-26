@@ -102,7 +102,6 @@ class AudienzzInterstitialAdHandler(
                     autorefreshTime = adUnit.autoRefreshTime.toLong(),
                     isAutorefresh = adUnit.autoRefreshTime > 0,
                     isRefresh = false,
-                    targetKeywords = request.keywords.toList(),
                     priceBucket = request.prebidKeyword(HB_PB_KEY),
                     hbSize = request.prebidKeyword(HB_SIZE_KEY),
                     hbFormat = request.prebidKeyword(HB_FORMAT_KEY),

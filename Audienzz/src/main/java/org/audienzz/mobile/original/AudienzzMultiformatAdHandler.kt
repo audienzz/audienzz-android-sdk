@@ -76,7 +76,6 @@ class AudienzzMultiformatAdHandler(
                     autorefreshTime = autorefreshTime,
                     isAutorefresh = isAutorefresh,
                     isRefresh = isRefresh,
-                    targetKeywords = request.keywords.toList(),
                 )
             } else {
                 eventLogger?.noBid(

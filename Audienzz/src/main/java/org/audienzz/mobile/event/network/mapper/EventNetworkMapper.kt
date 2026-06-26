@@ -75,7 +75,6 @@ internal class EventNetworkMapper @Inject constructor(
         event.isAutorefresh?.let { put("autorefresh", it.toString()) }
         event.autorefreshTime?.let { put("autorefresh_time", it.toString()) }
         event.isRefresh?.let { put("refresh", it.toString()) }
-        event.targetKeywords?.let { put("target_keywords", it.joinToString(",")) }
         event.errorMessage?.let { put("error_message", it) }
         event.bidderCode?.let { put("bidder_code", it) }
         event.winnerBidderCode?.let { put("winner_bidder_code", it) }
