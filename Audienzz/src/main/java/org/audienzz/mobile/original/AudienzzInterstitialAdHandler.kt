@@ -91,8 +91,11 @@ class AudienzzInterstitialAdHandler(
                 resultCode = resultCode?.toString(),
                 timeToRespond = System.currentTimeMillis() - requestStartMs,
             )
-            if (resultCode == AudienzzResultCode.SUCCESS) {
-                prebidWinningBidder = request.prebidKeyword(HB_BIDDER_KEY)
+            // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
+            // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
+            val winningBidder = request.prebidKeyword(HB_BIDDER_KEY)
+            if (resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
+                prebidWinningBidder = winningBidder
                 val win = adUnit.getWinningBid()
                 eventLogger?.bidWon(
                     adUnitId = adUnitId,

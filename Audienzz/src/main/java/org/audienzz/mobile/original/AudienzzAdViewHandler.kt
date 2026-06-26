@@ -345,8 +345,11 @@ class AudienzzAdViewHandler(
                 // expose the start time of an internal refresh.
                 timeToRespond = if (isFirstAuction) System.currentTimeMillis() - requestStartMs else null,
             )
-            if (resultCode == AudienzzResultCode.SUCCESS) {
-                prebidWinningBidder = request.prebidKeyword(HB_BIDDER_KEY)
+            // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
+            // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
+            val winningBidder = request.prebidKeyword(HB_BIDDER_KEY)
+            if (resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
+                prebidWinningBidder = winningBidder
                 val win = adUnit.getWinningBid()
                 lastWinningBid = win
                 eventLogger?.bidWon(

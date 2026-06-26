@@ -32,13 +32,14 @@ abstract class AudienzzAdUnit internal constructor(
      */
     internal fun getWinningBid(): AudienzzWinningBid? {
         val response = AudienzzBidResponseAccessor.getBidResponse(adUnit) ?: return null
-        val bid = response.winningBid
+        // No actual winning bid (e.g. an empty/error response Prebid still reports as SUCCESS).
+        val bid = response.winningBid ?: return null
         return AudienzzWinningBid(
-            cpm = bid?.price,
+            cpm = bid.price,
             currency = response.cur,
-            creativeId = bid?.crid,
+            creativeId = bid.crid,
             auctionId = response.id,
-            adId = bid?.id,
+            adId = bid.id,
         )
     }
     var pbAdSlot: String?
