@@ -31,6 +31,11 @@ internal data class EventDomain(
     val priceBucket: String? = null,
     val hbSize: String? = null,
     val hbFormat: String? = null,
+    val cpm: Double? = null,
+    val currency: String? = null,
+    val creativeId: String? = null,
+    val auctionId: String? = null,
+    val adId: String? = null,
 )
 
 internal enum class EventType(val nameString: String) {

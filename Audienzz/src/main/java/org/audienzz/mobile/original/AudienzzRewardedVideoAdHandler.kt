@@ -93,6 +93,7 @@ class AudienzzRewardedVideoAdHandler(
             )
             if (resultCode == AudienzzResultCode.SUCCESS) {
                 prebidWinningBidder = request.prebidKeyword(HB_BIDDER_KEY)
+                val win = adUnit.getWinningBid()
                 eventLogger?.bidWon(
                     adUnitId = adUnitId,
                     adType = AdType.REWARDED,
@@ -105,6 +106,11 @@ class AudienzzRewardedVideoAdHandler(
                     priceBucket = request.prebidKeyword(HB_PB_KEY),
                     hbSize = request.prebidKeyword(HB_SIZE_KEY),
                     hbFormat = request.prebidKeyword(HB_FORMAT_KEY),
+                    cpm = win?.cpm,
+                    currency = win?.currency,
+                    creativeId = win?.creativeId,
+                    auctionId = win?.auctionId,
+                    adId = win?.adId,
                 )
             } else {
                 eventLogger?.noBid(

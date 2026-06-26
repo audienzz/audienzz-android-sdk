@@ -8,6 +8,7 @@ import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import com.google.android.gms.ads.admanager.AdManagerAdView
 import com.google.android.gms.ads.admanager.AppEventListener
 import org.audienzz.mobile.AudienzzAdUnit
+import org.audienzz.mobile.AudienzzWinningBid
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.AudienzzTargetingParams
@@ -75,6 +76,7 @@ class AudienzzAdViewHandler(
     // when the GAM Prebid line item announces itself via an app event. Both reset per auction.
     private var prebidWinningBidder: String? = null
     private var prebidLineItemWon: Boolean = false
+    private var lastWinningBid: AudienzzWinningBid? = null
 
     /**
      * Executes ad loading if no request is running.
@@ -292,6 +294,7 @@ class AudienzzAdViewHandler(
         // New auction → reset render-winner state until the bid result / GAM report back.
         prebidLineItemWon = false
         prebidWinningBidder = null
+        lastWinningBid = null
         val requestStartMs = System.currentTimeMillis()
 
         eventLogger?.bidRequest(
@@ -324,6 +327,8 @@ class AudienzzAdViewHandler(
             )
             if (resultCode == AudienzzResultCode.SUCCESS) {
                 prebidWinningBidder = request.prebidKeyword(HB_BIDDER_KEY)
+                val win = adUnit.getWinningBid()
+                lastWinningBid = win
                 eventLogger?.bidWon(
                     adViewId = adView.adViewId,
                     adUnitId = adView.adUnitId,
@@ -338,6 +343,11 @@ class AudienzzAdViewHandler(
                     priceBucket = request.prebidKeyword(HB_PB_KEY),
                     hbSize = request.prebidKeyword(HB_SIZE_KEY),
                     hbFormat = request.prebidKeyword(HB_FORMAT_KEY),
+                    cpm = win?.cpm,
+                    currency = win?.currency,
+                    creativeId = win?.creativeId,
+                    auctionId = win?.auctionId,
+                    adId = win?.adId,
                 )
             } else {
                 eventLogger?.noBid(
@@ -392,6 +402,9 @@ class AudienzzAdViewHandler(
             override fun onAdImpression() {
                 actualListener?.onAdImpression()
                 val bidder = resolveBidderCode()
+                // Bid economics describe the Prebid winning bid, so only tag the impression with
+                // them when the Prebid line item actually rendered (not when the ad server won).
+                val win = if (prebidLineItemWon) lastWinningBid else null
                 eventLogger?.adImpression(
                     adUnitId = adView.adUnitId,
                     adType = AdType.BANNER,
@@ -399,6 +412,11 @@ class AudienzzAdViewHandler(
                     apiType = ApiType.ORIGINAL,
                     bidderCode = bidder,
                     winnerBidderCode = bidder,
+                    cpm = win?.cpm,
+                    currency = win?.currency,
+                    creativeId = win?.creativeId,
+                    auctionId = win?.auctionId,
+                    adId = win?.adId,
                 )
                 startViewabilityTracking()
             }

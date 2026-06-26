@@ -99,6 +99,11 @@ internal fun EventLogger.bidWon(
     priceBucket: String? = null,
     hbSize: String? = null,
     hbFormat: String? = null,
+    cpm: Double? = null,
+    currency: String? = null,
+    creativeId: String? = null,
+    auctionId: String? = null,
+    adId: String? = null,
 ) {
     logEvent(
         EventDomain(
@@ -116,6 +121,11 @@ internal fun EventLogger.bidWon(
             priceBucket = priceBucket,
             hbSize = hbSize,
             hbFormat = hbFormat,
+            cpm = cpm,
+            currency = currency,
+            creativeId = creativeId,
+            auctionId = auctionId,
+            adId = adId,
         ),
     )
 }
@@ -150,6 +160,7 @@ internal fun EventLogger.noBid(
     )
 }
 
+@Suppress("LongParameterList")
 internal fun EventLogger.adImpression(
     adUnitId: String,
     adType: AdType,
@@ -157,6 +168,11 @@ internal fun EventLogger.adImpression(
     apiType: ApiType,
     bidderCode: String? = null,
     winnerBidderCode: String? = null,
+    cpm: Double? = null,
+    currency: String? = null,
+    creativeId: String? = null,
+    auctionId: String? = null,
+    adId: String? = null,
 ) {
     logEvent(
         EventDomain(
@@ -167,6 +183,11 @@ internal fun EventLogger.adImpression(
             apiType = apiType,
             bidderCode = bidderCode,
             winnerBidderCode = winnerBidderCode,
+            cpm = cpm,
+            currency = currency,
+            creativeId = creativeId,
+            auctionId = auctionId,
+            adId = adId,
         ),
     )
 }
