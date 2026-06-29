@@ -337,7 +337,7 @@ This object contains methods to initialize the SDK and configure global settings
 |-------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `initializeSdk`                     | `context: Context`, `companyId: String`, `enablePpid: Boolean = false`, `appVolume: Float = 0f`, `sdkInitializationListener: AudienzzSdkInitializationListener?`                   | Initializes the SDK. When enablePPID is true - SDK will automatically generate unique identifier, store it in Shared Preferences and add it to all Google Ad Manager requests as a Publisher Provided identifier. On additional methods to work with PPID look at [PpidManager](#ppidmanager) |
 | `initializeRemoteSdk`               | `context: Context`, `publisherId: String`, `enablePpid: Boolean = false`, `sdkInitializationListener: AudienzzSdkInitializationListener?`                                           | Initializes the SDK with remote configuration support, fetching ad unit configs from the Audienzz backend using the publisher ID.                                                                                                                                                             |
-| `onScreenResumed`                   | `activity: Activity`                                                                                                                                                                | Call in every Activity or Fragment's `onResume()` to track screen impressions. Fires a `pageImpression` analytics event and generates a new page impression ID shared by all ad events on that screen visit. See [Analytics & Screen Tracking](#analytics--screen-tracking).                  |
+| `onScreenResumed`                   | `activity: Activity`                                                                                                                                                                | Call in every Activity or Fragment's `onResume()` to track screen impressions. Fires a `pageImpression` analytics event and generates a new page impression ID shared by all ad events on that screen visit. See [Analytics](#analytics).                  |
 | `getAdUnitConfig`                   | `configId: String`, `callback: (RemoteAdUnitConfig?) -> Unit`                                                                                                                       | Fetches a remote ad unit configuration by its ID. The SDK must have been initialized via `initializeRemoteSdk` first.                                                                                                                                                                         |
 | `setAppVolume`                      | `volume: Float`                                                                                                                                                                     | Sets the global app volume for Google Mobile Ads ad audio. Range: 0.0 (muted) – 1.0 (full device volume). Can be called at any time after SDK initialization.                                                                                                                                 |
 | `addStoredBidResponse`              | `bidder: String`, `responseId: String`                                                                                                                                              | Adds a stored bid response.                                                                                                                                                                                                                                                                   |
@@ -668,20 +668,49 @@ remoteInterstitial.setListener(object : AudienzzRemoteConfigInterstitial.Listene
 remoteInterstitial.load()
 ```
 
-Analytics & Screen Tracking
+Analytics
 ========
 
-The SDK automatically collects ad performance analytics (bid requests, bid responses, impressions, clicks, etc.) and sends them to the Audienzz analytics backend. No additional setup is required for ad-level events.
+The SDK reports ad-performance analytics to the Audienzz backend automatically. **All ad-level
+events fire on their own** once the SDK is initialized — you do not wire up bid, impression, click,
+or viewability tracking yourself. The only integration step you must add is one call per
+ad-bearing screen (see [Step 2](#step-2--track-screen-impressions-required)).
 
-### Screen Impression Tracking
+### What gets collected
 
-To associate ad events with a specific screen visit and enable `pageImpression` tracking, call `onScreenResumed` in every Activity or Fragment that shows ads:
+| Event | When it fires |
+|---|---|
+| `pageImpression` | A screen showing ads is opened/resumed (you trigger this via `onScreenResumed`) |
+| `bidRequest` | A Prebid bid request is sent for a slot (also on each auto-refresh) |
+| `bidResponse` | Prebid returns a result |
+| `bidWon` | A Prebid bid wins — carries `cpm`, `currency`, `creative_id`, `auction_id`, `ad_id`, `bidder_code` |
+| `noBid` | The auction returned no usable bid |
+| `adImpression` | The ad is rendered on screen — carries `bidder_code` (the demand that rendered) |
+| `adClick` | The user taps the ad |
+| `viewability.start` | The ad becomes ≥ 50 % visible |
+| `viewability.success` | The ad stays ≥ 50 % visible for 1 continuous second |
+
+Banner, interstitial and rewarded ads on the Original API are all covered.
+
+### Step 1 — Initialize the SDK
+
+Analytics is keyed on your **Company ID** (provided by Audienzz), supplied when you initialize the
+SDK. Nothing is reported until initialization succeeds. See [Initialize SDK](#initialize-sdk).
+
+### Step 2 — Track screen impressions (required)
+
+Call `AudienzzPrebidMobile.onScreenResumed(activity)` from the `onResume()` of **every Activity or
+Fragment that shows ads**. This fires a `pageImpression` and generates a fresh page-impression ID
+that tags all ad events on that screen visit, so the backend can correlate them. Screens without
+ads don't need it.
 
 ```kotlin
 // In an Activity:
 override fun onResume() {
     super.onResume()
-    AudienzzPrebidMobile.onScreenResumed(this)
+    if (AudienzzPrebidMobile.isSdkInitialized) {
+        AudienzzPrebidMobile.onScreenResumed(this)
+    }
 }
 ```
 
@@ -689,24 +718,28 @@ override fun onResume() {
 // In a Fragment:
 override fun onResume() {
     super.onResume()
-    activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
-}
-```
-
-Each call to `onScreenResumed` fires a `pageImpression` event and generates a fresh `pageImpressionId`. All ad events fired after that call (on the same screen visit) are automatically tagged with that ID, allowing the backend to correlate them.
-
-Call this **after** the SDK has been initialized. If you use `initializeRemoteSdk`, call it inside the initialization callback on first launch:
-
-```kotlin
-AudienzzPrebidMobile.initializeRemoteSdk(
-    context = applicationContext,
-    publisherId = "YOUR_PUBLISHER_ID",
-) { status ->
-    if (status == AudienzzInitializationStatus.SUCCEEDED) {
-        AudienzzPrebidMobile.onScreenResumed(this)
+    if (AudienzzPrebidMobile.isSdkInitialized) {
+        activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
     }
 }
 ```
+
+Call it only **after** the SDK is initialized — the `isSdkInitialized` guard above handles the
+first launch, where `onResume()` may run before initialization completes.
+
+### Demand-source attribution (`bidder_code`) — optional GAM setup
+
+`adImpression` reports `bidder_code` = the demand that actually rendered. To distinguish a winning
+**Prebid** line item from **Google/ad-server** demand, the SDK listens for a GAM **app event named
+`Prebid`**. For this to be accurate, your **GAM Prebid line item must be configured to send an app
+event with the key `Prebid`** (an ad-ops / Google Ad Manager setup — no code on your side). Without
+it, rendered ads are attributed to the ad server (`bidder_code = "google"`).
+
+### Privacy
+
+The SDK includes the device advertising ID and standard device/app metadata with each event. Make
+sure your app's consent setup (GDPR/TCF) is configured as usual via `AudienzzTargetingParams`; the
+same consent signals that govern Prebid apply.
 
 Sticky Ad
 ========
