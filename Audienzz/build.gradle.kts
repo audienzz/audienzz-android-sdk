@@ -30,7 +30,7 @@ android {
         buildConfigField(
             "String",
             "EVENTS_BASE_URL",
-            "\"https://dev-api.adnz.co/api/ws-event-ingester/\"",
+            "\"https://api.adnz.co/api/ws-event-ingester/\"",
         )
         buildConfigField(
             "String",
