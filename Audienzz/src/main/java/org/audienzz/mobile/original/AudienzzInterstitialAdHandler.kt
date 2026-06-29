@@ -10,30 +10,36 @@ import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.event.adClick
-import org.audienzz.mobile.event.adCreation
-import org.audienzz.mobile.event.adFailedToLoad
+import org.audienzz.mobile.event.adImpression
 import org.audienzz.mobile.event.bidRequest
-import org.audienzz.mobile.event.bidWinner
-import org.audienzz.mobile.event.closeAd
+import org.audienzz.mobile.event.bidResponse
+import org.audienzz.mobile.event.bidWon
 import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
+import org.audienzz.mobile.event.noBid
+import org.audienzz.mobile.event.viewabilityStart
+import org.audienzz.mobile.event.viewabilitySuccess
 import org.audienzz.mobile.original.callbacks.AudienzzFullScreenContentCallback
 import org.audienzz.mobile.original.callbacks.AudienzzInterstitialAdLoadCallback
+import org.audienzz.mobile.util.AD_SERVER_BIDDER
+import org.audienzz.mobile.util.FullScreenViewabilityTimer
+import org.audienzz.mobile.util.HB_BIDDER_KEY
+import org.audienzz.mobile.util.HB_FORMAT_KEY
+import org.audienzz.mobile.util.HB_PB_KEY
+import org.audienzz.mobile.util.HB_SIZE_KEY
+import org.audienzz.mobile.util.prebidKeyword
 
 class AudienzzInterstitialAdHandler(
     private val adUnit: AudienzzInterstitialAdUnit,
     private val adUnitId: String,
 ) {
 
-    init {
-        eventLogger?.adCreation(
-            adUnitId = adUnitId,
-            adType = AdType.INTERSTITIAL,
-            adSubtype = adUnit.getSubType(),
-            apiType = ApiType.ORIGINAL,
-        )
-    }
+    // Prebid auction winner (hb_bidder), captured on bid success and reported on adImpression.
+    private var prebidWinningBidder: String? = null
+
+    // Full-screen viewability (viewability.start / viewability.success); cancelled on dismiss.
+    private var viewabilityTimer: FullScreenViewabilityTimer? = null
 
     /**
      * @param fullScreenContentCallback use for work with callbacks from Interstitial ad
@@ -52,6 +58,8 @@ class AudienzzInterstitialAdHandler(
         ) -> Unit
         ),
     ) {
+        prebidWinningBidder = null
+        val requestStartMs = System.currentTimeMillis()
         eventLogger?.bidRequest(
             adUnitId = adUnitId,
             adType = AdType.INTERSTITIAL,
@@ -72,8 +80,24 @@ class AudienzzInterstitialAdHandler(
             )
                 .build()
         adUnit.fetchDemand(request) { resultCode ->
-            if (resultCode == AudienzzResultCode.SUCCESS) {
-                eventLogger?.bidWinner(
+            eventLogger?.bidResponse(
+                adUnitId = adUnitId,
+                adType = AdType.INTERSTITIAL,
+                adSubtype = adUnit.getSubType(),
+                apiType = ApiType.ORIGINAL,
+                autorefreshTime = adUnit.autoRefreshTime.toLong(),
+                isAutorefresh = adUnit.autoRefreshTime > 0,
+                isRefresh = false,
+                resultCode = resultCode?.toString(),
+                timeToRespond = System.currentTimeMillis() - requestStartMs,
+            )
+            // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
+            // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
+            val winningBidder = request.prebidKeyword(HB_BIDDER_KEY)
+            if (resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
+                prebidWinningBidder = winningBidder
+                val win = adUnit.getWinningBid()
+                eventLogger?.bidWon(
                     adUnitId = adUnitId,
                     adType = AdType.INTERSTITIAL,
                     adSubtype = adUnit.getSubType(),
@@ -81,8 +105,25 @@ class AudienzzInterstitialAdHandler(
                     autorefreshTime = adUnit.autoRefreshTime.toLong(),
                     isAutorefresh = adUnit.autoRefreshTime > 0,
                     isRefresh = false,
-                    resultCode = resultCode.toString(),
-                    targetKeywords = request.keywords.toList(),
+                    priceBucket = request.prebidKeyword(HB_PB_KEY),
+                    hbSize = request.prebidKeyword(HB_SIZE_KEY),
+                    hbFormat = request.prebidKeyword(HB_FORMAT_KEY),
+                    cpm = win?.cpm,
+                    currency = win?.currency,
+                    creativeId = win?.creativeId,
+                    auctionId = win?.auctionId,
+                    adId = win?.adId,
+                )
+            } else {
+                eventLogger?.noBid(
+                    adUnitId = adUnitId,
+                    adType = AdType.INTERSTITIAL,
+                    adSubtype = adUnit.getSubType(),
+                    apiType = ApiType.ORIGINAL,
+                    autorefreshTime = adUnit.autoRefreshTime.toLong(),
+                    isAutorefresh = adUnit.autoRefreshTime > 0,
+                    isRefresh = false,
+                    resultCode = resultCode?.toString(),
                 )
             }
             resultCallback(
@@ -112,22 +153,51 @@ class AudienzzInterstitialAdHandler(
                         override fun onAdDismissedFullScreenContent() {
                             super.onAdDismissedFullScreenContent()
                             fullScreenContentCallback?.onAdDismissedFullScreenContent()
-                            eventLogger?.closeAd(adUnitId)
+                            viewabilityTimer?.cancel()
                         }
 
                         override fun onAdFailedToShowFullScreenContent(error: AdError) {
                             super.onAdFailedToShowFullScreenContent(error)
                             fullScreenContentCallback?.onAdFailedToShowFullScreenContent(error)
+                            viewabilityTimer?.cancel()
                         }
 
                         override fun onAdImpression() {
                             super.onAdImpression()
                             fullScreenContentCallback?.onAdImpression()
+                            // Full-screen ad objects expose no app-event listener, so the render
+                            // winner can't be confirmed: report the Prebid auction winner if there
+                            // was one, else the ad server. winner_bidder_code is left unset.
+                            eventLogger?.adImpression(
+                                adUnitId = adUnitId,
+                                adType = AdType.INTERSTITIAL,
+                                adSubtype = adUnit.getSubType(),
+                                apiType = ApiType.ORIGINAL,
+                                bidderCode = prebidWinningBidder ?: AD_SERVER_BIDDER,
+                            )
                         }
 
                         override fun onAdShowedFullScreenContent() {
                             super.onAdShowedFullScreenContent()
                             fullScreenContentCallback?.onAdShowedFullScreenContent()
+                            FullScreenViewabilityTimer(
+                                onStart = {
+                                    eventLogger?.viewabilityStart(
+                                        adUnitId = adUnitId,
+                                        adType = AdType.INTERSTITIAL,
+                                        adSubtype = adUnit.getSubType(),
+                                        apiType = ApiType.ORIGINAL,
+                                    )
+                                },
+                                onSuccess = {
+                                    eventLogger?.viewabilitySuccess(
+                                        adUnitId = adUnitId,
+                                        adType = AdType.INTERSTITIAL,
+                                        adSubtype = adUnit.getSubType(),
+                                        apiType = ApiType.ORIGINAL,
+                                    )
+                                },
+                            ).also { viewabilityTimer = it }.onShown()
                         }
                     }
             }
@@ -135,7 +205,6 @@ class AudienzzInterstitialAdHandler(
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
                 super.onAdFailedToLoad(loadAdError)
                 adLoadCallback?.onAdFailedToLoad(loadAdError)
-                eventLogger?.adFailedToLoad(adUnitId = adUnitId, errorMessage = loadAdError.message)
             }
         }
     }

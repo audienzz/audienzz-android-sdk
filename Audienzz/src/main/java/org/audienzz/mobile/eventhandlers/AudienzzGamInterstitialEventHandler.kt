@@ -3,13 +3,6 @@ package org.audienzz.mobile.eventhandlers
 import android.app.Activity
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.api.rendering.AudienzzInterstitialAdUnit
-import org.audienzz.mobile.event.adCreation
-import org.audienzz.mobile.event.adFailedToLoad
-import org.audienzz.mobile.event.closeAd
-import org.audienzz.mobile.event.entity.AdType
-import org.audienzz.mobile.event.entity.ApiType
-import org.audienzz.mobile.event.eventLogger
-import org.audienzz.mobile.event.util.adSubtypeFromAudienzz
 import org.audienzz.mobile.rendering.bidding.data.bid.AudienzzBid
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzInterstitialEventHandler
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzInterstitialEventListener
@@ -33,13 +26,6 @@ class AudienzzGamInterstitialEventHandler internal constructor(
 
     override fun setAdUnit(adUnit: AudienzzInterstitialAdUnit) {
         this.adUnit = adUnit
-
-        eventLogger?.adCreation(
-            adUnitId = adUnitId,
-            adType = AdType.INTERSTITIAL,
-            adSubtype = adUnit.adUnitFormats.adSubtypeFromAudienzz,
-            apiType = ApiType.RENDER,
-        )
     }
 
     override fun setInterstitialEventListener(listener: AudienzzInterstitialEventListener?) {
@@ -54,17 +40,12 @@ class AudienzzGamInterstitialEventHandler internal constructor(
                 }
 
                 override fun onAdFailed(exception: AdException?) {
-                    eventLogger?.adFailedToLoad(
-                        adUnitId = adUnitId,
-                        errorMessage = exception?.message,
-                    )
                     exception?.let {
                         listener?.onAdFailed(AudienzzAdException(it))
                     }
                 }
 
                 override fun onAdClosed() {
-                    eventLogger?.closeAd(adUnitId = adUnitId)
                     listener?.onAdClosed()
                 }
 

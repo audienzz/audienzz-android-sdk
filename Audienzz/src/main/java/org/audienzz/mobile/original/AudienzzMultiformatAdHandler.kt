@@ -2,17 +2,19 @@ package org.audienzz.mobile.original
 
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import org.audienzz.mobile.AudienzzPrebidMobile
+import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.api.data.AudienzzBidInfo
 import org.audienzz.mobile.api.original.AudienzzPrebidAdUnit
 import org.audienzz.mobile.api.original.AudienzzPrebidRequest
-import org.audienzz.mobile.event.adCreation
 import org.audienzz.mobile.event.bidRequest
-import org.audienzz.mobile.event.bidWinner
+import org.audienzz.mobile.event.bidResponse
+import org.audienzz.mobile.event.bidWon
 import org.audienzz.mobile.event.entity.AdSubtype
 import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
+import org.audienzz.mobile.event.noBid
 import org.audienzz.mobile.util.audienzzSizeString
 
 class AudienzzMultiformatAdHandler(
@@ -21,15 +23,6 @@ class AudienzzMultiformatAdHandler(
 ) {
 
     private var isFirstDemandFetch = true
-
-    init {
-        eventLogger?.adCreation(
-            adUnitId = adUnitId,
-            adType = AdType.BANNER,
-            adSubtype = AdSubtype.MULTIFORMAT,
-            apiType = ApiType.ORIGINAL,
-        )
-    }
 
     @JvmOverloads fun load(
         gamRequestBuilder: AdManagerAdRequest.Builder = AdManagerAdRequest.Builder(),
@@ -62,7 +55,7 @@ class AudienzzMultiformatAdHandler(
             .build()
         adUnit.fetchDemand(request, prebidRequest) { bidInfo ->
             callback.invoke(bidInfo)
-            eventLogger?.bidWinner(
+            eventLogger?.bidResponse(
                 adUnitId = adUnitId,
                 sizes = prebidRequest.getAdSizes().audienzzSizeString,
                 adType = AdType.BANNER,
@@ -72,8 +65,31 @@ class AudienzzMultiformatAdHandler(
                 isAutorefresh = isAutorefresh,
                 isRefresh = isRefresh,
                 resultCode = bidInfo.resultCode.toString(),
-                targetKeywords = request.keywords.toList(),
             )
+            if (bidInfo.resultCode == AudienzzResultCode.SUCCESS) {
+                eventLogger?.bidWon(
+                    adUnitId = adUnitId,
+                    sizes = prebidRequest.getAdSizes().audienzzSizeString,
+                    adType = AdType.BANNER,
+                    adSubtype = AdSubtype.MULTIFORMAT,
+                    apiType = ApiType.ORIGINAL,
+                    autorefreshTime = autorefreshTime,
+                    isAutorefresh = isAutorefresh,
+                    isRefresh = isRefresh,
+                )
+            } else {
+                eventLogger?.noBid(
+                    adUnitId = adUnitId,
+                    sizes = prebidRequest.getAdSizes().audienzzSizeString,
+                    adType = AdType.BANNER,
+                    adSubtype = AdSubtype.MULTIFORMAT,
+                    apiType = ApiType.ORIGINAL,
+                    autorefreshTime = autorefreshTime,
+                    isAutorefresh = isAutorefresh,
+                    isRefresh = isRefresh,
+                    resultCode = bidInfo.resultCode.toString(),
+                )
+            }
         }
     }
 }

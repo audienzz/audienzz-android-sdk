@@ -17,7 +17,7 @@ ksp {
     arg(RoomSchemaArgProvider(File(projectDir, "schemas")))
 }
 
-val audienzzSdkVersion = "0.1.3"
+val audienzzSdkVersion = "0.1.4"
 
 android {
     compileSdk = libs.versions.sdk.compile.get().toInt()
@@ -30,7 +30,7 @@ android {
         buildConfigField(
             "String",
             "EVENTS_BASE_URL",
-            "\"https://dev-api.adnz.co/api/ws-event-ingester/\"",
+            "\"https://api.adnz.co/api/ws-clickstream-collector/\"",
         )
         buildConfigField(
             "String",

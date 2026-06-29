@@ -6,16 +6,10 @@ import com.google.android.gms.ads.AdSize
 import org.audienzz.mobile.AudienzzAdSize
 import org.audienzz.mobile.api.exceptions.AudienzzAdException
 import org.audienzz.mobile.event.adClick
-import org.audienzz.mobile.event.adCreation
-import org.audienzz.mobile.event.adFailedToLoad
-import org.audienzz.mobile.event.entity.AdSubtype
-import org.audienzz.mobile.event.entity.AdType
-import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
 import org.audienzz.mobile.rendering.bidding.data.bid.AudienzzBid
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzBannerEventHandler
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzBannerEventListener
-import org.audienzz.mobile.util.prebidSizeString
 import org.prebid.mobile.api.exceptions.AdException
 import org.prebid.mobile.eventhandlers.GamBannerEventHandler
 import org.prebid.mobile.rendering.bidding.listeners.BannerEventListener
@@ -54,13 +48,6 @@ class AudienzzGamBannerEventHandler internal constructor(
     ) {
         this.adUnitId = gamAdUnitId
         setBannerEventListener(object : AudienzzBannerEventListener {})
-        eventLogger?.adCreation(
-            adUnitId = adUnitId,
-            sizes = prebidGamBannerEventHandler.adSizeArray.asIterable().prebidSizeString,
-            adType = AdType.BANNER,
-            adSubtype = AdSubtype.MULTIFORMAT,
-            apiType = ApiType.RENDER,
-        )
     }
 
     override fun onEvent(adEvent: AudienzzAdEvent) {
@@ -100,10 +87,6 @@ class AudienzzGamBannerEventHandler internal constructor(
 
             override fun onAdFailed(exception: AdException?) {
                 listener.onAdFailed(exception?.let { AudienzzAdException(it) })
-                eventLogger?.adFailedToLoad(
-                    adUnitId = adUnitId,
-                    errorMessage = exception?.message,
-                )
             }
 
             override fun onAdClicked() {

@@ -6,23 +6,30 @@ import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import com.google.android.gms.ads.admanager.AdManagerAdView
+import com.google.android.gms.ads.admanager.AppEventListener
 import org.audienzz.mobile.AudienzzAdUnit
+import org.audienzz.mobile.AudienzzWinningBid
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.event.adClick
-import org.audienzz.mobile.event.adCreation
-import org.audienzz.mobile.event.adFailedToLoad
+import org.audienzz.mobile.event.adImpression
 import org.audienzz.mobile.event.bidRequest
-import org.audienzz.mobile.event.bidWinner
+import org.audienzz.mobile.event.bidResponse
+import org.audienzz.mobile.event.bidWon
 import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
+import org.audienzz.mobile.event.noBid
 import org.audienzz.mobile.event.util.adSubtype
+import org.audienzz.mobile.event.viewabilityStart
+import org.audienzz.mobile.event.viewabilitySuccess
+import org.audienzz.mobile.util.ViewabilityTracker
 import org.audienzz.mobile.util.addContinuousVisibilityListener
 import org.audienzz.mobile.util.adViewId
 import org.audienzz.mobile.util.addOnBecameVisibleOnScreenListener
 import org.audienzz.mobile.util.addPrefetchMarginListener
+import org.audienzz.mobile.util.prebidKeyword
 import org.audienzz.mobile.util.sizeString
 
 class AudienzzAdViewHandler(
@@ -31,6 +38,24 @@ class AudienzzAdViewHandler(
 ) {
     companion object {
         private const val TAG = "AudienzzAdViewHandler"
+
+        /** Prebid targeting keys describing the winning bid. */
+        private const val HB_BIDDER_KEY = "hb_bidder"
+        private const val HB_PB_KEY = "hb_pb"
+        private const val HB_SIZE_KEY = "hb_size"
+        private const val HB_FORMAT_KEY = "hb_format"
+
+        /**
+         * App-event name the GAM Prebid line item must send when it wins. If your GAM line item
+         * uses a different key, change it here.
+         */
+        private const val PREBID_APP_EVENT = "Prebid"
+
+        /** Fallback bidder_code when the Prebid line item won but hb_bidder was unavailable. */
+        private const val PREBID_BIDDER = "prebid"
+
+        /** bidder_code reported when the ad server (Google/AdX/direct) rendered instead of Prebid. */
+        private const val AD_SERVER_BIDDER = "google"
     }
 
     private var isFirstDemandFetch = true
@@ -43,16 +68,15 @@ class AudienzzAdViewHandler(
     private var storedRequest: AdManagerAdRequest? = null
     private var storedCallback: ((AdManagerAdRequest, AudienzzResultCode?) -> Unit)? = null
 
-    init {
-        eventLogger?.adCreation(
-            adViewId = adView.adViewId,
-            adUnitId = adView.adUnitId,
-            sizes = adView.adSizes?.asIterable()?.sizeString,
-            adType = AdType.BANNER,
-            adSubtype = adUnit.adFormats.adSubtype,
-            apiType = ApiType.ORIGINAL,
-        )
-    }
+    // Viewability tracking (viewability.start / viewability.success)
+    private var viewabilityTracker: ViewabilityTracker? = null
+
+    // Render-winner detection (bidder_code / winner_bidder_code on adImpression).
+    // prebidWinningBidder = hb_bidder from the Prebid auction; prebidLineItemWon is flipped true
+    // when the GAM Prebid line item announces itself via an app event. Both reset per auction.
+    private var prebidWinningBidder: String? = null
+    private var prebidLineItemWon: Boolean = false
+    private var lastWinningBid: AudienzzWinningBid? = null
 
     /**
      * Executes ad loading if no request is running.
@@ -252,6 +276,9 @@ class AudienzzAdViewHandler(
         smartRefreshListener = null
         pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
         pendingRefreshRunnable = null
+        // disableSmartRefresh() is the teardown hook called from the ad view's destroy().
+        viewabilityTracker?.stop()
+        viewabilityTracker = null
     }
 
     private fun fetchDemand(
@@ -264,6 +291,7 @@ class AudienzzAdViewHandler(
         isFirstDemandFetch = false
         Log.d(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — isRefresh=$isRefresh, autorefresh=${autorefreshTime}ms")
 
+        val requestStartMs = System.currentTimeMillis()
         eventLogger?.bidRequest(
             adViewId = adView.adViewId,
             adUnitId = adView.adUnitId,
@@ -275,11 +303,34 @@ class AudienzzAdViewHandler(
             isAutorefresh = isAutorefresh,
             isRefresh = isRefresh,
         )
+
+        // Prebid re-invokes this listener on every auto-refresh without re-entering fetchDemand().
+        // The first invocation pairs with the bidRequest above; each later one is a refresh auction
+        // that emits its own bidRequest so the bidRequest/bidResponse funnel stays balanced.
+        var isFirstAuction = true
         adUnit.fetchDemand(request) { resultCode ->
+            val auctionIsRefresh = isRefresh || !isFirstAuction
+            if (!isFirstAuction) {
+                eventLogger?.bidRequest(
+                    adViewId = adView.adViewId,
+                    adUnitId = adView.adUnitId,
+                    sizes = adView.adSizes?.asIterable()?.sizeString,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                    autorefreshTime = autorefreshTime,
+                    isAutorefresh = isAutorefresh,
+                    isRefresh = true,
+                )
+            }
+            // New auction → reset render-winner state until the GAM render / app event report back.
+            prebidLineItemWon = false
+            prebidWinningBidder = null
+            lastWinningBid = null
             lastRefreshTime = System.currentTimeMillis()
             setEventsListenerToAdView()
             callback.invoke(request, resultCode)
-            eventLogger?.bidWinner(
+            eventLogger?.bidResponse(
                 adViewId = adView.adViewId,
                 adUnitId = adView.adUnitId,
                 sizes = adView.adSizes?.asIterable()?.sizeString,
@@ -288,14 +339,69 @@ class AudienzzAdViewHandler(
                 apiType = ApiType.ORIGINAL,
                 autorefreshTime = autorefreshTime,
                 isAutorefresh = isAutorefresh,
-                isRefresh = isRefresh,
+                isRefresh = auctionIsRefresh,
                 resultCode = resultCode?.toString(),
-                targetKeywords = request.keywords.toList(),
+                // Only the initial auction has a measurable request→response delta; Prebid does not
+                // expose the start time of an internal refresh.
+                timeToRespond = if (isFirstAuction) System.currentTimeMillis() - requestStartMs else null,
             )
+            // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
+            // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
+            val winningBidder = request.prebidKeyword(HB_BIDDER_KEY)
+            if (resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
+                prebidWinningBidder = winningBidder
+                val win = adUnit.getWinningBid()
+                lastWinningBid = win
+                eventLogger?.bidWon(
+                    adViewId = adView.adViewId,
+                    adUnitId = adView.adUnitId,
+                    sizes = adView.adSizes?.asIterable()?.sizeString,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                    autorefreshTime = autorefreshTime,
+                    isAutorefresh = isAutorefresh,
+                    isRefresh = auctionIsRefresh,
+                    priceBucket = request.prebidKeyword(HB_PB_KEY),
+                    hbSize = request.prebidKeyword(HB_SIZE_KEY),
+                    hbFormat = request.prebidKeyword(HB_FORMAT_KEY),
+                    cpm = win?.cpm,
+                    currency = win?.currency,
+                    creativeId = win?.creativeId,
+                    auctionId = win?.auctionId,
+                    adId = win?.adId,
+                )
+            } else {
+                eventLogger?.noBid(
+                    adViewId = adView.adViewId,
+                    adUnitId = adView.adUnitId,
+                    sizes = adView.adSizes?.asIterable()?.sizeString,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                    autorefreshTime = autorefreshTime,
+                    isAutorefresh = isAutorefresh,
+                    isRefresh = auctionIsRefresh,
+                    resultCode = resultCode?.toString(),
+                )
+            }
+            isFirstAuction = false
         }
     }
 
     private fun setEventsListenerToAdView() {
+        // GAM fires an app event when the Prebid line item wins the ad-server auction; absence of
+        // it by impression time means a non-Prebid (Google/ad-server) creative rendered. Chain any
+        // listener the publisher already set.
+        val actualAppEventListener = adView.appEventListener
+        adView.appEventListener = AppEventListener { name, info ->
+            actualAppEventListener?.onAppEvent(name, info)
+            if (name.equals(PREBID_APP_EVENT, ignoreCase = true)) {
+                Log.d(TAG, "onAppEvent($name) — Prebid line item won for ${adView.adUnitId}")
+                prebidLineItemWon = true
+            }
+        }
+
         val actualListener: AdListener? = adView.adListener
         adView.adListener = object : AdListener() {
 
@@ -318,14 +424,28 @@ class AudienzzAdViewHandler(
 
             override fun onAdImpression() {
                 actualListener?.onAdImpression()
+                val bidder = resolveBidderCode()
+                // Bid economics describe the Prebid winning bid, so only tag the impression with
+                // them when the Prebid line item actually rendered (not when the ad server won).
+                val win = if (prebidLineItemWon) lastWinningBid else null
+                eventLogger?.adImpression(
+                    adUnitId = adView.adUnitId,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                    bidderCode = bidder,
+                    winnerBidderCode = bidder,
+                    cpm = win?.cpm,
+                    currency = win?.currency,
+                    creativeId = win?.creativeId,
+                    auctionId = win?.auctionId,
+                    adId = win?.adId,
+                )
+                startViewabilityTracking()
             }
 
             override fun onAdFailedToLoad(error: LoadAdError) {
                 actualListener?.onAdFailedToLoad(error)
-                eventLogger?.adFailedToLoad(
-                    adUnitId = adView.adUnitId,
-                    errorMessage = error.message,
-                )
             }
 
             override fun onAdSwipeGestureClicked() {
@@ -333,4 +453,51 @@ class AudienzzAdViewHandler(
             }
         }
     }
+
+    /**
+     * Starts (or restarts, on a refreshed creative) viewability tracking for the rendered ad.
+     * Fires `viewability.start` when the banner first becomes ≥50% visible and
+     * `viewability.success` once it stays ≥50% visible for one continuous second.
+     */
+    private fun startViewabilityTracking() {
+        val tracker = viewabilityTracker ?: ViewabilityTracker(
+            view = adView,
+            onStart = {
+                eventLogger?.viewabilityStart(
+                    adUnitId = adView.adUnitId,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                )
+            },
+            onSuccess = {
+                eventLogger?.viewabilitySuccess(
+                    adUnitId = adView.adUnitId,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                )
+            },
+        ).also { viewabilityTracker = it }
+        tracker.start()
+    }
+
+    /**
+     * Resolves which demand actually rendered in GAM, for `bidder_code` / `winner_bidder_code`:
+     * - Prebid line item won (the GAM app event fired) → the Prebid winning bidder (`hb_bidder`)
+     * - otherwise → the ad server ([AD_SERVER_BIDDER], i.e. Google/AdX/direct)
+     *
+     * **Reliability:** the Prebid case depends on the GAM Prebid line item being configured to emit
+     * an app event named [PREBID_APP_EVENT]. Without that adops setup, every render is attributed to
+     * [AD_SERVER_BIDDER]. `ResponseInfo` is read only for diagnostic logging.
+     */
+    private fun resolveBidderCode(): String =
+        if (prebidLineItemWon) {
+            prebidWinningBidder ?: PREBID_BIDDER
+        } else {
+            adView.responseInfo?.loadedAdapterResponseInfo?.adSourceName?.let { adSource ->
+                Log.d(TAG, "adImpression — ad server rendered for ${adView.adUnitId}, adSource=$adSource")
+            }
+            AD_SERVER_BIDDER
+        }
 }

@@ -1,5 +1,6 @@
 package org.audienzz.mobile
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.view.View
@@ -24,6 +25,7 @@ import org.audienzz.mobile.api.rendering.pluginrenderer.AudienzzPrebidMobilePlug
 import org.audienzz.mobile.configuration.AudienzzAdUnitConfiguration
 import org.audienzz.mobile.configuration.AudienzzPBSConfig
 import org.audienzz.mobile.di.MainComponent
+import org.audienzz.mobile.event.eventLogger
 import org.audienzz.mobile.rendering.bidding.data.bid.AudienzzBidResponse
 import org.audienzz.mobile.rendering.bidding.interfaces.AudienzzInterstitialControllerListener
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzDisplayVideoListener
@@ -475,6 +477,18 @@ object AudienzzPrebidMobile {
     private fun registerActivityCallbacks(context: Context) {
         (context.applicationContext as? Application)
             ?.registerActivityLifecycleCallbacks(CURRENT_ACTIVITY_TRACKER)
+    }
+
+    /**
+     * Call this in every Activity or Fragment's onResume() to track screen impressions.
+     * Generates a new pageImpressionId for the screen and fires a pageImpression event.
+     * All ad events fired after this call will be associated with this screen visit.
+     *
+     * @param activity the current Activity
+     */
+    @JvmStatic
+    fun onScreenResumed(activity: Activity) {
+        eventLogger?.onScreenResumed(activity.componentName.className)
     }
 
     @JvmStatic

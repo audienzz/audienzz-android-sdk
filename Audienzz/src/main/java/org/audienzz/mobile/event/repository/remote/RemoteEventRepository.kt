@@ -4,5 +4,5 @@ import org.audienzz.mobile.event.entity.EventDomain
 
 internal interface RemoteEventRepository {
 
-    suspend fun batchUpload(events: List<EventDomain>)
+    suspend fun submit(event: EventDomain)
 }
