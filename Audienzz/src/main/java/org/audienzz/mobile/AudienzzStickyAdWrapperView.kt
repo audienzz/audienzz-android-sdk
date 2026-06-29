@@ -48,21 +48,54 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0,
-    maxHeightDp: Int = DEFAULT_MAX_HEIGHT_DP,
+    /**
+     * Reserved height in dp. Pass `null` (or omit) to use the backend-configured value
+     * or the SDK default (600 dp). A non-null value always wins over the backend setting.
+     */
+    maxHeightDp: Int? = null,
 ) : FrameLayout(context, attrs, defStyleAttr) {
 
-    /** Height reserved in the layout in pixels. Set in dp via the constructor. */
-    public var maxHeight: Int = dpToPx(maxHeightDp)
+    // Explicit publisher override in pixels. null = use remote config or SDK default.
+    private var maxHeightOverridePx: Int? = maxHeightDp?.let { dpToPx(it) }
+
+    // Backend-derived values populated by applyRemoteConfig().
+    private var remoteMaxHeightDp: Int? = null
+    private var remoteStickyTopOffsetDp: Int? = null
+
+    /** Resolved reserved height in pixels: publisher override → remote config → SDK default. */
+    private val effectiveMaxHeight: Int
+        get() = maxHeightOverridePx ?: dpToPx(remoteMaxHeightDp ?: DEFAULT_MAX_HEIGHT_DP)
+
+    /**
+     * Height reserved in the layout in pixels.
+     *
+     * Getter returns the resolved effective height (publisher override → remote config → 600 dp).
+     * Setter stores an explicit publisher override, superseding remote-config values.
+     * Pass `null` via the constructor's `maxHeightDp` parameter to opt in to remote-config control.
+     */
+    public var maxHeight: Int
+        get() = effectiveMaxHeight
         set(value) {
-            field = value
+            maxHeightOverridePx = value
             requestLayout()
         }
 
     /**
      * Y offset (pixels) from the top of the visible scroll viewport where the ad sticks.
-     * Defaults to `null` which resolves to 0.
+     * `null` → use the backend-configured value; if absent there too, resolves to 0.
      */
     public var stickyTopOffset: Int? = null
+
+    /**
+     * Remote ad-unit config ID. When set the SDK reads `stickyMaxHeight` and
+     * `stickyTopOffset` from the cached remote config and applies them as fallback
+     * values (publisher overrides in the constructor or via setters still win).
+     */
+    public var adConfigId: String? = null
+        set(value) {
+            field = value
+            applyRemoteConfig()
+        }
 
     /** Whether sticky behaviour is active. When `false` the child stays at position 0. */
     public var isStickyEnabled: Boolean = true
@@ -184,10 +217,10 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
     // MARK: - Overrides
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        // Always measure to exactly maxHeight so the space is reserved in the layout.
+        // Always measure to exactly effectiveMaxHeight so the space is reserved in the layout.
         super.onMeasure(
             widthMeasureSpec,
-            MeasureSpec.makeMeasureSpec(maxHeight, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(effectiveMaxHeight, MeasureSpec.EXACTLY),
         )
     }
 
@@ -250,6 +283,22 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
 
     // MARK: - Private
 
+    private fun applyRemoteConfig() {
+        val configId = adConfigId ?: run {
+            remoteMaxHeightDp = null
+            remoteStickyTopOffsetDp = null
+            return
+        }
+        // getAdUnitConfig reads from the local cache (populated during SDK init)
+        // and calls back on the main thread — no network request at this point.
+        AudienzzPrebidMobile.getAdUnitConfig(configId) { config ->
+            remoteMaxHeightDp = config?.config?.stickyMaxHeight
+            remoteStickyTopOffsetDp = config?.config?.stickyTopOffset
+            requestLayout()
+            updatePosition()
+        }
+    }
+
     private fun updatePosition() {
         if (!isStickyEnabled) {
             adView?.translationY = 0f
@@ -258,9 +307,10 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
         val scrollView = scrollViewRef ?: return
         val child = adView ?: return
 
-        val topOffset = stickyTopOffset ?: 0
-        val childHeight = child.height.takeIf { it > 0 } ?: maxHeight
-        val maxTop = max(0, maxHeight - childHeight).toFloat()
+        val maxH = effectiveMaxHeight
+        val topOffset = stickyTopOffset ?: dpToPx(remoteStickyTopOffsetDp ?: 0)
+        val childHeight = child.height.takeIf { it > 0 } ?: maxH
+        val maxTop = max(0, maxH - childHeight).toFloat()
 
         // Use one consistent coordinate system for both drag and fling.
         val wrapperTop = resolveTopInContent(scrollView) - scrollView.scrollY
