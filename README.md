@@ -550,7 +550,7 @@ Before using remote configuration ads, ensure the SDK is properly initialized:
 // 1. Configure remote URL and publisher ID
 RemoteConfigManager.initialize(
     publisherId = "YOUR_PUBLISHER_ID", // Will be provided for you
-    remoteUrl = "https://dev-api.adnz.co/api/ws-sdk-config/public/v1/" // Audienzz remove config URL
+    remoteUrl = "https://api.adnz.co/api/ws-sdk-config/public/v1/" // Audienzz remove config URL
 )
 
 // 2. Initialize SDK with remote configuration support
