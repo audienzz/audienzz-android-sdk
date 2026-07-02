@@ -29,6 +29,7 @@ import org.audienzz.mobile.util.HB_BIDDER_KEY
 import org.audienzz.mobile.util.HB_FORMAT_KEY
 import org.audienzz.mobile.util.HB_PB_KEY
 import org.audienzz.mobile.util.HB_SIZE_KEY
+import org.audienzz.mobile.util.noBidResultCode
 import org.audienzz.mobile.util.prebidKeyword
 
 class AudienzzRewardedVideoAdHandler(
@@ -123,7 +124,7 @@ class AudienzzRewardedVideoAdHandler(
                     autorefreshTime = adUnit.autoRefreshTime.toLong(),
                     isAutorefresh = adUnit.autoRefreshTime > 0,
                     isRefresh = false,
-                    resultCode = resultCode?.toString(),
+                    resultCode = noBidResultCode(resultCode),
                 )
             }
             resultCallback(

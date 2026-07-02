@@ -29,7 +29,7 @@ internal class ViewabilityTracker(
     private val successDurationMs: Long = DEFAULT_SUCCESS_DURATION_MS,
     private val onStart: () -> Unit,
     private val onSuccess: () -> Unit,
-) {
+) : AppForegroundMonitor.Listener {
 
     private val handler = Handler(Looper.getMainLooper())
     private var preDrawListener: ViewTreeObserver.OnPreDrawListener? = null
@@ -65,8 +65,25 @@ internal class ViewabilityTracker(
         attachListener = attach
         view.addOnAttachStateChangeListener(attach)
 
+        // A pending success must not elapse while the app is backgrounded (the pre-draw listener
+        // goes quiet but the posted timer would still fire). Pause on background, re-arm on return.
+        AppForegroundMonitor.addListener(this)
+
         // Evaluate immediately in case the ad is already on screen.
         evaluate()
+    }
+
+    override fun onEnterBackground() {
+        if (successSent) return
+        // Cancel the pending success and drop below threshold so the next foreground pre-draw
+        // re-crosses it, re-firing start and rescheduling the full continuous-view timer.
+        handler.removeCallbacks(successRunnable)
+        aboveThreshold = false
+    }
+
+    override fun onEnterForeground() {
+        // The window redraws on resume, firing the pre-draw listener which calls evaluate() and
+        // re-arms if the ad is still ≥ threshold. Nothing to do here.
     }
 
     private fun evaluate() {
@@ -86,6 +103,7 @@ internal class ViewabilityTracker(
 
     /** Stops the current session and releases listeners. Safe to call multiple times. */
     fun stop() {
+        AppForegroundMonitor.removeListener(this)
         handler.removeCallbacks(successRunnable)
         preDrawListener?.let {
             if (view.viewTreeObserver.isAlive) {

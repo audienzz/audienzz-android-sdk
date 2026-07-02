@@ -29,6 +29,7 @@ import org.audienzz.mobile.util.addContinuousVisibilityListener
 import org.audienzz.mobile.util.adViewId
 import org.audienzz.mobile.util.addOnBecameVisibleOnScreenListener
 import org.audienzz.mobile.util.addPrefetchMarginListener
+import org.audienzz.mobile.util.noBidResultCode
 import org.audienzz.mobile.util.prebidKeyword
 import org.audienzz.mobile.util.sizeString
 
@@ -382,7 +383,9 @@ class AudienzzAdViewHandler(
                     autorefreshTime = autorefreshTime,
                     isAutorefresh = isAutorefresh,
                     isRefresh = auctionIsRefresh,
-                    resultCode = resultCode?.toString(),
+                    // Prebid returns SUCCESS with empty targeting on a no-bid; report NO_BIDS so the
+                    // funnel doesn't show a "successful" no-bid. Real failures keep their result code.
+                    resultCode = noBidResultCode(resultCode),
                 )
             }
             isFirstAuction = false

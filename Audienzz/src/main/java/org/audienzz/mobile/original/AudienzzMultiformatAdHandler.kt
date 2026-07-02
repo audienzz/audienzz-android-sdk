@@ -15,7 +15,12 @@ import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
 import org.audienzz.mobile.event.noBid
+import org.audienzz.mobile.util.HB_BIDDER_KEY
+import org.audienzz.mobile.util.HB_FORMAT_KEY
+import org.audienzz.mobile.util.HB_PB_KEY
+import org.audienzz.mobile.util.HB_SIZE_KEY
 import org.audienzz.mobile.util.audienzzSizeString
+import org.audienzz.mobile.util.noBidResultCode
 
 class AudienzzMultiformatAdHandler(
     private val adUnit: AudienzzPrebidAdUnit,
@@ -66,7 +71,10 @@ class AudienzzMultiformatAdHandler(
                 isRefresh = isRefresh,
                 resultCode = bidInfo.resultCode.toString(),
             )
-            if (bidInfo.resultCode == AudienzzResultCode.SUCCESS) {
+            // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
+            // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
+            val winningBidder = bidInfo.targetingKeywords?.get(HB_BIDDER_KEY)
+            if (bidInfo.resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
                 eventLogger?.bidWon(
                     adUnitId = adUnitId,
                     sizes = prebidRequest.getAdSizes().audienzzSizeString,
@@ -76,6 +84,9 @@ class AudienzzMultiformatAdHandler(
                     autorefreshTime = autorefreshTime,
                     isAutorefresh = isAutorefresh,
                     isRefresh = isRefresh,
+                    priceBucket = bidInfo.targetingKeywords?.get(HB_PB_KEY),
+                    hbSize = bidInfo.targetingKeywords?.get(HB_SIZE_KEY),
+                    hbFormat = bidInfo.targetingKeywords?.get(HB_FORMAT_KEY),
                 )
             } else {
                 eventLogger?.noBid(
@@ -87,7 +98,7 @@ class AudienzzMultiformatAdHandler(
                     autorefreshTime = autorefreshTime,
                     isAutorefresh = isAutorefresh,
                     isRefresh = isRefresh,
-                    resultCode = bidInfo.resultCode.toString(),
+                    resultCode = noBidResultCode(bidInfo.resultCode),
                 )
             }
         }

@@ -1,6 +1,7 @@
 package org.audienzz.mobile.util
 
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
+import org.audienzz.mobile.AudienzzResultCode
 
 /** Prebid targeting keys describing the winning bid. */
 internal const val HB_BIDDER_KEY = "hb_bidder"
@@ -22,3 +23,11 @@ internal fun AdManagerAdRequest.prebidKeyword(key: String): String? {
     customTargeting?.getString(key)?.let { return it }
     return keywords.firstOrNull { it.startsWith("$key:") }?.substringAfter(":")
 }
+
+/**
+ * `result_code` reported on a `noBid` event. Prebid returns [AudienzzResultCode.SUCCESS] even for an
+ * empty/no-bid response, which would otherwise make a no-bid look like a success in the funnel, so it
+ * is reported as `NO_BIDS`. Genuine failures keep their own result code.
+ */
+internal fun noBidResultCode(resultCode: AudienzzResultCode?): String =
+    if (resultCode == AudienzzResultCode.SUCCESS) "NO_BIDS" else resultCode?.toString() ?: "NO_BIDS"

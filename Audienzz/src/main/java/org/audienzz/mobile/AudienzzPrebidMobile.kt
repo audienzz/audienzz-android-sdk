@@ -475,8 +475,10 @@ object AudienzzPrebidMobile {
     }
 
     private fun registerActivityCallbacks(context: Context) {
-        (context.applicationContext as? Application)
-            ?.registerActivityLifecycleCallbacks(CURRENT_ACTIVITY_TRACKER)
+        (context.applicationContext as? Application)?.apply {
+            registerActivityLifecycleCallbacks(CURRENT_ACTIVITY_TRACKER)
+            registerActivityLifecycleCallbacks(org.audienzz.mobile.util.AppForegroundMonitor)
+        }
     }
 
     /**
