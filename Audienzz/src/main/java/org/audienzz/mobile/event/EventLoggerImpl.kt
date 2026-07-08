@@ -65,6 +65,12 @@ internal class EventLoggerImpl @Inject constructor(
     }
 
     override fun logEvent(event: EventDomain) {
+        // Safety net: if an ad event fires before any onScreenResumed (e.g. a banner prefetches
+        // before the host Activity/Fragment's onResume), lazily start a page-impression id so the
+        // event is never orphaned. onScreenResumed normally sets this first, so this rarely triggers.
+        if (currentPageImpressionId == null && event.eventType != EventType.PAGE_IMPRESSION) {
+            currentPageImpressionId = generateUuidString()
+        }
         // Assign the sequence synchronously, in call order, before the coroutine launches.
         val sequencedEvent = event.copy(sessionSequence = sessionSequence.getAndIncrement())
         launch {
