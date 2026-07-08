@@ -9,6 +9,7 @@ import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.AudienzzRewardedVideoAdUnit
 import org.audienzz.mobile.AudienzzTargetingParams
+import org.audienzz.mobile.event.RenderEconomics
 import org.audienzz.mobile.event.adClick
 import org.audienzz.mobile.event.adImpression
 import org.audienzz.mobile.event.bidRequest
@@ -39,6 +40,8 @@ class AudienzzRewardedVideoAdHandler(
 
     // Prebid auction winner (hb_bidder), captured on bid success and reported on adImpression.
     private var prebidWinningBidder: String? = null
+    // Winning-bid economics from the last auction, reused on adImpression/adClick/viewability.
+    private var lastRenderEconomics: RenderEconomics? = null
 
     // Full-screen viewability (viewability.start / viewability.success); cancelled on dismiss.
     private var viewabilityTimer: FullScreenViewabilityTimer? = null
@@ -70,6 +73,8 @@ class AudienzzRewardedVideoAdHandler(
             autorefreshTime = adUnit.autoRefreshTime.toLong(),
             isAutorefresh = adUnit.autoRefreshTime > 0,
             isRefresh = false,
+            adUnitCode = adUnit.configId,
+            mediaTypes = "[\"video\"]",
         )
         val ppid = AudienzzPrebidMobile.ppidManager?.getPpid()
         if (ppid != null) {
@@ -81,6 +86,35 @@ class AudienzzRewardedVideoAdHandler(
         )
             .build()
         adUnit.fetchDemand(request) { resultCode ->
+            val timeToRespond = System.currentTimeMillis() - requestStartMs
+            // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
+            // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
+            val winningBidder = request.prebidKeyword(HB_BIDDER_KEY)
+            var economics: RenderEconomics? = null
+            if (resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
+                prebidWinningBidder = winningBidder
+                val win = adUnit.getWinningBid()
+                economics = RenderEconomics(
+                    bidderCode = winningBidder,
+                    winnerBidderCode = winningBidder,
+                    winnerType = WINNER_TYPE_RTB,
+                    priceBucket = request.prebidKeyword(HB_PB_KEY),
+                    hbSize = request.prebidKeyword(HB_SIZE_KEY),
+                    hbFormat = request.prebidKeyword(HB_FORMAT_KEY),
+                    mediaType = request.prebidKeyword(HB_FORMAT_KEY) ?: "video",
+                    size = request.prebidKeyword(HB_SIZE_KEY),
+                    cpm = win?.cpm,
+                    currency = win?.currency,
+                    creativeId = win?.creativeId,
+                    auctionId = win?.auctionId,
+                    adId = win?.adId,
+                    timeToRespond = timeToRespond,
+                    slotReload = 0,
+                )
+                lastRenderEconomics = economics
+            } else {
+                lastRenderEconomics = null
+            }
             eventLogger?.bidResponse(
                 adUnitId = adUnitId,
                 adType = AdType.REWARDED,
@@ -90,14 +124,11 @@ class AudienzzRewardedVideoAdHandler(
                 isAutorefresh = adUnit.autoRefreshTime > 0,
                 isRefresh = false,
                 resultCode = resultCode?.toString(),
-                timeToRespond = System.currentTimeMillis() - requestStartMs,
+                timeToRespond = timeToRespond,
+                adUnitCode = adUnit.configId,
+                economics = economics,
             )
-            // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
-            // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
-            val winningBidder = request.prebidKeyword(HB_BIDDER_KEY)
-            if (resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
-                prebidWinningBidder = winningBidder
-                val win = adUnit.getWinningBid()
+            if (economics != null) {
                 eventLogger?.bidWon(
                     adUnitId = adUnitId,
                     adType = AdType.REWARDED,
@@ -106,14 +137,8 @@ class AudienzzRewardedVideoAdHandler(
                     autorefreshTime = adUnit.autoRefreshTime.toLong(),
                     isAutorefresh = adUnit.autoRefreshTime > 0,
                     isRefresh = false,
-                    priceBucket = request.prebidKeyword(HB_PB_KEY),
-                    hbSize = request.prebidKeyword(HB_SIZE_KEY),
-                    hbFormat = request.prebidKeyword(HB_FORMAT_KEY),
-                    cpm = win?.cpm,
-                    currency = win?.currency,
-                    creativeId = win?.creativeId,
-                    auctionId = win?.auctionId,
-                    adId = win?.adId,
+                    adUnitCode = adUnit.configId,
+                    economics = economics,
                 )
             } else {
                 eventLogger?.noBid(
@@ -125,6 +150,8 @@ class AudienzzRewardedVideoAdHandler(
                     isAutorefresh = adUnit.autoRefreshTime > 0,
                     isRefresh = false,
                     resultCode = noBidResultCode(resultCode),
+                    adUnitCode = adUnit.configId,
+                    mediaTypes = "[\"video\"]",
                 )
             }
             resultCallback(
@@ -146,7 +173,14 @@ class AudienzzRewardedVideoAdHandler(
                     object : FullScreenContentCallback() {
                         override fun onAdClicked() {
                             super.onAdClicked()
-                            eventLogger?.adClick(adUnitId)
+                            eventLogger?.adClick(
+                                adUnitId = adUnitId,
+                                adType = AdType.REWARDED,
+                                adSubtype = AdSubtype.VIDEO,
+                                apiType = ApiType.ORIGINAL,
+                                adUnitCode = adUnit.configId,
+                                economics = renderEconomics(),
+                            )
                             fullScreenContentCallback?.onAdClicked()
                         }
 
@@ -166,14 +200,15 @@ class AudienzzRewardedVideoAdHandler(
                             super.onAdImpression()
                             fullScreenContentCallback?.onAdImpression()
                             // Full-screen ad objects expose no app-event listener, so the render
-                            // winner can't be confirmed: report the Prebid auction winner if there
-                            // was one, else the ad server. winner_bidder_code is left unset.
+                            // winner is best-effort: the Prebid auction winner's economics if there
+                            // was one, else an ad-server (direct) impression.
                             eventLogger?.adImpression(
                                 adUnitId = adUnitId,
                                 adType = AdType.REWARDED,
                                 adSubtype = AdSubtype.VIDEO,
                                 apiType = ApiType.ORIGINAL,
-                                bidderCode = prebidWinningBidder ?: AD_SERVER_BIDDER,
+                                adUnitCode = adUnit.configId,
+                                economics = renderEconomics(),
                             )
                         }
 
@@ -187,6 +222,8 @@ class AudienzzRewardedVideoAdHandler(
                                         adType = AdType.REWARDED,
                                         adSubtype = AdSubtype.VIDEO,
                                         apiType = ApiType.ORIGINAL,
+                                        adUnitCode = adUnit.configId,
+                                        economics = renderEconomics(),
                                     )
                                 },
                                 onSuccess = {
@@ -195,6 +232,8 @@ class AudienzzRewardedVideoAdHandler(
                                         adType = AdType.REWARDED,
                                         adSubtype = AdSubtype.VIDEO,
                                         apiType = ApiType.ORIGINAL,
+                                        adUnitCode = adUnit.configId,
+                                        economics = renderEconomics(),
                                     )
                                 },
                             ).also { viewabilityTimer = it }.onShown()
@@ -208,4 +247,16 @@ class AudienzzRewardedVideoAdHandler(
             }
         }
     }
+
+    /**
+     * Economics reported on render events. Full-screen ads expose no app event, so the render winner
+     * is best-effort: the Prebid auction winner's economics if there was one, else an ad-server
+     * (direct) impression.
+     */
+    private fun renderEconomics(): RenderEconomics =
+        lastRenderEconomics ?: RenderEconomics(
+            bidderCode = AD_SERVER_BIDDER,
+            winnerBidderCode = AD_SERVER_BIDDER,
+            winnerType = WINNER_TYPE_DIRECT,
+        )
 }

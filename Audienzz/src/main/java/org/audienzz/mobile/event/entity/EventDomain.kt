@@ -26,15 +26,23 @@ internal data class EventDomain(
     val screenName: String? = null,
     val bidderCode: String? = null,
     val winnerBidderCode: String? = null,
+    val winnerType: String? = null,
     val timeToRespond: Long? = null,
     val priceBucket: String? = null,
     val hbSize: String? = null,
     val hbFormat: String? = null,
+    val mediaType: String? = null,
+    val mediaTypes: String? = null,
+    val size: String? = null,
     val cpm: Double? = null,
     val currency: String? = null,
     val creativeId: String? = null,
     val auctionId: String? = null,
     val adId: String? = null,
+    val slotReload: Int? = null,
+    val adUnitCode: String? = null,
+    val websiteId: String? = null,
+    val consentString: String? = null,
 )
 
 internal enum class EventType(val nameString: String) {

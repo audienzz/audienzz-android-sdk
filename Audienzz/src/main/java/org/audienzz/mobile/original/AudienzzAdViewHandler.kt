@@ -16,7 +16,9 @@ import org.audienzz.mobile.event.adClick
 import org.audienzz.mobile.event.adImpression
 import org.audienzz.mobile.event.bidRequest
 import org.audienzz.mobile.event.bidResponse
+import org.audienzz.mobile.event.RenderEconomics
 import org.audienzz.mobile.event.bidWon
+import org.audienzz.mobile.event.entity.AdSubtype
 import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
@@ -78,6 +80,11 @@ class AudienzzAdViewHandler(
     private var prebidWinningBidder: String? = null
     private var prebidLineItemWon: Boolean = false
     private var lastWinningBid: AudienzzWinningBid? = null
+
+    // Winning-bid economics from the last auction, reused on adImpression/adClick/viewability.
+    private var lastRenderEconomics: RenderEconomics? = null
+    // Times this slot has (re)loaded — reported as slot_reload. First load = 0.
+    private var slotReloadCount: Int = 0
 
     /**
      * Executes ad loading if no request is running.
@@ -303,6 +310,8 @@ class AudienzzAdViewHandler(
             autorefreshTime = autorefreshTime,
             isAutorefresh = isAutorefresh,
             isRefresh = isRefresh,
+            adUnitCode = adUnit.configId,
+            mediaTypes = mediaTypesJson(adUnit.adFormats.adSubtype),
         )
 
         // Prebid re-invokes this listener on every auto-refresh without re-entering fetchDemand().
@@ -322,6 +331,8 @@ class AudienzzAdViewHandler(
                     autorefreshTime = autorefreshTime,
                     isAutorefresh = isAutorefresh,
                     isRefresh = true,
+                    adUnitCode = adUnit.configId,
+                    mediaTypes = mediaTypesJson(adUnit.adFormats.adSubtype),
                 )
             }
             // New auction → reset render-winner state until the GAM render / app event report back.
@@ -331,6 +342,39 @@ class AudienzzAdViewHandler(
             lastRefreshTime = System.currentTimeMillis()
             setEventsListenerToAdView()
             callback.invoke(request, resultCode)
+
+            // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
+            // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
+            val winningBidder = request.prebidKeyword(HB_BIDDER_KEY)
+            val timeToRespond =
+                if (isFirstAuction) System.currentTimeMillis() - requestStartMs else null
+            var economics: RenderEconomics? = null
+            if (resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
+                prebidWinningBidder = winningBidder
+                val win = adUnit.getWinningBid()
+                lastWinningBid = win
+                economics = RenderEconomics(
+                    bidderCode = winningBidder,
+                    winnerBidderCode = winningBidder,
+                    winnerType = WINNER_TYPE_RTB,
+                    priceBucket = request.prebidKeyword(HB_PB_KEY),
+                    hbSize = request.prebidKeyword(HB_SIZE_KEY),
+                    hbFormat = request.prebidKeyword(HB_FORMAT_KEY),
+                    mediaType = request.prebidKeyword(HB_FORMAT_KEY),
+                    size = request.prebidKeyword(HB_SIZE_KEY),
+                    cpm = win?.cpm,
+                    currency = win?.currency,
+                    creativeId = win?.creativeId,
+                    auctionId = win?.auctionId,
+                    adId = win?.adId,
+                    timeToRespond = timeToRespond,
+                    slotReload = slotReloadCount,
+                )
+                lastRenderEconomics = economics
+            } else {
+                lastRenderEconomics = null
+            }
+
             eventLogger?.bidResponse(
                 adViewId = adView.adViewId,
                 adUnitId = adView.adUnitId,
@@ -344,15 +388,11 @@ class AudienzzAdViewHandler(
                 resultCode = resultCode?.toString(),
                 // Only the initial auction has a measurable request→response delta; Prebid does not
                 // expose the start time of an internal refresh.
-                timeToRespond = if (isFirstAuction) System.currentTimeMillis() - requestStartMs else null,
+                timeToRespond = timeToRespond,
+                adUnitCode = adUnit.configId,
+                economics = economics,
             )
-            // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
-            // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
-            val winningBidder = request.prebidKeyword(HB_BIDDER_KEY)
-            if (resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
-                prebidWinningBidder = winningBidder
-                val win = adUnit.getWinningBid()
-                lastWinningBid = win
+            if (economics != null) {
                 eventLogger?.bidWon(
                     adViewId = adView.adViewId,
                     adUnitId = adView.adUnitId,
@@ -363,14 +403,8 @@ class AudienzzAdViewHandler(
                     autorefreshTime = autorefreshTime,
                     isAutorefresh = isAutorefresh,
                     isRefresh = auctionIsRefresh,
-                    priceBucket = request.prebidKeyword(HB_PB_KEY),
-                    hbSize = request.prebidKeyword(HB_SIZE_KEY),
-                    hbFormat = request.prebidKeyword(HB_FORMAT_KEY),
-                    cpm = win?.cpm,
-                    currency = win?.currency,
-                    creativeId = win?.creativeId,
-                    auctionId = win?.auctionId,
-                    adId = win?.adId,
+                    adUnitCode = adUnit.configId,
+                    economics = economics,
                 )
             } else {
                 eventLogger?.noBid(
@@ -386,8 +420,11 @@ class AudienzzAdViewHandler(
                     // Prebid returns SUCCESS with empty targeting on a no-bid; report NO_BIDS so the
                     // funnel doesn't show a "successful" no-bid. Real failures keep their result code.
                     resultCode = noBidResultCode(resultCode),
+                    adUnitCode = adUnit.configId,
+                    mediaTypes = mediaTypesJson(adUnit.adFormats.adSubtype),
                 )
             }
+            slotReloadCount++
             isFirstAuction = false
         }
     }
@@ -410,7 +447,14 @@ class AudienzzAdViewHandler(
 
             override fun onAdClicked() {
                 actualListener?.onAdClicked()
-                eventLogger?.adClick(adUnitId = adView.adUnitId)
+                eventLogger?.adClick(
+                    adUnitId = adView.adUnitId,
+                    adType = AdType.BANNER,
+                    adSubtype = adUnit.adFormats.adSubtype,
+                    apiType = ApiType.ORIGINAL,
+                    adUnitCode = adUnit.configId,
+                    economics = renderEconomics(),
+                )
             }
 
             override fun onAdLoaded() {
@@ -427,22 +471,13 @@ class AudienzzAdViewHandler(
 
             override fun onAdImpression() {
                 actualListener?.onAdImpression()
-                val bidder = resolveBidderCode()
-                // Bid economics describe the Prebid winning bid, so only tag the impression with
-                // them when the Prebid line item actually rendered (not when the ad server won).
-                val win = if (prebidLineItemWon) lastWinningBid else null
                 eventLogger?.adImpression(
                     adUnitId = adView.adUnitId,
                     adType = AdType.BANNER,
                     adSubtype = adUnit.adFormats.adSubtype,
                     apiType = ApiType.ORIGINAL,
-                    bidderCode = bidder,
-                    winnerBidderCode = bidder,
-                    cpm = win?.cpm,
-                    currency = win?.currency,
-                    creativeId = win?.creativeId,
-                    auctionId = win?.auctionId,
-                    adId = win?.adId,
+                    adUnitCode = adUnit.configId,
+                    economics = renderEconomics(),
                 )
                 startViewabilityTracking()
             }
@@ -471,6 +506,8 @@ class AudienzzAdViewHandler(
                     adType = AdType.BANNER,
                     adSubtype = adUnit.adFormats.adSubtype,
                     apiType = ApiType.ORIGINAL,
+                    adUnitCode = adUnit.configId,
+                    economics = renderEconomics(),
                 )
             },
             onSuccess = {
@@ -479,6 +516,8 @@ class AudienzzAdViewHandler(
                     adType = AdType.BANNER,
                     adSubtype = adUnit.adFormats.adSubtype,
                     apiType = ApiType.ORIGINAL,
+                    adUnitCode = adUnit.configId,
+                    economics = renderEconomics(),
                 )
             },
         ).also { viewabilityTracker = it }
@@ -503,4 +542,31 @@ class AudienzzAdViewHandler(
             }
             AD_SERVER_BIDDER
         }
+
+    /**
+     * Economics reported on render events. The Prebid line item won the GAM auction only if its app
+     * event fired; otherwise the ad server rendered — report a direct impression with no Prebid
+     * economics (only the ad-server bidder code).
+     */
+    private fun renderEconomics(): RenderEconomics =
+        if (prebidLineItemWon && lastRenderEconomics != null) {
+            lastRenderEconomics!!
+        } else {
+            RenderEconomics(
+                bidderCode = resolveBidderCode(),
+                winnerBidderCode = resolveBidderCode(),
+                winnerType = WINNER_TYPE_DIRECT,
+            )
+        }
 }
+
+/** `media_types` as a JSON array string (web-schema parity), derived from the ad subtype. */
+internal fun mediaTypesJson(subtype: AdSubtype): String = when (subtype) {
+    AdSubtype.VIDEO -> "[\"video\"]"
+    AdSubtype.MULTIFORMAT -> "[\"banner\",\"video\"]"
+    else -> "[\"banner\"]"
+}
+
+/** `winner_type` values (web-clickstream parity), shared across the original-API handlers. */
+internal const val WINNER_TYPE_RTB = "RTB"
+internal const val WINNER_TYPE_DIRECT = "direct"

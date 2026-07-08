@@ -8,6 +8,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.audienzz.mobile.AudienzzPrebidMobile
+import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.di.qualifier.IO
 import org.audienzz.mobile.event.entity.EventDomain
 import org.audienzz.mobile.event.entity.EventType
@@ -60,6 +62,9 @@ internal class EventLoggerImpl @Inject constructor(
             EventDomain(
                 eventType = EventType.PAGE_IMPRESSION,
                 screenName = screenName,
+                // Guarded: reading Prebid targeting touches org.json, which is unavailable in plain
+                // JVM unit tests; never let analytics setup crash a screen visit.
+                consentString = runCatching { AudienzzTargetingParams.gdprConsentString }.getOrNull(),
             ),
         )
     }
@@ -97,6 +102,7 @@ internal class EventLoggerImpl @Inject constructor(
             sessionStartTimestamp = this@EventLoggerImpl.sessionStartTimestamp,
             deviceId = adIdProvider.getAdId(),
             pageImpressionId = currentPageImpressionId,
+            websiteId = websiteId ?: runCatching { AudienzzPrebidMobile.publisherId }.getOrNull(),
         )
 
     companion object {

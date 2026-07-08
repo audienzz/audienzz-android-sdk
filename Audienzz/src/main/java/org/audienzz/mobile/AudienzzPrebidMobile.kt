@@ -53,6 +53,9 @@ object AudienzzPrebidMobile {
 
     internal var companyId: String = ""
 
+    /** Publisher id used for remote config — reported as analytics `website_id`. */
+    internal var publisherId: String? = null
+
     /** Schain object for audienzz **/
     internal var schainObject: JSONObject? = null
 
@@ -372,6 +375,8 @@ object AudienzzPrebidMobile {
     ) {
         registerActivityCallbacks(context)
         MainComponent.init(context)
+
+        this.publisherId = publisherId
 
         MainComponent.remoteConfigManager?.let { manager ->
             manager.initialize(publisherId)

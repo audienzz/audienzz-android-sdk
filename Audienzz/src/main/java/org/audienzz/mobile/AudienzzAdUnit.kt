@@ -64,6 +64,9 @@ abstract class AudienzzAdUnit internal constructor(
 
     internal val adFormats get() = adUnit.configuration.adFormats
 
+    /** Prebid stored-request/config id — reported as analytics `ad_unit_code`. */
+    internal val configId: String? get() = adUnit.configuration.configId
+
     fun setAutoRefreshInterval(
         @IntRange(
             from = AUTO_REFRESH_DELAY_MIN / 1000L,

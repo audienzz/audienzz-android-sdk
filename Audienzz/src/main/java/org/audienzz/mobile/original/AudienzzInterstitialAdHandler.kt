@@ -9,6 +9,7 @@ import org.audienzz.mobile.AudienzzInterstitialAdUnit
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.AudienzzTargetingParams
+import org.audienzz.mobile.event.RenderEconomics
 import org.audienzz.mobile.event.adClick
 import org.audienzz.mobile.event.adImpression
 import org.audienzz.mobile.event.bidRequest
@@ -38,6 +39,8 @@ class AudienzzInterstitialAdHandler(
 
     // Prebid auction winner (hb_bidder), captured on bid success and reported on adImpression.
     private var prebidWinningBidder: String? = null
+    // Winning-bid economics from the last auction, reused on adImpression/adClick/viewability.
+    private var lastRenderEconomics: RenderEconomics? = null
 
     // Full-screen viewability (viewability.start / viewability.success); cancelled on dismiss.
     private var viewabilityTimer: FullScreenViewabilityTimer? = null
@@ -69,6 +72,8 @@ class AudienzzInterstitialAdHandler(
             autorefreshTime = adUnit.autoRefreshTime.toLong(),
             isAutorefresh = adUnit.autoRefreshTime > 0,
             isRefresh = false,
+            adUnitCode = adUnit.configId,
+            mediaTypes = mediaTypesJson(adUnit.getSubType()),
         )
         val ppid = AudienzzPrebidMobile.ppidManager?.getPpid()
         if (ppid != null) {
@@ -81,6 +86,35 @@ class AudienzzInterstitialAdHandler(
             )
                 .build()
         adUnit.fetchDemand(request) { resultCode ->
+            val timeToRespond = System.currentTimeMillis() - requestStartMs
+            // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
+            // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
+            val winningBidder = request.prebidKeyword(HB_BIDDER_KEY)
+            var economics: RenderEconomics? = null
+            if (resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
+                prebidWinningBidder = winningBidder
+                val win = adUnit.getWinningBid()
+                economics = RenderEconomics(
+                    bidderCode = winningBidder,
+                    winnerBidderCode = winningBidder,
+                    winnerType = WINNER_TYPE_RTB,
+                    priceBucket = request.prebidKeyword(HB_PB_KEY),
+                    hbSize = request.prebidKeyword(HB_SIZE_KEY),
+                    hbFormat = request.prebidKeyword(HB_FORMAT_KEY),
+                    mediaType = request.prebidKeyword(HB_FORMAT_KEY),
+                    size = request.prebidKeyword(HB_SIZE_KEY),
+                    cpm = win?.cpm,
+                    currency = win?.currency,
+                    creativeId = win?.creativeId,
+                    auctionId = win?.auctionId,
+                    adId = win?.adId,
+                    timeToRespond = timeToRespond,
+                    slotReload = 0,
+                )
+                lastRenderEconomics = economics
+            } else {
+                lastRenderEconomics = null
+            }
             eventLogger?.bidResponse(
                 adUnitId = adUnitId,
                 adType = AdType.INTERSTITIAL,
@@ -90,14 +124,11 @@ class AudienzzInterstitialAdHandler(
                 isAutorefresh = adUnit.autoRefreshTime > 0,
                 isRefresh = false,
                 resultCode = resultCode?.toString(),
-                timeToRespond = System.currentTimeMillis() - requestStartMs,
+                timeToRespond = timeToRespond,
+                adUnitCode = adUnit.configId,
+                economics = economics,
             )
-            // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
-            // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
-            val winningBidder = request.prebidKeyword(HB_BIDDER_KEY)
-            if (resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
-                prebidWinningBidder = winningBidder
-                val win = adUnit.getWinningBid()
+            if (economics != null) {
                 eventLogger?.bidWon(
                     adUnitId = adUnitId,
                     adType = AdType.INTERSTITIAL,
@@ -106,14 +137,8 @@ class AudienzzInterstitialAdHandler(
                     autorefreshTime = adUnit.autoRefreshTime.toLong(),
                     isAutorefresh = adUnit.autoRefreshTime > 0,
                     isRefresh = false,
-                    priceBucket = request.prebidKeyword(HB_PB_KEY),
-                    hbSize = request.prebidKeyword(HB_SIZE_KEY),
-                    hbFormat = request.prebidKeyword(HB_FORMAT_KEY),
-                    cpm = win?.cpm,
-                    currency = win?.currency,
-                    creativeId = win?.creativeId,
-                    auctionId = win?.auctionId,
-                    adId = win?.adId,
+                    adUnitCode = adUnit.configId,
+                    economics = economics,
                 )
             } else {
                 eventLogger?.noBid(
@@ -125,6 +150,8 @@ class AudienzzInterstitialAdHandler(
                     isAutorefresh = adUnit.autoRefreshTime > 0,
                     isRefresh = false,
                     resultCode = noBidResultCode(resultCode),
+                    adUnitCode = adUnit.configId,
+                    mediaTypes = mediaTypesJson(adUnit.getSubType()),
                 )
             }
             resultCallback(
@@ -148,7 +175,14 @@ class AudienzzInterstitialAdHandler(
                         override fun onAdClicked() {
                             super.onAdClicked()
                             fullScreenContentCallback?.onAdClicked()
-                            eventLogger?.adClick(adUnitId)
+                            eventLogger?.adClick(
+                                adUnitId = adUnitId,
+                                adType = AdType.INTERSTITIAL,
+                                adSubtype = adUnit.getSubType(),
+                                apiType = ApiType.ORIGINAL,
+                                adUnitCode = adUnit.configId,
+                                economics = renderEconomics(),
+                            )
                         }
 
                         override fun onAdDismissedFullScreenContent() {
@@ -167,14 +201,15 @@ class AudienzzInterstitialAdHandler(
                             super.onAdImpression()
                             fullScreenContentCallback?.onAdImpression()
                             // Full-screen ad objects expose no app-event listener, so the render
-                            // winner can't be confirmed: report the Prebid auction winner if there
-                            // was one, else the ad server. winner_bidder_code is left unset.
+                            // winner is best-effort: the Prebid auction winner's economics if there
+                            // was one, else an ad-server (direct) impression.
                             eventLogger?.adImpression(
                                 adUnitId = adUnitId,
                                 adType = AdType.INTERSTITIAL,
                                 adSubtype = adUnit.getSubType(),
                                 apiType = ApiType.ORIGINAL,
-                                bidderCode = prebidWinningBidder ?: AD_SERVER_BIDDER,
+                                adUnitCode = adUnit.configId,
+                                economics = renderEconomics(),
                             )
                         }
 
@@ -188,6 +223,8 @@ class AudienzzInterstitialAdHandler(
                                         adType = AdType.INTERSTITIAL,
                                         adSubtype = adUnit.getSubType(),
                                         apiType = ApiType.ORIGINAL,
+                                        adUnitCode = adUnit.configId,
+                                        economics = renderEconomics(),
                                     )
                                 },
                                 onSuccess = {
@@ -196,6 +233,8 @@ class AudienzzInterstitialAdHandler(
                                         adType = AdType.INTERSTITIAL,
                                         adSubtype = adUnit.getSubType(),
                                         apiType = ApiType.ORIGINAL,
+                                        adUnitCode = adUnit.configId,
+                                        economics = renderEconomics(),
                                     )
                                 },
                             ).also { viewabilityTimer = it }.onShown()
@@ -209,4 +248,16 @@ class AudienzzInterstitialAdHandler(
             }
         }
     }
+
+    /**
+     * Economics reported on render events. Full-screen ads expose no app event, so the render winner
+     * is best-effort: the Prebid auction winner's economics if there was one, else an ad-server
+     * (direct) impression.
+     */
+    private fun renderEconomics(): RenderEconomics =
+        lastRenderEconomics ?: RenderEconomics(
+            bidderCode = AD_SERVER_BIDDER,
+            winnerBidderCode = AD_SERVER_BIDDER,
+            winnerType = WINNER_TYPE_DIRECT,
+        )
 }

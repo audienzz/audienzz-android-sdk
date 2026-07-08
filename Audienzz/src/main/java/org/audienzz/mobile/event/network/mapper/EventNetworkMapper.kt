@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import org.audienzz.BuildConfig
 import org.audienzz.mobile.event.entity.EventDomain
+import org.audienzz.mobile.event.entity.EventType
 import org.audienzz.mobile.event.network.entity.EventNetwork
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -29,6 +30,13 @@ internal class EventNetworkMapper @Inject constructor(
     }.getOrNull()
     private val userAgent: String? = System.getProperty("http.agent")
 
+    // Envelope device fields — known directly on mobile (more reliable than parsing the UA).
+    private val osName: String = "Android"
+    private val deviceCategory: String =
+        if (context.resources.configuration.smallestScreenWidthDp >= 600) "Tablet" else "Smartphone"
+    // No real browser in-app; the creative renders in the system WebView.
+    private val browserName: String = "Android WebView"
+
     fun toNetwork(event: EventDomain): EventNetwork {
         val metrics = context.resources.displayMetrics
         val screenWidthDp = (metrics.widthPixels / metrics.density).toInt()
@@ -53,6 +61,9 @@ internal class EventNetworkMapper @Inject constructor(
             viewportWidth = screenWidthDp,
             deviceId = event.deviceId,
             userAgent = userAgent,
+            osName = osName,
+            deviceCategory = deviceCategory,
+            browserName = browserName,
             sdkName = SDK_NAME,
             sdkVersion = BuildConfig.AUDIENZZ_SDK_VERSION,
             appPackageName = appPackageName,
@@ -87,9 +98,27 @@ internal class EventNetworkMapper @Inject constructor(
         event.creativeId?.let { put("creative_id", it) }
         event.auctionId?.let { put("auction_id", it) }
         event.adId?.let { put("ad_id", it) }
+        // Web-clickstream parity attributes.
+        event.adUnitCode?.let { put("ad_unit_code", it) }   // Prebid configId
+        event.websiteId?.let { put("website_id", it) }       // remote-config publisherId
+        event.winnerType?.let { put("winner_type", it) }
+        event.mediaType?.let { put("media_type", it) }
+        event.mediaTypes?.let { put("media_types", it) }
+        event.size?.let { put("size", it) }
+        event.slotReload?.let { put("slot_reload", it.toString()) }
+        event.consentString?.let { put("consent_string", it) }
+        // Transport is constant for the SDK (single POST per event, like the web XHR beacon).
+        put("transport", "xhr")
+        // Viewability events carry the tracker version.
+        if (event.eventType == EventType.VIEWABILITY_START ||
+            event.eventType == EventType.VIEWABILITY_SUCCESS
+        ) {
+            put("tracker_version", VIEWABILITY_TRACKER_VERSION)
+        }
     }
 
     companion object {
         private const val SDK_NAME = "android"
+        private const val VIEWABILITY_TRACKER_VERSION = "1.0.0"
     }
 }

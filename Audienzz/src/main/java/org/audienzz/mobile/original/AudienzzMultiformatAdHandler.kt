@@ -9,6 +9,7 @@ import org.audienzz.mobile.api.original.AudienzzPrebidAdUnit
 import org.audienzz.mobile.api.original.AudienzzPrebidRequest
 import org.audienzz.mobile.event.bidRequest
 import org.audienzz.mobile.event.bidResponse
+import org.audienzz.mobile.event.RenderEconomics
 import org.audienzz.mobile.event.bidWon
 import org.audienzz.mobile.event.entity.AdSubtype
 import org.audienzz.mobile.event.entity.AdType
@@ -84,9 +85,16 @@ class AudienzzMultiformatAdHandler(
                     autorefreshTime = autorefreshTime,
                     isAutorefresh = isAutorefresh,
                     isRefresh = isRefresh,
-                    priceBucket = bidInfo.targetingKeywords?.get(HB_PB_KEY),
-                    hbSize = bidInfo.targetingKeywords?.get(HB_SIZE_KEY),
-                    hbFormat = bidInfo.targetingKeywords?.get(HB_FORMAT_KEY),
+                    economics = RenderEconomics(
+                        bidderCode = winningBidder,
+                        winnerBidderCode = winningBidder,
+                        winnerType = WINNER_TYPE_RTB,
+                        priceBucket = bidInfo.targetingKeywords?.get(HB_PB_KEY),
+                        hbSize = bidInfo.targetingKeywords?.get(HB_SIZE_KEY),
+                        hbFormat = bidInfo.targetingKeywords?.get(HB_FORMAT_KEY),
+                        mediaType = bidInfo.targetingKeywords?.get(HB_FORMAT_KEY),
+                        size = bidInfo.targetingKeywords?.get(HB_SIZE_KEY),
+                    ),
                 )
             } else {
                 eventLogger?.noBid(
@@ -99,6 +107,7 @@ class AudienzzMultiformatAdHandler(
                     isAutorefresh = isAutorefresh,
                     isRefresh = isRefresh,
                     resultCode = noBidResultCode(bidInfo.resultCode),
+                    mediaTypes = mediaTypesJson(AdSubtype.MULTIFORMAT),
                 )
             }
         }
