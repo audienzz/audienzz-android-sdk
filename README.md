@@ -727,6 +727,10 @@ override fun onResume() {
 Call it only **after** the SDK is initialized — the `isSdkInitialized` guard above handles the
 first launch, where `onResume()` may run before initialization completes.
 
+There is **no `onPause`/teardown counterpart** to call. If you omit `onScreenResumed`, ad events are
+still reported (the SDK assigns a fallback page-impression id so nothing is lost), but they won't be
+tied to a named screen.
+
 ### Demand-source attribution (`bidder_code`) — optional GAM setup
 
 `adImpression` reports `bidder_code` = the demand that actually rendered. To distinguish a winning
