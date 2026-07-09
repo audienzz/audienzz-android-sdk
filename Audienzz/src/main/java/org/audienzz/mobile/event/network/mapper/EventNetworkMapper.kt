@@ -93,7 +93,8 @@ internal class EventNetworkMapper @Inject constructor(
         event.priceBucket?.let { put("price_bucket", it) }
         event.hbSize?.let { put("hb_size", it) }
         event.hbFormat?.let { put("hb_format", it) }
-        event.cpm?.let { put("cpm", it.toString()) }
+        // Round to 6 dp so the emitted value is clean (1.425, not 1.4249999999999998) and matches iOS.
+        event.cpm?.let { put("cpm", (Math.round(it * 1_000_000.0) / 1_000_000.0).toString()) }
         event.currency?.let { put("currency", it) }
         event.creativeId?.let { put("creative_id", it) }
         event.auctionId?.let { put("auction_id", it) }
