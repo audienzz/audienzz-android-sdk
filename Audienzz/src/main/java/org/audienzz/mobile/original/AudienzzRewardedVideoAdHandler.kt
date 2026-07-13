@@ -254,9 +254,6 @@ class AudienzzRewardedVideoAdHandler(
      * (direct) impression.
      */
     private fun renderEconomics(): RenderEconomics =
-        lastRenderEconomics ?: RenderEconomics(
-            bidderCode = AD_SERVER_BIDDER,
-            winnerBidderCode = AD_SERVER_BIDDER,
-            winnerType = WINNER_TYPE_DIRECT,
-        )
+        (lastRenderEconomics ?: RenderEconomics())
+            .copy(bidderCode = prebidWinningBidder ?: AD_SERVER_BIDDER)
 }

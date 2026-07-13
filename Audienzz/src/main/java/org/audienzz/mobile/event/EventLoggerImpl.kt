@@ -41,6 +41,9 @@ internal class EventLoggerImpl @Inject constructor(
     @Volatile
     private var currentPageImpressionId: String? = null
 
+    @Volatile
+    private var currentScreenName: String? = null
+
     override val coroutineContext = dispatcher + SupervisorJob() +
         CoroutineExceptionHandler { _, throwable ->
             Log.e(TAG, "Unexpected coroutine error", throwable)
@@ -58,6 +61,7 @@ internal class EventLoggerImpl @Inject constructor(
 
     override fun onScreenResumed(screenName: String) {
         currentPageImpressionId = generateUuidString()
+        currentScreenName = screenName
         logEvent(
             EventDomain(
                 eventType = EventType.PAGE_IMPRESSION,
@@ -102,6 +106,7 @@ internal class EventLoggerImpl @Inject constructor(
             sessionStartTimestamp = this@EventLoggerImpl.sessionStartTimestamp,
             deviceId = adIdProvider.getAdId(),
             pageImpressionId = currentPageImpressionId,
+            screenName = screenName ?: currentScreenName,
             websiteId = websiteId ?: runCatching { AudienzzPrebidMobile.publisherId }.getOrNull(),
         )
 

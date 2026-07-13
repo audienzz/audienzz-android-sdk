@@ -2,6 +2,7 @@ package org.audienzz.mobile.event.network.mapper
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.webkit.WebSettings
 import org.audienzz.BuildConfig
 import org.audienzz.mobile.event.entity.EventDomain
 import org.audienzz.mobile.event.entity.EventType
@@ -28,7 +29,11 @@ internal class EventNetworkMapper @Inject constructor(
     private val appTitle: String? = runCatching {
         context.applicationInfo.loadLabel(context.packageManager).toString()
     }.getOrNull()
-    private val userAgent: String? = System.getProperty("http.agent")
+    // Real WebView user agent (the creative renders in a WebView); fall back to the Dalvik UA if
+    // the WebView UA can't be read (e.g. off the main thread on some OS versions).
+    private val userAgent: String? =
+        runCatching { WebSettings.getDefaultUserAgent(context) }.getOrNull()
+            ?: System.getProperty("http.agent")
 
     // Envelope device fields — known directly on mobile (more reliable than parsing the UA).
     private val osName: String = "Android"
@@ -88,7 +93,6 @@ internal class EventNetworkMapper @Inject constructor(
         event.isRefresh?.let { put("refresh", it.toString()) }
         event.errorMessage?.let { put("error_message", it) }
         event.bidderCode?.let { put("bidder_code", it) }
-        event.winnerBidderCode?.let { put("winner_bidder_code", it) }
         event.timeToRespond?.let { put("time_to_respond", it.toString()) }
         event.priceBucket?.let { put("price_bucket", it) }
         event.hbSize?.let { put("hb_size", it) }
@@ -102,7 +106,6 @@ internal class EventNetworkMapper @Inject constructor(
         // Web-clickstream parity attributes.
         event.adUnitCode?.let { put("ad_unit_code", it) }   // Prebid configId
         event.websiteId?.let { put("website_id", it) }       // remote-config publisherId
-        event.winnerType?.let { put("winner_type", it) }
         event.mediaType?.let { put("media_type", it) }
         event.mediaTypes?.let { put("media_types", it) }
         event.size?.let { put("size", it) }

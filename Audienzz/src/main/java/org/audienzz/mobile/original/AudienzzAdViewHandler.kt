@@ -549,15 +549,9 @@ class AudienzzAdViewHandler(
      * economics (only the ad-server bidder code).
      */
     private fun renderEconomics(): RenderEconomics =
-        if (prebidLineItemWon && lastRenderEconomics != null) {
-            lastRenderEconomics!!
-        } else {
-            RenderEconomics(
-                bidderCode = resolveBidderCode(),
-                winnerBidderCode = resolveBidderCode(),
-                winnerType = WINNER_TYPE_DIRECT,
-            )
-        }
+        // Always carry the winning-bid economics that were in play; bidder_code reflects the actual
+        // render winner (Prebid line item when its GAM app event fired, else the ad server).
+        (lastRenderEconomics ?: RenderEconomics()).copy(bidderCode = resolveBidderCode())
 }
 
 /** `media_types` as a JSON array string (web-schema parity), derived from the ad subtype. */
