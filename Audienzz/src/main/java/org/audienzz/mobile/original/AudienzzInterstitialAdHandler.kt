@@ -31,6 +31,7 @@ import org.audienzz.mobile.util.HB_PB_KEY
 import org.audienzz.mobile.util.HB_SIZE_KEY
 import org.audienzz.mobile.util.noBidResultCode
 import org.audienzz.mobile.util.prebidKeyword
+import java.util.UUID
 
 class AudienzzInterstitialAdHandler(
     private val adUnit: AudienzzInterstitialAdUnit,
@@ -41,6 +42,8 @@ class AudienzzInterstitialAdHandler(
     private var prebidWinningBidder: String? = null
     // Winning-bid economics from the last auction, reused on adImpression/adClick/viewability.
     private var lastRenderEconomics: RenderEconomics? = null
+    // SDK-generated auction id, minted at auction start and reused across every event of that auction.
+    private var currentAuctionId: String? = null
 
     // Full-screen viewability (viewability.start / viewability.success); cancelled on dismiss.
     private var viewabilityTimer: FullScreenViewabilityTimer? = null
@@ -63,6 +66,8 @@ class AudienzzInterstitialAdHandler(
         ),
     ) {
         prebidWinningBidder = null
+        // Mint the auction id up front so bidRequest and every later event of this auction share it.
+        currentAuctionId = UUID.randomUUID().toString()
         val requestStartMs = System.currentTimeMillis()
         eventLogger?.bidRequest(
             adUnitId = adUnitId,
@@ -74,6 +79,7 @@ class AudienzzInterstitialAdHandler(
             isRefresh = false,
             adUnitCode = adUnit.configId,
             mediaTypes = mediaTypesJson(adUnit.getSubType()),
+            auctionId = currentAuctionId,
         )
         val ppid = AudienzzPrebidMobile.ppidManager?.getPpid()
         if (ppid != null) {
@@ -106,7 +112,8 @@ class AudienzzInterstitialAdHandler(
                     cpm = win?.cpm,
                     currency = win?.currency,
                     creativeId = win?.creativeId,
-                    auctionId = win?.auctionId,
+                    // Reuse the SDK-minted auction id (not Prebid's) so the whole funnel counts together.
+                    auctionId = currentAuctionId,
                     adId = win?.adId,
                     timeToRespond = timeToRespond,
                     slotReload = 0,
@@ -152,6 +159,7 @@ class AudienzzInterstitialAdHandler(
                     resultCode = noBidResultCode(resultCode),
                     adUnitCode = adUnit.configId,
                     mediaTypes = mediaTypesJson(adUnit.getSubType()),
+                    auctionId = currentAuctionId,
                 )
             }
             resultCallback(
@@ -254,7 +262,15 @@ class AudienzzInterstitialAdHandler(
      * is best-effort: the Prebid auction winner's economics if there was one, else an ad-server
      * (direct) impression.
      */
-    private fun renderEconomics(): RenderEconomics =
-        (lastRenderEconomics ?: RenderEconomics())
-            .copy(bidderCode = prebidWinningBidder ?: AD_SERVER_BIDDER)
+    private fun renderEconomics(): RenderEconomics {
+        val base = lastRenderEconomics ?: RenderEconomics()
+        val bidder = prebidWinningBidder ?: AD_SERVER_BIDDER
+        return base.copy(
+            bidderCode = bidder,
+            // Ad server rendered — zero the creative id so a direct-sold impression isn't
+            // misclassified as RTB (GMA exposes no served-creative id → "0" stub).
+            creativeId = if (bidder == AD_SERVER_BIDDER) "0" else base.creativeId,
+            auctionId = base.auctionId ?: currentAuctionId,
+        )
+    }
 }

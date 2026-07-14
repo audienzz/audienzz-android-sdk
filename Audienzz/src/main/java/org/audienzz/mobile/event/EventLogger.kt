@@ -82,6 +82,7 @@ internal fun EventLogger.bidRequest(
     apiType: ApiType,
     adUnitCode: String? = null,
     mediaTypes: String? = null,
+    auctionId: String? = null,
 ) {
     logEvent(
         EventDomain(
@@ -97,6 +98,7 @@ internal fun EventLogger.bidRequest(
             apiType = apiType,
             adUnitCode = adUnitCode,
             mediaTypes = mediaTypes,
+            auctionId = auctionId,
         ),
     )
 }
@@ -181,6 +183,7 @@ internal fun EventLogger.noBid(
     apiType: ApiType,
     adUnitCode: String? = null,
     mediaTypes: String? = null,
+    auctionId: String? = null,
 ) {
     logEvent(
         EventDomain(
@@ -197,6 +200,7 @@ internal fun EventLogger.noBid(
             apiType = apiType,
             adUnitCode = adUnitCode,
             mediaTypes = mediaTypes,
+            auctionId = auctionId,
         ),
     )
 }

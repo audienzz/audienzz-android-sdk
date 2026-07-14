@@ -33,7 +33,8 @@ import org.audienzz.mobile.util.addOnBecameVisibleOnScreenListener
 import org.audienzz.mobile.util.addPrefetchMarginListener
 import org.audienzz.mobile.util.noBidResultCode
 import org.audienzz.mobile.util.prebidKeyword
-import org.audienzz.mobile.util.sizeString
+import org.audienzz.mobile.util.sizesJson
+import java.util.UUID
 
 class AudienzzAdViewHandler(
     private val adView: AdManagerAdView,
@@ -83,6 +84,10 @@ class AudienzzAdViewHandler(
 
     // Winning-bid economics from the last auction, reused on adImpression/adClick/viewability.
     private var lastRenderEconomics: RenderEconomics? = null
+    // SDK-generated auction id, minted at auction start and reused across every event of that
+    // auction (bidRequest → bidResponse/bidWon/noBid → adImpression/adClick/viewability). Prebid
+    // only assigns its own id after the request, so we pre-generate one for full-funnel counting.
+    private var currentAuctionId: String? = null
     // Times this slot has (re)loaded — reported as slot_reload. First load = 0.
     private var slotReloadCount: Int = 0
 
@@ -300,10 +305,13 @@ class AudienzzAdViewHandler(
         Log.d(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — isRefresh=$isRefresh, autorefresh=${autorefreshTime}ms")
 
         val requestStartMs = System.currentTimeMillis()
+        // Mint the auction id up front so bidRequest and every later event of this auction share it.
+        currentAuctionId = UUID.randomUUID().toString()
         eventLogger?.bidRequest(
             adViewId = adView.adViewId,
             adUnitId = adView.adUnitId,
-            sizes = adView.adSizes?.asIterable()?.sizeString,
+            sizes = adView.adSizes?.asIterable()?.sizesJson,
+            auctionId = currentAuctionId,
             adType = AdType.BANNER,
             adSubtype = adUnit.adFormats.adSubtype,
             apiType = ApiType.ORIGINAL,
@@ -321,10 +329,13 @@ class AudienzzAdViewHandler(
         adUnit.fetchDemand(request) { resultCode ->
             val auctionIsRefresh = isRefresh || !isFirstAuction
             if (!isFirstAuction) {
+                // A Prebid auto-refresh is a new auction — mint a fresh id for its funnel.
+                currentAuctionId = UUID.randomUUID().toString()
                 eventLogger?.bidRequest(
                     adViewId = adView.adViewId,
                     adUnitId = adView.adUnitId,
-                    sizes = adView.adSizes?.asIterable()?.sizeString,
+                    sizes = adView.adSizes?.asIterable()?.sizesJson,
+            auctionId = currentAuctionId,
                     adType = AdType.BANNER,
                     adSubtype = adUnit.adFormats.adSubtype,
                     apiType = ApiType.ORIGINAL,
@@ -365,7 +376,8 @@ class AudienzzAdViewHandler(
                     cpm = win?.cpm,
                     currency = win?.currency,
                     creativeId = win?.creativeId,
-                    auctionId = win?.auctionId,
+                    // Reuse the SDK-minted auction id (not Prebid's) so the whole funnel counts together.
+                    auctionId = currentAuctionId,
                     adId = win?.adId,
                     timeToRespond = timeToRespond,
                     slotReload = slotReloadCount,
@@ -378,7 +390,7 @@ class AudienzzAdViewHandler(
             eventLogger?.bidResponse(
                 adViewId = adView.adViewId,
                 adUnitId = adView.adUnitId,
-                sizes = adView.adSizes?.asIterable()?.sizeString,
+                sizes = adView.adSizes?.asIterable()?.sizesJson,
                 adType = AdType.BANNER,
                 adSubtype = adUnit.adFormats.adSubtype,
                 apiType = ApiType.ORIGINAL,
@@ -396,7 +408,7 @@ class AudienzzAdViewHandler(
                 eventLogger?.bidWon(
                     adViewId = adView.adViewId,
                     adUnitId = adView.adUnitId,
-                    sizes = adView.adSizes?.asIterable()?.sizeString,
+                    sizes = adView.adSizes?.asIterable()?.sizesJson,
                     adType = AdType.BANNER,
                     adSubtype = adUnit.adFormats.adSubtype,
                     apiType = ApiType.ORIGINAL,
@@ -410,7 +422,8 @@ class AudienzzAdViewHandler(
                 eventLogger?.noBid(
                     adViewId = adView.adViewId,
                     adUnitId = adView.adUnitId,
-                    sizes = adView.adSizes?.asIterable()?.sizeString,
+                    sizes = adView.adSizes?.asIterable()?.sizesJson,
+            auctionId = currentAuctionId,
                     adType = AdType.BANNER,
                     adSubtype = adUnit.adFormats.adSubtype,
                     apiType = ApiType.ORIGINAL,
@@ -548,10 +561,21 @@ class AudienzzAdViewHandler(
      * event fired; otherwise the ad server rendered — report a direct impression with no Prebid
      * economics (only the ad-server bidder code).
      */
-    private fun renderEconomics(): RenderEconomics =
+    private fun renderEconomics(): RenderEconomics {
         // Always carry the winning-bid economics that were in play; bidder_code reflects the actual
         // render winner (Prebid line item when its GAM app event fired, else the ad server).
-        (lastRenderEconomics ?: RenderEconomics()).copy(bidderCode = resolveBidderCode())
+        val base = lastRenderEconomics ?: RenderEconomics()
+        val bidder = resolveBidderCode()
+        return base.copy(
+            bidderCode = bidder,
+            // Ad server rendered — the Prebid bid's creative id would make the enricher misclassify a
+            // direct-sold impression as RTB. Report the GAM creative id when available, else the "0"
+            // stub (GMA exposes no served-creative id → "0").
+            creativeId = if (bidder == AD_SERVER_BIDDER) "0" else base.creativeId,
+            // Always carry the SDK-minted auction id, even on a direct fill with no Prebid economics.
+            auctionId = base.auctionId ?: currentAuctionId,
+        )
+    }
 }
 
 /** `media_types` as a JSON array string (web-schema parity), derived from the ad subtype. */
