@@ -468,7 +468,8 @@ object AudienzzPrebidMobile {
         val volume = (gamConfig?.appVolume ?: 0f).coerceIn(0f, 1f)
         MobileAds.initialize(context) {
             MobileAds.setAppVolume(volume)
-            android.util.Log.d(TAG, "GMA app volume set to $volume")
+            MobileAds.setAppMuted(volume == 0f)
+            android.util.Log.d(TAG, "GMA app volume set to $volume, muted=${volume == 0f}")
         }
     }
 
@@ -515,7 +516,8 @@ object AudienzzPrebidMobile {
             android.util.Log.w(TAG, "setAppVolume: $volume is out of [0.0, 1.0], clamped to $clamped")
         }
         MobileAds.setAppVolume(clamped)
-        android.util.Log.d(TAG, "GMA app volume updated to $clamped")
+        MobileAds.setAppMuted(clamped == 0f)
+        android.util.Log.d(TAG, "GMA app volume updated to $clamped, muted=${clamped == 0f}")
     }
 
     /**
