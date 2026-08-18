@@ -23,6 +23,7 @@ import org.audienzz.mobile.util.addContinuousVisibilityListener
 import org.audienzz.mobile.util.adViewId
 import org.audienzz.mobile.util.addOnBecameVisibleOnScreenListener
 import org.audienzz.mobile.util.addPrefetchMarginListener
+import org.audienzz.mobile.util.isVisibleForSmartRefresh
 import org.audienzz.mobile.util.sizeString
 
 class AudienzzAdViewHandler(
@@ -34,13 +35,16 @@ class AudienzzAdViewHandler(
     }
 
     private var isFirstDemandFetch = true
+    private var eventListenerInstalled = false
 
     // Smart refresh state
     private var smartRefreshListener: ViewTreeObserver.OnPreDrawListener? = null
     private var lastRefreshTime: Long = 0
     private val refreshHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var pendingRefreshRunnable: Runnable? = null
-    private var storedRequest: AdManagerAdRequest? = null
+    // M1: keep the request BUILDER (not a frozen request) so each auction rebuilds a fresh request
+    // carrying the current PPID/consent/targeting rather than values baked in at first load().
+    private var gamRequestBuilder: AdManagerAdRequest.Builder? = null
     private var storedCallback: ((AdManagerAdRequest, AudienzzResultCode?) -> Unit)? = null
 
     init {
@@ -74,17 +78,7 @@ class AudienzzAdViewHandler(
         gamRequestBuilder: AdManagerAdRequest.Builder = AdManagerAdRequest.Builder(),
         callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit,
     ) {
-        val ppid = AudienzzPrebidMobile.ppidManager?.getPpid()
-        if (ppid != null) {
-            gamRequestBuilder.setPublisherProvidedId(ppid)
-        }
-
-        val request =
-            AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER
-                .applyToGamRequestBuilder(gamRequestBuilder)
-                .build()
-
-        storedRequest = request
+        this.gamRequestBuilder = gamRequestBuilder
         storedCallback = callback
 
         if (withLazyLoading) {
@@ -92,19 +86,34 @@ class AudienzzAdViewHandler(
                 Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy ON, prefetchMargin=${prefetchMarginDp}dp, waiting for view to enter range")
                 adView.addPrefetchMarginListener(marginDp = prefetchMarginDp) {
                     Log.d(TAG, "load() adUnitId=${adView.adUnitId} — prefetch margin reached (${prefetchMarginDp}dp), starting fetchDemand")
-                    fetchDemand(request, callback)
+                    fetchDemand()
                 }
             } else {
                 Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy ON, prefetchMargin=0 (exact visibility), waiting for view to appear")
                 adView.addOnBecameVisibleOnScreenListener {
                     Log.d(TAG, "load() adUnitId=${adView.adUnitId} — view became visible, starting fetchDemand")
-                    fetchDemand(request, callback)
+                    fetchDemand()
                 }
             }
         } else {
             Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy OFF, starting fetchDemand immediately")
-            fetchDemand(request, callback)
+            fetchDemand()
         }
+    }
+
+    /**
+     * M1: builds a fresh [AdManagerAdRequest] from the retained builder, re-reading the PPID and
+     * re-applying current global targeting so every auction (including refreshes) reflects the
+     * latest PPID/consent/targeting instead of a snapshot frozen at first load. GAM's
+     * addCustomTargeting/setPublisherProvidedId overwrite per key, so reusing the builder does not
+     * duplicate values.
+     */
+    private fun buildRequest(): AdManagerAdRequest {
+        val builder = gamRequestBuilder ?: AdManagerAdRequest.Builder()
+        AudienzzPrebidMobile.ppidManager?.getPpid()?.let { builder.setPublisherProvidedId(it) }
+        return AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER
+            .applyToGamRequestBuilder(builder)
+            .build()
     }
 
     /**
@@ -122,12 +131,8 @@ class AudienzzAdViewHandler(
         Log.d(TAG, "enableSmartRefresh() adUnitId=${adView.adUnitId} — smart refresh enabled, refreshInterval=${adUnit.autoRefreshTime}ms")
         smartRefreshListener = adView.addContinuousVisibilityListener(
             onBecameVisible = {
-                val request = storedRequest ?: run {
-                    Log.w(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became visible but storedRequest is null, skipping")
-                    return@addContinuousVisibilityListener
-                }
-                val callback = storedCallback ?: run {
-                    Log.w(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became visible but storedCallback is null, skipping")
+                if (storedCallback == null) {
+                    Log.w(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became visible but not loaded yet (no callback), skipping")
                     return@addContinuousVisibilityListener
                 }
                 if (lastRefreshTime == 0L) {
@@ -149,13 +154,13 @@ class AudienzzAdViewHandler(
 
                 if (remaining == 0L) {
                     Log.d(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became visible, ad is STALE (elapsed=${elapsed}ms >= interval=${refreshIntervalMs}ms), force-refreshing now")
-                    fetchDemand(request, callback)
+                    fetchDemand()
                     adUnit.resumeAutoRefresh()
                 } else {
                     Log.d(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became visible, ad is fresh (elapsed=${elapsed}ms, remaining=${remaining}ms), scheduling refresh in ${remaining}ms")
                     val runnable = Runnable {
                         Log.d(TAG, "smartRefresh adUnitId=${adView.adUnitId} — scheduled refresh fired after ${remaining}ms delay")
-                        fetchDemand(request, callback)
+                        fetchDemand()
                         adUnit.resumeAutoRefresh()
                     }
                     pendingRefreshRunnable = runnable
@@ -169,6 +174,16 @@ class AudienzzAdViewHandler(
                 adUnit.stopAutoRefresh()
             },
         )
+
+        // C3: onBecameHidden above is edge-triggered (visible -> hidden). A view that was
+        // prefetched while off-screen and is still not on screen never produced that edge, so its
+        // auto-refresh — armed by the prefetch fetchDemand — would loop forever at 0% viewability.
+        // Do an initial *level* check here: if the view isn't visible yet, stop refresh now; the
+        // onBecameVisible edge will resume/refresh it (stale-aware) once it enters the viewport.
+        if (!adView.isVisibleForSmartRefresh()) {
+            Log.d(TAG, "enableSmartRefresh() adUnitId=${adView.adUnitId} — view not visible at enable time (likely prefetched off-screen), stopping auto-refresh until it enters the viewport")
+            adUnit.stopAutoRefresh()
+        }
     }
 
     /**
@@ -196,12 +211,8 @@ class AudienzzAdViewHandler(
      * resets Prebid's timer to 0, ignoring however long the ad has already been displayed.
      */
     fun resumeSmartRefresh() {
-        val request = storedRequest ?: run {
-            Log.w(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — storedRequest is null, skipping")
-            return
-        }
-        val callback = storedCallback ?: run {
-            Log.w(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — storedCallback is null, skipping")
+        if (storedCallback == null) {
+            Log.w(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — not loaded yet (no callback), skipping")
             return
         }
 
@@ -227,13 +238,13 @@ class AudienzzAdViewHandler(
 
         if (remaining == 0L) {
             Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — ad is STALE (elapsed=${elapsed}ms >= interval=${refreshIntervalMs}ms), force-refreshing now")
-            fetchDemand(request, callback)
+            fetchDemand()
             adUnit.resumeAutoRefresh()
         } else {
             Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — ad is fresh (elapsed=${elapsed}ms, remaining=${remaining}ms), scheduling refresh in ${remaining}ms")
             val runnable = Runnable {
                 Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — scheduled refresh fired after ${remaining}ms delay")
-                fetchDemand(request, callback)
+                fetchDemand()
                 adUnit.resumeAutoRefresh()
             }
             pendingRefreshRunnable = runnable
@@ -254,10 +265,32 @@ class AudienzzAdViewHandler(
         pendingRefreshRunnable = null
     }
 
-    private fun fetchDemand(
-        request: AdManagerAdRequest,
-        callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit,
-    ) {
+    /**
+     * Releases all refresh and lifecycle resources held by this handler: stops smart refresh,
+     * cancels any pending scheduled refresh, stops Prebid's auto-refresh and destroys the
+     * underlying Prebid ad unit (tearing down its [org.prebid.mobile.BidLoader] so no further
+     * auctions fire), and drops the retained request/callback.
+     *
+     * H1: without this there was no way to stop the refresh loop or release the
+     * `BidLoader -> listener -> adView -> Activity` chain on view detach / Activity destroy when
+     * smart refresh is off (the default). Call from the host's lifecycle teardown (e.g. Activity
+     * `onDestroy` or a RecyclerView `onViewRecycled`). The handler must not be reused afterwards.
+     */
+    fun destroy() {
+        Log.d(TAG, "destroy() adUnitId=${adView.adUnitId}")
+        disableSmartRefresh()
+        adUnit.stopAutoRefresh()
+        adUnit.destroy()
+        gamRequestBuilder = null
+        storedCallback = null
+    }
+
+    private fun fetchDemand() {
+        val callback = storedCallback ?: run {
+            Log.w(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — no stored callback, skipping")
+            return
+        }
+        val request = buildRequest()
         val isAutorefresh = adUnit.autoRefreshTime > 0
         val autorefreshTime = adUnit.autoRefreshTime.toLong()
         val isRefresh = !isFirstDemandFetch
@@ -275,6 +308,12 @@ class AudienzzAdViewHandler(
             isAutorefresh = isAutorefresh,
             isRefresh = isRefresh,
         )
+        // C1: Prebid's fetchDemand spawns a NEW self-re-arming BidLoader on every call without
+        // destroying the previous one. Stopping auto-refresh before each manual fetch guarantees
+        // the prior loader is cancelled first, so at most one refresh loop is ever live — otherwise
+        // each prefetch/scroll/resume fetch stacks another 30s auction loop that keeps auctioning
+        // (and GAM-loading) the view until process death.
+        adUnit.stopAutoRefresh()
         adUnit.fetchDemand(request) { resultCode ->
             lastRefreshTime = System.currentTimeMillis()
             setEventsListenerToAdView()
@@ -296,6 +335,13 @@ class AudienzzAdViewHandler(
     }
 
     private fun setEventsListenerToAdView() {
+        // H2: install the analytics wrapper exactly once. This method runs in every auction's
+        // completion (initial + each Prebid auto-refresh); re-wrapping each time nested the prior
+        // wrapper, so after N refreshes a single real click fired adClick N+1 times (and re-invoked
+        // the publisher's callbacks N+1 times). GAM reuses the same adView listener across
+        // refreshes, so wrapping the publisher's listener once is sufficient.
+        if (eventListenerInstalled) return
+        eventListenerInstalled = true
         val actualListener: AdListener? = adView.adListener
         adView.adListener = object : AdListener() {
 

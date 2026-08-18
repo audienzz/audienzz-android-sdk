@@ -80,17 +80,53 @@ object AudienzzTargetingParams {
             TargetingParams.setOmidPartnerVersion(value)
         }
 
+    // M5: these consent/COPPA setters passthrough to Prebid statics that error-log and DROP the
+    // value if called before Prebid init — so consent set pre-init could be missing from bid
+    // requests. Buffer pre-init writes and replay them in the init listener (see
+    // [onPrebidInitialized]); getters prefer the buffered value until init completes.
+    @Volatile
+    private var prebidInitialized = false
+
+    private class PendingValue<T> {
+        var isSet = false
+            private set
+        var value: T? = null
+            private set
+
+        fun set(newValue: T?) {
+            value = newValue
+            isSet = true
+        }
+    }
+
+    private val pendingCoppa = PendingValue<Boolean>()
+    private val pendingGdpr = PendingValue<Boolean>()
+    private val pendingGdprConsent = PendingValue<String>()
+    private val pendingPurposeConsents = PendingValue<String>()
+
+    /**
+     * M5: called by [AudienzzPrebidMobile] once Prebid finishes initializing. Flushes any
+     * consent/COPPA values the publisher set before init so they reach Prebid's statics.
+     */
+    @JvmStatic
+    internal fun onPrebidInitialized() {
+        prebidInitialized = true
+        if (pendingCoppa.isSet) TargetingParams.setSubjectToCOPPA(pendingCoppa.value)
+        if (pendingGdpr.isSet) TargetingParams.setSubjectToGDPR(pendingGdpr.value)
+        if (pendingGdprConsent.isSet) TargetingParams.setGDPRConsentString(pendingGdprConsent.value)
+        if (pendingPurposeConsents.isSet) TargetingParams.setPurposeConsents(pendingPurposeConsents.value)
+    }
+
     /**
      * Sets subject to COPPA. Null to set undefined. <br><br>
      * <p>
-     * Must be called only after
-     * {@link PrebidMobile#initializeSdk(Context, SdkInitializationListener)}.
+     * Values set before SDK init are buffered and applied once init completes.
      */
     @JvmStatic
     var isSubjectToCOPPA: Boolean?
-        get() = TargetingParams.isSubjectToCOPPA()
+        get() = if (!prebidInitialized && pendingCoppa.isSet) pendingCoppa.value else TargetingParams.isSubjectToCOPPA()
         set(value) {
-            TargetingParams.setSubjectToCOPPA(value)
+            if (prebidInitialized) TargetingParams.setSubjectToCOPPA(value) else pendingCoppa.set(value)
         }
 
     /**
@@ -104,9 +140,9 @@ object AudienzzTargetingParams {
      */
     @JvmStatic
     var isSubjectToGDPR: Boolean?
-        get() = TargetingParams.isSubjectToGDPR()
+        get() = if (!prebidInitialized && pendingGdpr.isSet) pendingGdpr.value else TargetingParams.isSubjectToGDPR()
         set(value) {
-            TargetingParams.setSubjectToGDPR(value)
+            if (prebidInitialized) TargetingParams.setSubjectToGDPR(value) else pendingGdpr.set(value)
         }
 
     /**
@@ -120,9 +156,9 @@ object AudienzzTargetingParams {
      */
     @JvmStatic
     var gdprConsentString: String?
-        get() = TargetingParams.getGDPRConsentString()
+        get() = if (!prebidInitialized && pendingGdprConsent.isSet) pendingGdprConsent.value else TargetingParams.getGDPRConsentString()
         set(value) {
-            TargetingParams.setGDPRConsentString(value)
+            if (prebidInitialized) TargetingParams.setGDPRConsentString(value) else pendingGdprConsent.set(value)
         }
 
     /**
@@ -136,9 +172,9 @@ object AudienzzTargetingParams {
      */
     @JvmStatic
     var purposeConsents: String?
-        get() = TargetingParams.getPurposeConsents()
+        get() = if (!prebidInitialized && pendingPurposeConsents.isSet) pendingPurposeConsents.value else TargetingParams.getPurposeConsents()
         set(value) {
-            TargetingParams.setPurposeConsents(value)
+            if (prebidInitialized) TargetingParams.setPurposeConsents(value) else pendingPurposeConsents.set(value)
         }
 
     /**
@@ -327,29 +363,39 @@ object AudienzzTargetingParams {
     @JvmStatic
     fun getGlobalOrtbConfig(): String? = TargetingParams.getGlobalOrtbConfig()
 
+    /** The publisher's own global ORTB, kept separately so SDK-managed sources never wipe it. */
+    private var publisherOrtbConfig: JSONObject? = null
+
     /**
      * Sets global OpenRTB JSON string for merging with the original request.
      * Expected format: "{"new_field": "value"}".
      * Params:
      * ortbConfig – JSONObject containing OpenRTB string.
+     *
+     * H6: the publisher's ORTB is now stored and folded into the single canonical global ORTB
+     * (see [rebuildGlobalOrtb]) rather than replacing it — so a later targeting or schain change
+     * no longer discards it, and this call no longer discards accumulated keywords/schain.
      */
     @JvmStatic
     fun setGlobalOrtbConfig(ortbConfig: JSONObject) {
-        val schainObject = AudienzzPrebidMobile.schainObject
+        publisherOrtbConfig = ortbConfig
+        rebuildGlobalOrtb()
+    }
 
-        var config: JSONObject = if (schainObject != null) {
-            AudienzzUtil.mergeJsonObjects(
-                schainObject,
-                ortbConfig,
-            )
-        } else {
-            ortbConfig
-        }
-
-        // Always embed Audienzz SDK metadata in app.ext.audienzz so every
-        // Prebid request carries the SDK identifier and version.
+    /**
+     * H6: rebuild the one canonical global ORTB from every source the SDK owns — the publisher's
+     * own ORTB, the schain, the accumulated custom-targeting keywords, and the SDK identity — and
+     * push it to Prebid in a single call. Every targeting/schain mutation funnels through here, so
+     * no source can wipe another (previously each mutation replaced Prebid's global ORTB with only
+     * its own slice). SDK-managed sources are merged last so their reserved namespaces win.
+     */
+    @JvmStatic
+    internal fun rebuildGlobalOrtb() {
+        var config = JSONObject()
+        publisherOrtbConfig?.let { config = AudienzzUtil.mergeJsonObjects(config, it) }
+        AudienzzPrebidMobile.schainObject?.let { config = AudienzzUtil.mergeJsonObjects(config, it) }
+        config = AudienzzUtil.mergeJsonObjects(config, CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
         config = AudienzzUtil.mergeJsonObjects(config, SDK_META_ORTB)
-
         TargetingParams.setGlobalOrtbConfig(config.toString())
     }
 
@@ -389,21 +435,21 @@ object AudienzzTargetingParams {
         CUSTOM_TARGETING_MANAGER.setReservedTargeting(key, value)
         val ortbKey = if (key.startsWith("au_")) key.removePrefix("au_") else key
         bridgeOrtbFields[ortbKey] = value
-        setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
+        rebuildGlobalOrtb()
     }
 
     /** Add a key-value global targeting */
     @JvmStatic
     fun addGlobalTargeting(key: String, value: String) {
         CUSTOM_TARGETING_MANAGER.addCustomTargeting(key, value)
-        setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
+        rebuildGlobalOrtb()
     }
 
     /** Add a key values global targeting */
     @JvmStatic
     fun addGlobalTargeting(key: String, value: Set<String>) {
         CUSTOM_TARGETING_MANAGER.addCustomTargeting(key, value)
-        setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
+        rebuildGlobalOrtb()
     }
 
     /** Replace the value set for an existing key */
@@ -411,7 +457,7 @@ object AudienzzTargetingParams {
     fun updateGlobalTargeting(key: String, value: Set<String>) {
         CUSTOM_TARGETING_MANAGER.removeCustomTargeting(key)
         CUSTOM_TARGETING_MANAGER.addCustomTargeting(key, value)
-        setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
+        rebuildGlobalOrtb()
     }
 
     /** Remove targeting for a key — silently skips SDK-reserved keys. */
@@ -419,31 +465,16 @@ object AudienzzTargetingParams {
     fun removeGlobalTargeting(key: String) {
         // CustomTargetingManager.removeCustomTargeting already skips reserved keys
         CUSTOM_TARGETING_MANAGER.removeCustomTargeting(key)
-        setGlobalOrtbConfig(CUSTOM_TARGETING_MANAGER.buildOrtbCustomTargeting())
+        rebuildGlobalOrtb()
     }
 
     /** Clear global targeting */
     @JvmStatic
     fun clearGlobalTargeting() {
+        // H6: clear only the custom-targeting keywords, then rebuild the canonical ORTB. Publisher
+        // ORTB, schain and SDK identity are preserved because they are separate sources, not
+        // surgically carved out of the flattened Prebid config as before.
         CUSTOM_TARGETING_MANAGER.clearCustomTargeting()
-        val currentConfig = getGlobalOrtbConfig()
-        if (currentConfig != null) {
-            val configJson = JSONObject(currentConfig)
-
-            val appObj = configJson.optJSONObject("app") ?: return
-            val contentObj = appObj.optJSONObject("content") ?: return
-
-            contentObj.remove("keywords")
-
-            if (contentObj.length() == 0) {
-                appObj.remove("content")
-            }
-
-            if (appObj.length() == 0) {
-                configJson.remove("app")
-            }
-
-            TargetingParams.setGlobalOrtbConfig(configJson.toString())
-        }
+        rebuildGlobalOrtb()
     }
 }

@@ -56,9 +56,17 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     }
 
     fun destroy() {
-        adViewHandler?.disableSmartRefresh()
+        // H1: route through the handler so Prebid's ad unit is actually destroyed (its BidLoader
+        // torn down), not merely paused. Fall back to stopping/destroying the unit directly if the
+        // handler was never created (config load failed before createAdFromConfig).
+        val handler = adViewHandler
+        if (handler != null) {
+            handler.destroy()
+        } else {
+            adUnit?.stopAutoRefresh()
+            adUnit?.destroy()
+        }
         adViewHandler = null
-        adUnit?.stopAutoRefresh()
         adUnit = null
         adView?.destroy()
         adView = null
@@ -67,11 +75,15 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     }
 
     fun onResume() {
-        adUnit?.resumeAutoRefresh()
+        // H4/M10: resume through the handler's stale-aware smart refresh, which restores the
+        // correct remaining interval instead of resetting Prebid's timer to a full interval.
+        adViewHandler?.resumeSmartRefresh() ?: adUnit?.resumeAutoRefresh()
     }
 
     fun onPause() {
-        adUnit?.stopAutoRefresh()
+        // H4: cancel any pending postDelayed refresh runnable too — stopping only Prebid's timer
+        // left the scheduled runnable to fire while backgrounded, issuing ad requests off-screen.
+        adViewHandler?.pauseSmartRefresh() ?: adUnit?.stopAutoRefresh()
     }
 
     fun setAdListener(listener: AdListener) {
@@ -104,6 +116,14 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
 
     @Suppress("SpreadOperator")
     private fun createAdFromConfig(config: RemoteAdUnitConfig) {
+        // M11: a second loadAd()/createAdFromConfig would otherwise orphan the previous ad unit and
+        // ad view with their refresh loop still armed (a zombie loop loading a detached view, feeding
+        // C1). Tear the predecessor down before building the replacement.
+        adViewHandler?.destroy()
+        adViewHandler = null
+        adUnit = null
+        adView?.destroy()
+        adView = null
         removeAllViews()
 
         val gamConfig = config.gamConfig

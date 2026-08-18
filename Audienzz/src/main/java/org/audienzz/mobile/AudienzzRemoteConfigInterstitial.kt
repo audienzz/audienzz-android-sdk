@@ -33,6 +33,13 @@ class AudienzzRemoteConfigInterstitial(
         fun onClosed()
         fun onClicked()
         fun onFailedToShow(adError: AdError)
+
+        /**
+         * M6: SDK-internal failure that has no GAM [LoadAdError]/[AdError] to report — a missing
+         * remote config, an uninitialized SDK, or no Activity available to show the interstitial.
+         * Default no-op so existing implementers keep compiling.
+         */
+        fun onError(reason: String) {}
     }
     private var interstitialAdHandler: AudienzzInterstitialAdHandler? = null
     private var loadedInterstitialAd: AdManagerInterstitialAd? = null
@@ -47,6 +54,7 @@ class AudienzzRemoteConfigInterstitial(
             val manager = MainComponent.Companion.remoteConfigManager
             if (manager == null) {
                 Log.e(TAG, "RemoteConfigManager is not initialized")
+                events?.onError("RemoteConfigManager is not initialized — call initializeRemoteSdk first")
                 return@launch
             }
 
@@ -56,6 +64,7 @@ class AudienzzRemoteConfigInterstitial(
 
             if (config == null) {
                 Log.e(TAG, "Config not found for ID: $configId")
+                events?.onError("Remote config not found for ID: $configId")
                 return@launch
             }
 
@@ -88,8 +97,14 @@ class AudienzzRemoteConfigInterstitial(
                     Log.d(TAG, "Ad loaded, auto-showing. ConfigId $configId")
                     loadedInterstitialAd = interstitialAd
                     events?.onLoaded()
-                    context.getActivity()?.let {
-                        loadedInterstitialAd?.show(it)
+                    val activity = context.getActivity()
+                    if (activity != null) {
+                        loadedInterstitialAd?.show(activity)
+                    } else {
+                        // M6: a non-Activity context silently never shows — a paid auction with
+                        // zero impressions. Surface it instead of swallowing.
+                        Log.e(TAG, "No Activity context available to show interstitial for ConfigId $configId")
+                        events?.onError("No Activity context available to show interstitial for ConfigId $configId")
                     }
                     super.onAdLoaded(interstitialAd)
                 }
@@ -133,6 +148,9 @@ class AudienzzRemoteConfigInterstitial(
     }
 
     fun destroy() {
+        // M6: drop the loaded ad and handler so a destroyed instance can't retain/show a stale ad.
+        loadedInterstitialAd = null
+        interstitialAdHandler = null
         scope.cancel()
     }
 
