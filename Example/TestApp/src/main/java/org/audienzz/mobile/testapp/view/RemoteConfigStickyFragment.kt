@@ -62,16 +62,16 @@ class RemoteConfigStickyFragment : Fragment() {
         scrollView = view.findViewById(R.id.remoteConfigScrollView)
 
         // Section 1 — plain banner (non-sticky)
-        loadBannerInto(view.findViewById(R.id.bannerContainer1), BANNER_CONFIG_ID)
+        loadBannerInto(view.findViewById(R.id.bannerContainer1), BANNER_CONFIG_ID, "Fixed banner")
 
         // Section 2 — sticky banner
-        loadStickyBannerInto(view.findViewById(R.id.stickyContainer1), BANNER_CONFIG_ID)
+        loadStickyBannerInto(view.findViewById(R.id.stickyContainer1), BANNER_CONFIG_ID, "Sticky Ad #1")
 
         // Section 3 — adaptive banner (non-sticky)
-        loadBannerInto(view.findViewById(R.id.bannerContainer2), ADAPTIVE_CONFIG_ID)
+        loadBannerInto(view.findViewById(R.id.bannerContainer2), ADAPTIVE_CONFIG_ID, "Adaptive banner")
 
         // Section 4 — sticky banner
-        loadStickyBannerInto(view.findViewById(R.id.stickyContainer2), BANNER_CONFIG_ID)
+        loadStickyBannerInto(view.findViewById(R.id.stickyContainer2), BANNER_CONFIG_ID, "Sticky Ad #2")
 
         view.findViewById<Button>(R.id.btnLoadInterstitial).setOnClickListener {
             loadInterstitial()
@@ -80,12 +80,17 @@ class RemoteConfigStickyFragment : Fragment() {
 
     // ── Ad loading helpers ─────────────────────────────────────────────────────────────────────
 
-    private fun loadBannerInto(container: FrameLayout, configId: String) {
+    private fun loadBannerInto(container: FrameLayout, configId: String, label: String) {
         val banner = AudienzzRemoteBannerView(requireContext(), configId)
         remoteBannerViews += banner
+
+        // Debug: wrap in a smart-refresh badge (green active / grey paused) + logcat transitions.
+        val badge = SmartRefreshBadgeView(requireContext(), label).apply { attachAdView(banner) }
+        banner.onSmartRefreshPausedChanged = { paused -> badge.setPaused(paused) }
+
         container.removeAllViews()
         container.addView(
-            banner,
+            badge,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -94,16 +99,20 @@ class RemoteConfigStickyFragment : Fragment() {
         banner.loadAd()
     }
 
-    private fun loadStickyBannerInto(container: FrameLayout, configId: String) {
+    private fun loadStickyBannerInto(container: FrameLayout, configId: String, label: String) {
         val banner = AudienzzRemoteBannerView(requireContext(), configId)
         remoteBannerViews += banner
+
+        // Debug: badge wraps the banner so the border + pill track the ad as it sticks/scrolls.
+        val badge = SmartRefreshBadgeView(requireContext(), label).apply { attachAdView(banner) }
+        banner.onSmartRefreshPausedChanged = { paused -> badge.setPaused(paused) }
 
         val sticky = AudienzzStickyAdWrapperView(
             context = requireContext(),
             maxHeightDp = STICKY_MAX_HEIGHT_DP,
         ).apply {
             isVisibilityGateEnabled = false
-            setAdView(banner)
+            setAdView(badge)
         }
         stickyWrappers += sticky
 

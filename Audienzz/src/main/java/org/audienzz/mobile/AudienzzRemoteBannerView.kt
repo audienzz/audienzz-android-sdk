@@ -43,6 +43,18 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     private var adViewHandler: AudienzzAdViewHandler? = null
     private var externalAdListener: AdListener? = null
 
+    /**
+     * Additive observability hook forwarded to the internal [AudienzzAdViewHandler]: fires `true`
+     * when this banner's smart refresh pauses (scrolled out of the viewport) and `false` when it
+     * resumes. Safe to set before or after [loadAd] — it is applied to the handler as soon as the
+     * banner is created from remote config. Null in production; used by demo apps for a debug badge.
+     */
+    var onSmartRefreshPausedChanged: ((Boolean) -> Unit)? = null
+        set(value) {
+            field = value
+            adViewHandler?.onSmartRefreshPausedChanged = value
+        }
+
     init {
         layoutParams = LayoutParams(
             LayoutParams.MATCH_PARENT,
@@ -197,6 +209,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
             adUnit = adUnitLocal,
         )
         adViewHandler = handler
+        handler.onSmartRefreshPausedChanged = onSmartRefreshPausedChanged
         handler.load(
             withLazyLoading = true,
             prefetchMarginDp = config.config.prefetchDistanceDp ?: DEFAULT_PREFETCH_DISTANCE_DP,

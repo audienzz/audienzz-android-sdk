@@ -1,6 +1,8 @@
 package org.audienzz.mobile.original
 
+import android.graphics.Rect
 import android.util.Log
+import android.view.View
 import android.view.ViewTreeObserver
 import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.LoadAdError
@@ -42,6 +44,23 @@ class AudienzzAdViewHandler(
     private var pendingRefreshRunnable: Runnable? = null
     private var storedRequest: AdManagerAdRequest? = null
     private var storedCallback: ((AdManagerAdRequest, AudienzzResultCode?) -> Unit)? = null
+
+    /**
+     * Additive observability hook for the smart-refresh pause/resume state. Fires `true` when smart
+     * refresh pauses (the ad scrolled out of the viewport, or [pauseSmartRefresh] was called) and
+     * `false` when it resumes (the ad returned, or [resumeSmartRefresh] was called). Starts paused
+     * and only emits on an actual transition. Null in production; demo/debug apps subscribe to drive
+     * a visual indicator. Non-breaking — nothing else depends on it.
+     */
+    var onSmartRefreshPausedChanged: ((Boolean) -> Unit)? = null
+
+    private var smartRefreshPaused = true
+
+    private fun notifySmartRefreshPaused(paused: Boolean) {
+        if (smartRefreshPaused == paused) return
+        smartRefreshPaused = paused
+        onSmartRefreshPausedChanged?.invoke(paused)
+    }
 
     init {
         eventLogger?.adCreation(
@@ -122,6 +141,8 @@ class AudienzzAdViewHandler(
         Log.d(TAG, "enableSmartRefresh() adUnitId=${adView.adUnitId} — smart refresh enabled, refreshInterval=${adUnit.autoRefreshTime}ms")
         smartRefreshListener = adView.addContinuousVisibilityListener(
             onBecameVisible = {
+                // Ad is back in the viewport → smart refresh is active.
+                notifySmartRefreshPaused(false)
                 val request = storedRequest ?: run {
                     Log.w(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became visible but storedRequest is null, skipping")
                     return@addContinuousVisibilityListener
@@ -164,11 +185,27 @@ class AudienzzAdViewHandler(
             },
             onBecameHidden = {
                 Log.d(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became hidden, stopping auto-refresh and cancelling any pending refresh")
+                // Ad left the viewport → smart refresh is paused.
+                notifySmartRefreshPaused(true)
                 pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
                 pendingRefreshRunnable = null
                 adUnit.stopAutoRefresh()
             },
         )
+
+        // Emit the initial pause state once the view is laid out, so an observer sees the truthful
+        // state from the start (the continuous listener above only fires on later transitions).
+        adView.post { notifySmartRefreshPaused(!isAdViewVisibleForRefresh()) }
+    }
+
+    /** Matches [addContinuousVisibilityListener]'s 20%-visible threshold for the pause indicator. */
+    private fun isAdViewVisibleForRefresh(): Boolean {
+        if (adView.visibility != View.VISIBLE) return false
+        val height = adView.measuredHeight
+        if (height <= 0) return false
+        val visibleRect = Rect()
+        if (!adView.getGlobalVisibleRect(visibleRect)) return false
+        return visibleRect.height().toFloat() / height.toFloat() >= 0.2f
     }
 
     /**
@@ -181,6 +218,7 @@ class AudienzzAdViewHandler(
      */
     fun pauseSmartRefresh() {
         Log.d(TAG, "pauseSmartRefresh() adUnitId=${adView.adUnitId} — pausing, cancelling pending refresh")
+        notifySmartRefreshPaused(true)
         pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
         pendingRefreshRunnable = null
         adUnit.stopAutoRefresh()
@@ -196,6 +234,7 @@ class AudienzzAdViewHandler(
      * resets Prebid's timer to 0, ignoring however long the ad has already been displayed.
      */
     fun resumeSmartRefresh() {
+        notifySmartRefreshPaused(false)
         val request = storedRequest ?: run {
             Log.w(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — storedRequest is null, skipping")
             return
