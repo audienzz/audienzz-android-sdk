@@ -99,35 +99,60 @@ class AudienzzInterstitialAdHandler(
     ): AudienzzInterstitialAdLoadCallback {
         return object : AudienzzInterstitialAdLoadCallback() {
             override fun onAdLoaded(adManagerInterstitialAd: AdManagerInterstitialAd) {
-                adLoadCallback?.onAdLoaded(adManagerInterstitialAd)
                 super.onAdLoaded(adManagerInterstitialAd)
+                adLoadCallback?.onAdLoaded(adManagerInterstitialAd)
+                // H5: the publisher may set their own FullScreenContentCallback on the ad inside
+                // their onAdLoaded (the GAM-documented pattern). Capture whatever they set and
+                // delegate to it so our analytics wrapper does not clobber their dismiss/fail/etc.
+                // callbacks; fall back to the callback passed to load() when they didn't set one.
+                val publisherDirectCallback = adManagerInterstitialAd.fullScreenContentCallback
                 adManagerInterstitialAd.fullScreenContentCallback =
                     object : FullScreenContentCallback() {
                         override fun onAdClicked() {
                             super.onAdClicked()
-                            fullScreenContentCallback?.onAdClicked()
+                            if (publisherDirectCallback != null) {
+                                publisherDirectCallback.onAdClicked()
+                            } else {
+                                fullScreenContentCallback?.onAdClicked()
+                            }
                             eventLogger?.adClick(adUnitId)
                         }
 
                         override fun onAdDismissedFullScreenContent() {
                             super.onAdDismissedFullScreenContent()
-                            fullScreenContentCallback?.onAdDismissedFullScreenContent()
+                            if (publisherDirectCallback != null) {
+                                publisherDirectCallback.onAdDismissedFullScreenContent()
+                            } else {
+                                fullScreenContentCallback?.onAdDismissedFullScreenContent()
+                            }
                             eventLogger?.closeAd(adUnitId)
                         }
 
                         override fun onAdFailedToShowFullScreenContent(error: AdError) {
                             super.onAdFailedToShowFullScreenContent(error)
-                            fullScreenContentCallback?.onAdFailedToShowFullScreenContent(error)
+                            if (publisherDirectCallback != null) {
+                                publisherDirectCallback.onAdFailedToShowFullScreenContent(error)
+                            } else {
+                                fullScreenContentCallback?.onAdFailedToShowFullScreenContent(error)
+                            }
                         }
 
                         override fun onAdImpression() {
                             super.onAdImpression()
-                            fullScreenContentCallback?.onAdImpression()
+                            if (publisherDirectCallback != null) {
+                                publisherDirectCallback.onAdImpression()
+                            } else {
+                                fullScreenContentCallback?.onAdImpression()
+                            }
                         }
 
                         override fun onAdShowedFullScreenContent() {
                             super.onAdShowedFullScreenContent()
-                            fullScreenContentCallback?.onAdShowedFullScreenContent()
+                            if (publisherDirectCallback != null) {
+                                publisherDirectCallback.onAdShowedFullScreenContent()
+                            } else {
+                                fullScreenContentCallback?.onAdShowedFullScreenContent()
+                            }
                         }
                     }
             }

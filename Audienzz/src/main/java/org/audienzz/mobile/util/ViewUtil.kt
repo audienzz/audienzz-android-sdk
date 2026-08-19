@@ -25,7 +25,9 @@ fun View.isVisibleOnScreen() =
 private fun View.getGlobalVisibleRectIgnoringSize(outRect: Rect): Boolean {
     val extraPadding = 1
     outRect.set(-extraPadding, -extraPadding, width + extraPadding, height + extraPadding)
-    return parent == null || parent.getChildVisibleRect(this, outRect, null)
+    // H3: a detached view (parent == null) is NOT on screen. Treating it as visible made a
+    // recycled/detached slot report "visible" and trigger fetchDemand storms.
+    return parent != null && parent.getChildVisibleRect(this, outRect, null)
 }
 
 /**
@@ -46,6 +48,21 @@ private fun View.visibleHeightFraction(): Float {
 }
 
 /**
+ * Smart refresh fires only when at least this fraction of the ad height is visible, avoiding
+ * triggering on a pixel-sliver as the ad enters or leaves the viewport.
+ */
+private const val SMART_REFRESH_VISIBILITY_THRESHOLD = 0.2f
+
+/**
+ * True when at least [SMART_REFRESH_VISIBILITY_THRESHOLD] of the view's height is on screen — the
+ * same threshold [addContinuousVisibilityListener] uses to decide visible vs hidden. Exposed so
+ * callers can do a one-off *level* check (e.g. stop refresh for a prefetched-but-not-yet-visible
+ * view) rather than waiting for an edge transition that may never come.
+ */
+fun View.isVisibleForSmartRefresh(): Boolean =
+    visibleHeightFraction() >= SMART_REFRESH_VISIBILITY_THRESHOLD
+
+/**
  * Triggers [listener] if view is already visible on screen or subscribes to
  * [ViewTreeObserver.OnPreDrawListener]
  *
@@ -62,13 +79,10 @@ fun View.addContinuousVisibilityListener(
     onBecameVisible: () -> Unit,
     onBecameHidden: () -> Unit,
 ): ViewTreeObserver.OnPreDrawListener {
-    // Smart refresh fires only when at least 20% of the ad height is visible.
-    // This avoids triggering on a pixel-sliver when the ad is just entering or
-    // leaving the viewport.
-    var wasVisible = visibleHeightFraction() >= 0.2f
+    var wasVisible = isVisibleForSmartRefresh()
     val listener = object : ViewTreeObserver.OnPreDrawListener {
         override fun onPreDraw(): Boolean {
-            val isVisible = visibleHeightFraction() >= 0.2f
+            val isVisible = isVisibleForSmartRefresh()
             if (isVisible && !wasVisible) {
                 wasVisible = true
                 onBecameVisible()
@@ -87,10 +101,15 @@ fun View.addOnBecameVisibleOnScreenListener(listener: () -> Unit) {
     if (isVisibleOnScreen()) {
         listener()
     } else {
-        viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+        // H3: capture the observer we register on. After an attach/detach the view's current
+        // viewTreeObserver can be a different instance, so removing via the property would be a
+        // silent no-op and the listener would leak and fire every frame.
+        val registrationObserver = viewTreeObserver
+        registrationObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
             override fun onPreDraw(): Boolean {
                 if (isVisibleOnScreen()) {
-                    viewTreeObserver.removeOnPreDrawListener(this)
+                    val observer = if (registrationObserver.isAlive) registrationObserver else viewTreeObserver
+                    observer.removeOnPreDrawListener(this)
                     listener()
                 }
                 return true
@@ -113,7 +132,8 @@ fun View.addOnBecameVisibleOnScreenListener(listener: () -> Unit) {
 fun View.isWithinPrefetchMargin(@Px marginPx: Int): Boolean {
     if (visibility != View.VISIBLE) return false
     val expandedRect = Rect(-marginPx, -marginPx, width + marginPx, height + marginPx)
-    return parent == null || parent.getChildVisibleRect(this, expandedRect, null)
+    // H3: a detached view (parent == null) is not within any viewport — do not treat it as in range.
+    return parent != null && parent.getChildVisibleRect(this, expandedRect, null)
 }
 
 /**
@@ -166,11 +186,14 @@ fun View.addPrefetchMarginListener(
         return
     }
     logPosition("registered, waiting")
-    viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+    // H3: remove from the observer we registered on (see addOnBecameVisibleOnScreenListener).
+    val registrationObserver = viewTreeObserver
+    registrationObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
         override fun onPreDraw(): Boolean {
             if (isWithinPrefetchMargin(marginPx)) {
                 logPosition("entered prefetch zone → triggering load")
-                viewTreeObserver.removeOnPreDrawListener(this)
+                val observer = if (registrationObserver.isAlive) registrationObserver else viewTreeObserver
+                observer.removeOnPreDrawListener(this)
                 onReady()
             }
             return true

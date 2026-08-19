@@ -410,6 +410,10 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
         private val nestedWrappers:
             WeakHashMap<NestedScrollView, MutableSet<AudienzzStickyAdWrapperView>> = WeakHashMap()
 
+        /** The one shared VTO scroll listener per scroll view, so it can be removed on teardown. */
+        private val nestedScrollListeners:
+            WeakHashMap<NestedScrollView, ViewTreeObserver.OnScrollChangedListener> = WeakHashMap()
+
         private fun registerNestedWrapper(
             scrollView: NestedScrollView,
             wrapper: AudienzzStickyAdWrapperView,
@@ -418,18 +422,26 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
             val wrappers = nestedWrappers.getOrPut(scrollView) { mutableSetOf() }
             wrappers.add(wrapper)
 
-            // Only set the scroll listener once per scroll view — it reads the wrapper
-            // set dynamically from nestedWrappers, so all wrappers registered later are
-            // automatically included without replacing the listener.
+            // Only add the scroll listener once per scroll view — it reads the wrapper set
+            // dynamically from nestedWrappers, so wrappers registered later are automatically
+            // included without replacing the listener.
             if (isFirstWrapper) {
-                scrollView.setOnScrollChangeListener { _: NestedScrollView, _: Int, _: Int, _: Int, _: Int ->
-                    val current = nestedWrappers[scrollView] ?: return@setOnScrollChangeListener
-                    if (current.isEmpty()) return@setOnScrollChangeListener
+                // M12: use the ADDITIVE ViewTreeObserver scroll listener instead of
+                // NestedScrollView.setOnScrollChangeListener (a single-slot setter). The setter
+                // overwrote any scroll listener the publisher had set on their own NestedScrollView
+                // and, on teardown, nulled it out — clobbering the publisher's listener for the
+                // scroll view's lifetime. A VTO listener coexists with the publisher's and is
+                // removed cleanly below.
+                val listener = ViewTreeObserver.OnScrollChangedListener {
+                    val current = nestedWrappers[scrollView] ?: return@OnScrollChangedListener
+                    if (current.isEmpty()) return@OnScrollChangedListener
                     current.forEach {
                         it.updatePosition()
                         it.startSettleTicker()
                     }
                 }
+                nestedScrollListeners[scrollView] = listener
+                scrollView.viewTreeObserver.addOnScrollChangedListener(listener)
             }
         }
 
@@ -440,7 +452,11 @@ public class AudienzzStickyAdWrapperView @JvmOverloads constructor(
             val wrappers = nestedWrappers[scrollView] ?: return
             wrappers.remove(wrapper)
             if (wrappers.isEmpty()) {
-                scrollView.setOnScrollChangeListener(null as NestedScrollView.OnScrollChangeListener?)
+                nestedScrollListeners.remove(scrollView)?.let { listener ->
+                    if (scrollView.viewTreeObserver.isAlive) {
+                        scrollView.viewTreeObserver.removeOnScrollChangedListener(listener)
+                    }
+                }
                 nestedWrappers.remove(scrollView)
             }
         }
