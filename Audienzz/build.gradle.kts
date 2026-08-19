@@ -17,7 +17,7 @@ ksp {
     arg(RoomSchemaArgProvider(File(projectDir, "schemas")))
 }
 
-val audienzzSdkVersion = "0.1.5"
+val audienzzSdkVersion = "0.1.7"
 
 android {
     compileSdk = libs.versions.sdk.compile.get().toInt()
