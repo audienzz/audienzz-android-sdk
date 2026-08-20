@@ -67,8 +67,11 @@ internal interface MainComponent {
             }
 
         fun init(context: Context) {
+            // M4: bind the application context, not the caller's context. Callers pass an Activity
+            // to initializeSdk; binding it here pinned that Activity for the process lifetime via
+            // the @Singleton graph.
             instance = DaggerMainComponent.builder()
-                .applicationContext(context)
+                .applicationContext(context.applicationContext)
                 .build()
         }
     }

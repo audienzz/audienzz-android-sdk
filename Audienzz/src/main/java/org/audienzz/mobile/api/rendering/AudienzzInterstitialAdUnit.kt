@@ -102,6 +102,7 @@ class AudienzzInterstitialAdUnit(
         prebidInterstitialAdUnit.setInterstitialAdUnitListener(
             adUnitEventsListener?.let {
                 getInterstitialAdUnitListener(
+                    self = this,
                     adUnitId = adUnitId,
                     adUnitListener = it,
                 )
@@ -121,46 +122,42 @@ class AudienzzInterstitialAdUnit(
 
     companion object {
 
+        // C2: hand the publisher back [self] — the SAME wrapper they already hold — instead of a
+        // freshly constructed AudienzzInterstitialAdUnit. Constructing a new wrapper re-runs its
+        // init{}, which re-installs a no-op listener on the shared Prebid unit and clobbers the
+        // publisher's real listener, so every event after the first was silently dropped (and
+        // onAdClosed-chained reloads died). Reusing [self] keeps the publisher's listener intact.
         private fun getInterstitialAdUnitListener(
+            self: AudienzzInterstitialAdUnit,
             adUnitId: String,
             adUnitListener: AudienzzInterstitialAdUnitListener,
         ): InterstitialAdUnitListener {
             return object : InterstitialAdUnitListener {
                 override fun onAdLoaded(interstitialAdUnit: InterstitialAdUnit?) {
-                    interstitialAdUnit?.let {
-                        adUnitListener.onAdLoaded(AudienzzInterstitialAdUnit(it, adUnitId))
-                    }
+                    adUnitListener.onAdLoaded(self)
                 }
 
                 override fun onAdDisplayed(interstitialAdUnit: InterstitialAdUnit?) {
-                    interstitialAdUnit?.let {
-                        adUnitListener.onAdDisplayed(AudienzzInterstitialAdUnit(it, adUnitId))
-                    }
+                    adUnitListener.onAdDisplayed(self)
                 }
 
                 override fun onAdFailed(
                     interstitialAdUnit: InterstitialAdUnit?,
                     exception: AdException?,
                 ) {
-                    interstitialAdUnit?.let {
-                        adUnitListener.onAdFailed(
-                            AudienzzInterstitialAdUnit(it, adUnitId),
-                            exception?.let { e -> AudienzzAdException(e) },
-                        )
-                    }
+                    adUnitListener.onAdFailed(
+                        self,
+                        exception?.let { e -> AudienzzAdException(e) },
+                    )
                 }
 
                 override fun onAdClicked(interstitialAdUnit: InterstitialAdUnit?) {
                     eventLogger?.adClick(adUnitId = adUnitId)
-                    interstitialAdUnit?.let {
-                        adUnitListener.onAdClicked(AudienzzInterstitialAdUnit(it, adUnitId))
-                    }
+                    adUnitListener.onAdClicked(self)
                 }
 
                 override fun onAdClosed(interstitialAdUnit: InterstitialAdUnit?) {
-                    interstitialAdUnit?.let {
-                        adUnitListener.onAdClosed(AudienzzInterstitialAdUnit(it, adUnitId))
-                    }
+                    adUnitListener.onAdClosed(self)
                 }
             }
         }

@@ -177,10 +177,19 @@ class AudienzzRewardedVideoAdHandler(
         return object : AudienzzRewardedAdLoadCallback() {
             override fun onAdLoaded(rewardedAd: RewardedAd) {
                 adLoadCallback?.onAdLoaded(rewardedAd)
+                // H5: delegate to the publisher's own FullScreenContentCallback if they set one on
+                // the ad inside their onAdLoaded (GAM-documented pattern) instead of clobbering it;
+                // fall back to the callback passed to load().
+                val publisherDirectCallback = rewardedAd.fullScreenContentCallback
                 rewardedAd.fullScreenContentCallback =
                     object : FullScreenContentCallback() {
                         override fun onAdClicked() {
                             super.onAdClicked()
+                            if (publisherDirectCallback != null) {
+                                publisherDirectCallback.onAdClicked()
+                            } else {
+                                fullScreenContentCallback?.onAdClicked()
+                            }
                             eventLogger?.adClick(
                                 adUnitId = adUnitId,
                                 adType = AdType.REWARDED,
@@ -189,24 +198,35 @@ class AudienzzRewardedVideoAdHandler(
                                 adUnitCode = adUnit.configId,
                                 economics = renderEconomics(),
                             )
-                            fullScreenContentCallback?.onAdClicked()
                         }
 
                         override fun onAdDismissedFullScreenContent() {
                             super.onAdDismissedFullScreenContent()
-                            fullScreenContentCallback?.onAdDismissedFullScreenContent()
+                            if (publisherDirectCallback != null) {
+                                publisherDirectCallback.onAdDismissedFullScreenContent()
+                            } else {
+                                fullScreenContentCallback?.onAdDismissedFullScreenContent()
+                            }
                             viewabilityTimer?.cancel()
                         }
 
                         override fun onAdFailedToShowFullScreenContent(error: AdError) {
                             super.onAdFailedToShowFullScreenContent(error)
-                            fullScreenContentCallback?.onAdFailedToShowFullScreenContent(error)
+                            if (publisherDirectCallback != null) {
+                                publisherDirectCallback.onAdFailedToShowFullScreenContent(error)
+                            } else {
+                                fullScreenContentCallback?.onAdFailedToShowFullScreenContent(error)
+                            }
                             viewabilityTimer?.cancel()
                         }
 
                         override fun onAdImpression() {
                             super.onAdImpression()
-                            fullScreenContentCallback?.onAdImpression()
+                            if (publisherDirectCallback != null) {
+                                publisherDirectCallback.onAdImpression()
+                            } else {
+                                fullScreenContentCallback?.onAdImpression()
+                            }
                             // Full-screen ad objects expose no app-event listener, so the render
                             // winner is best-effort: the Prebid auction winner's economics if there
                             // was one, else an ad-server (direct) impression.
@@ -222,7 +242,11 @@ class AudienzzRewardedVideoAdHandler(
 
                         override fun onAdShowedFullScreenContent() {
                             super.onAdShowedFullScreenContent()
-                            fullScreenContentCallback?.onAdShowedFullScreenContent()
+                            if (publisherDirectCallback != null) {
+                                publisherDirectCallback.onAdShowedFullScreenContent()
+                            } else {
+                                fullScreenContentCallback?.onAdShowedFullScreenContent()
+                            }
                             FullScreenViewabilityTimer(
                                 onStart = {
                                     eventLogger?.viewabilityStart(

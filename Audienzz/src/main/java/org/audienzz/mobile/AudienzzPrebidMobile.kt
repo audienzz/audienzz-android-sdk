@@ -344,6 +344,8 @@ object AudienzzPrebidMobile {
     ) {
         this.companyId = companyId
         val listener = SdkInitializationListener { status ->
+            // M5: flush any consent/COPPA values the publisher set before init reached Prebid.
+            AudienzzTargetingParams.onPrebidInitialized()
             sdkInitializationListener?.onInitializationComplete(
                 AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
             )
@@ -407,6 +409,8 @@ object AudienzzPrebidMobile {
                 }
 
                 val listener = SdkInitializationListener { status ->
+                    // M5: flush any consent/COPPA values the publisher set before init reached Prebid.
+                    AudienzzTargetingParams.onPrebidInitialized()
                     sdkInitializationListener?.onInitializationComplete(
                         AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
                     )
@@ -475,7 +479,8 @@ object AudienzzPrebidMobile {
         val volume = (gamConfig?.appVolume ?: 0f).coerceIn(0f, 1f)
         MobileAds.initialize(context) {
             MobileAds.setAppVolume(volume)
-            android.util.Log.d(TAG, "GMA app volume set to $volume")
+            MobileAds.setAppMuted(volume == 0f)
+            android.util.Log.d(TAG, "GMA app volume set to $volume, muted=${volume == 0f}")
         }
     }
 
@@ -536,7 +541,8 @@ object AudienzzPrebidMobile {
             android.util.Log.w(TAG, "setAppVolume: $volume is out of [0.0, 1.0], clamped to $clamped")
         }
         MobileAds.setAppVolume(clamped)
-        android.util.Log.d(TAG, "GMA app volume updated to $clamped")
+        MobileAds.setAppMuted(clamped == 0f)
+        android.util.Log.d(TAG, "GMA app volume updated to $clamped, muted=${clamped == 0f}")
     }
 
     /**
@@ -572,8 +578,11 @@ object AudienzzPrebidMobile {
      */
     @JvmStatic
     fun setSchainObject(schain: String) {
+        // H6: store the schain as its own source and rebuild the canonical global ORTB. Routing it
+        // through setGlobalOrtbConfig would have stored the schain AS the publisher's ORTB and let
+        // a later targeting change wipe it (and vice-versa).
         schainObject = JSONObject(schain)
-        AudienzzTargetingParams.setGlobalOrtbConfig(JSONObject(schain))
+        AudienzzTargetingParams.rebuildGlobalOrtb()
     }
 
     private fun getPrebidMobilePluginRenderer(

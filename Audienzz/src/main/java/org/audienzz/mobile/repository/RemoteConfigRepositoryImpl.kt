@@ -3,6 +3,7 @@ package org.audienzz.mobile.repository
 import android.util.Log
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
 import org.audienzz.mobile.api.config.PublisherConfig
 import org.audienzz.mobile.api.config.RemoteAdUnitConfig
 import org.audienzz.mobile.api.config.RemoteConfigApi
@@ -36,23 +37,28 @@ internal class RemoteConfigRepositoryImpl @Inject constructor(
 
             // Fetch Ad Unit Configs
             Log.d(TAG, "Fetching ad unit configs...")
-            val adUnitConfigs = api.getAdUnitConfigs(publisherId)
-            Log.d(TAG, "Fetched ${adUnitConfigs.size} ad unit configs")
-            val entities = adUnitConfigs.map { config ->
-                Log.d(
-                    TAG,
-                    "Config: $config",
-                )
-                RemoteConfigEntity(
-                    configId = config.id.toString(),
-                    adUnitId = config.gamConfig.adUnitPath,
-                    adType = config.config.adType,
-                    data = json.encodeToString(config),
-                    timestamp = System.currentTimeMillis(),
-                )
+            val adUnitConfigsJson = api.getAdUnitConfigs(publisherId)
+            Log.d(TAG, "Fetched ${adUnitConfigsJson.size} ad unit config elements")
+            // H9: decode each element independently so a single malformed entry is skipped rather
+            // than throwing and discarding the whole config set (which recreated the cold-start
+            // "no config" state for every ad unit).
+            val entities = adUnitConfigsJson.mapNotNull { element ->
+                try {
+                    val config = json.decodeFromJsonElement<RemoteAdUnitConfig>(element)
+                    RemoteConfigEntity(
+                        configId = config.id.toString(),
+                        adUnitId = config.gamConfig.adUnitPath,
+                        adType = config.config.adType,
+                        data = json.encodeToString(config),
+                        timestamp = System.currentTimeMillis(),
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Skipping malformed ad unit config element: $element", e)
+                    null
+                }
             }
             dao.insertAdConfigs(entities)
-            Log.d(TAG, "Config refreshed successfully for publisher: $publisherId")
+            Log.d(TAG, "Config refreshed: stored ${entities.size}/${adUnitConfigsJson.size} ad unit configs for publisher: $publisherId")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to refresh config for publisher: $publisherId", e)
         }
