@@ -11,6 +11,7 @@ import org.audienzz.mobile.di.module.RepositoryModule
 import org.audienzz.mobile.di.module.UtilModule
 import org.audienzz.mobile.event.EventLogger
 import org.audienzz.mobile.manager.RemoteConfigManager
+import org.audienzz.mobile.screen.ScreenAdCoordinator
 import org.audienzz.mobile.util.PpidManager
 import javax.inject.Singleton
 
@@ -29,6 +30,7 @@ internal interface MainComponent {
     fun getEventLogger(): EventLogger
     fun getPpidManager(): PpidManager
     fun getRemoteConfigManager(): RemoteConfigManager
+    fun getScreenAdCoordinator(): ScreenAdCoordinator
 
     @Component.Builder
     interface Builder {
@@ -61,6 +63,13 @@ internal interface MainComponent {
 
         val remoteConfigManager: RemoteConfigManager?
             get() = instance?.getRemoteConfigManager().also {
+                if (it == null) {
+                    Log.e(TAG, "MainComponent is not initialized")
+                }
+            }
+
+        val screenAdCoordinator: ScreenAdCoordinator?
+            get() = instance?.getScreenAdCoordinator().also {
                 if (it == null) {
                     Log.e(TAG, "MainComponent is not initialized")
                 }

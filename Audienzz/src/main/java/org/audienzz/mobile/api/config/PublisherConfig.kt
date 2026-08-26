@@ -17,6 +17,13 @@ data class PublisherConfig(
     val androidConfig: AndroidConfig? = null,
     @SerialName("ios")
     val iosConfig: IosConfig? = null,
+    /**
+     * Backend switch for the screen-aware smart-refresh model (directional viewport gate +
+     * screen-navigation pause/reload). Absent/null → the SDK default (legacy smart refresh).
+     * A local override on [org.audienzz.mobile.AudienzzPrebidMobile.smartRefreshV2Override] wins.
+     */
+    @SerialName("smartRefreshV2")
+    val smartRefreshV2: Boolean? = null,
 )
 
 /**

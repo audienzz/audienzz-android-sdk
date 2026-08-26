@@ -56,6 +56,27 @@ object AudienzzPrebidMobile {
     /** Publisher id used for remote config — reported as analytics `website_id`. */
     internal var publisherId: String? = null
 
+    /** Cached backend smart-refresh-v2 flag from the publisher config (set during init). */
+    private var backendSmartRefreshV2: Boolean? = null
+
+    /**
+     * Local override for the screen-aware smart-refresh model (directional viewport gate +
+     * screen-navigation pause/reload). Takes precedence over the backend `smartRefreshV2` for the
+     * remainder of the session. `null` (default) = defer to the backend value; `false`/`true` =
+     * force off/on regardless of the backend.
+     */
+    @JvmStatic
+    var smartRefreshV2Override: Boolean? = null
+
+    /**
+     * Resolved smart-refresh-v2 flag: local override wins, else the backend publisher config, else
+     * `false` (legacy smart refresh). Reads the backend value cached at init, so it is `false`
+     * until remote config loads unless a local override is set.
+     */
+    @JvmStatic
+    fun isSmartRefreshV2Enabled(): Boolean =
+        smartRefreshV2Override ?: backendSmartRefreshV2 ?: false
+
     /** Schain object for audienzz **/
     internal var schainObject: JSONObject? = null
 
@@ -389,6 +410,7 @@ object AudienzzPrebidMobile {
                 }
 
                 companyId = publisherConfig?.ortbConfig?.schainConfig?.sellerId ?: "1"
+                backendSmartRefreshV2 = publisherConfig?.smartRefreshV2
 
                 val baseUrl = publisherConfig?.prebidServerConfig?.url ?: audienzzHost.hostUrl
                 val prebidServerUrl = if (isPbsDebug) {
@@ -501,6 +523,16 @@ object AudienzzPrebidMobile {
     @JvmStatic
     fun onScreenResumed(activity: Activity) {
         eventLogger?.onScreenResumed(activity.componentName.className)
+        // Screen-aware smart refresh (v2 only): pause the previous screen's banners and force-reload
+        // the incoming screen's banners. No-op under the legacy model.
+        //
+        // Fragment note: publishers pass the host Activity even for Fragments, so Fragments sharing
+        // one Activity are treated as one screen — a Fragment swap triggers a transition only if
+        // onScreenResumed is called again (re-resuming the same Activity still reloads that
+        // Activity's active banners, per the hard-transition rule).
+        if (isSmartRefreshV2Enabled()) {
+            MainComponent.screenAdCoordinator?.onScreenResumed(activity)
+        }
     }
 
     @JvmStatic

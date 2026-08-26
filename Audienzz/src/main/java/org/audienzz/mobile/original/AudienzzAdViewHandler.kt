@@ -1,5 +1,6 @@
 package org.audienzz.mobile.original
 
+import android.app.Activity
 import android.util.Log
 import android.view.ViewTreeObserver
 import com.google.android.gms.ads.AdListener
@@ -26,15 +27,18 @@ import org.audienzz.mobile.event.noBid
 import org.audienzz.mobile.event.util.adSubtype
 import org.audienzz.mobile.event.viewabilityStart
 import org.audienzz.mobile.event.viewabilitySuccess
+import org.audienzz.mobile.screen.screenAdCoordinator
 import org.audienzz.mobile.util.ViewabilityTracker
 import org.audienzz.mobile.util.addContinuousVisibilityListener
 import org.audienzz.mobile.util.adViewId
 import org.audienzz.mobile.util.addOnBecameVisibleOnScreenListener
 import org.audienzz.mobile.util.addPrefetchMarginListener
 import org.audienzz.mobile.util.isRefreshEligible
+import org.audienzz.mobile.util.isVisibleForSmartRefresh
 import org.audienzz.mobile.util.noBidResultCode
 import org.audienzz.mobile.util.prebidKeyword
 import org.audienzz.mobile.util.sizesJson
+import org.audienzz.mobile.util.unwrapActivity
 import java.util.UUID
 
 class AudienzzAdViewHandler(
@@ -94,6 +98,45 @@ class AudienzzAdViewHandler(
     private var currentAuctionId: String? = null
     // Times this slot has (re)loaded — reported as slot_reload. First load = 0.
     private var slotReloadCount: Int = 0
+
+    // Screen-aware smart refresh (v2). screenActive defaults true so legacy, and screens that never
+    // call onScreenResumed, behave exactly as before; the coordinator flips it on screen changes.
+    @Volatile
+    private var screenActive = true
+    // The ad's host Activity ("screen"), resolved once from the AdManagerAdView's context. An
+    // AdManagerAdView's context does not change over its lifetime, so caching is safe; a non-Activity
+    // context yields null and the ad is never matched to any screen (behaves as today).
+    private val hostActivity: Activity? by lazy(LazyThreadSafetyMode.NONE) { adView.context.unwrapActivity() }
+
+    /** True when this ad lives on [activity] (object identity, not class name). */
+    internal fun isHostedBy(activity: Activity): Boolean = hostActivity === activity
+
+    /**
+     * Screen-aware transition (v2). Active + already loaded → force a fresh auction; inactive →
+     * pause (overrides viewport eligibility). A never-loaded active banner is left for its normal
+     * lazy load.
+     */
+    internal fun onScreenActiveChanged(active: Boolean) {
+        screenActive = active
+        if (active) {
+            if (lastRefreshTime != 0L) reloadForScreenChange()
+        } else {
+            pauseSmartRefresh()
+        }
+    }
+
+    /**
+     * Force a fresh auction on screen activation (v2). Unlike [resumeSmartRefresh] (stale-aware),
+     * this always refetches when the ad has loaded before — the "new pageImpression → reload"
+     * semantics on screen change.
+     */
+    internal fun reloadForScreenChange() {
+        if (storedCallback == null || lastRefreshTime == 0L) return
+        pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
+        pendingRefreshRunnable = null
+        fetchDemand()
+        adUnit.resumeAutoRefresh()
+    }
 
     /**
      * Executes ad loading if no request is running.
@@ -165,9 +208,16 @@ class AudienzzAdViewHandler(
             Log.d(TAG, "enableSmartRefresh() adUnitId=${adView.adUnitId} — already enabled, skipping")
             return
         }
-        Log.d(TAG, "enableSmartRefresh() adUnitId=${adView.adUnitId} — smart refresh enabled, refreshInterval=${adUnit.autoRefreshTime}ms")
+        val useV2 = AudienzzPrebidMobile.isSmartRefreshV2Enabled()
+        Log.d(TAG, "enableSmartRefresh() adUnitId=${adView.adUnitId} — smart refresh enabled (v2=$useV2), refreshInterval=${adUnit.autoRefreshTime}ms")
         smartRefreshListener = adView.addContinuousVisibilityListener(
+            useDirectionalGate = useV2,
             onBecameVisible = {
+                // Screen-aware (v2): never auto-resume via the viewport gate while this ad's screen
+                // is inactive — the screen coordinator owns pause/reload. Always true under legacy.
+                if (!screenActive) {
+                    return@addContinuousVisibilityListener
+                }
                 if (storedCallback == null) {
                     Log.w(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became visible but not loaded yet (no callback), skipping")
                     return@addContinuousVisibilityListener
@@ -218,9 +268,22 @@ class AudienzzAdViewHandler(
         // Do an initial *level* check here: if the view isn't refresh-eligible yet, stop refresh
         // now; the onBecameVisible edge will resume/refresh it (stale-aware) once its top is fully
         // on screen with >=50% visible.
-        if (!adView.isRefreshEligible()) {
+        val eligibleAtEnable = if (useV2) adView.isRefreshEligible() else adView.isVisibleForSmartRefresh()
+        if (!eligibleAtEnable) {
             Log.d(TAG, "enableSmartRefresh() adUnitId=${adView.adUnitId} — view not refresh-eligible at enable time (likely prefetched off-screen or top clipped), stopping auto-refresh until it enters the viewport")
             adUnit.stopAutoRefresh()
+        }
+
+        // Screen-aware smart refresh (v2 only): register in the coordinator and set the initial
+        // screen-active state so a banner built for a non-active screen starts paused. Under legacy,
+        // registration is harmless and screenActive stays true (nothing pauses on screen change).
+        screenAdCoordinator?.register(this)
+        if (useV2) {
+            val active = screenAdCoordinator?.activeActivity
+            screenActive = active == null || (hostActivity != null && hostActivity === active)
+            if (!screenActive) {
+                pauseSmartRefresh()
+            }
         }
     }
 
@@ -301,6 +364,7 @@ class AudienzzAdViewHandler(
         smartRefreshListener = null
         pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
         pendingRefreshRunnable = null
+        screenAdCoordinator?.deregister(this)
         // disableSmartRefresh() is the teardown hook called from the ad view's destroy().
         viewabilityTracker?.stop()
         viewabilityTracker = null

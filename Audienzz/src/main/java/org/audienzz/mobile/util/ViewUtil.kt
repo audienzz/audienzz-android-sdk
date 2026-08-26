@@ -1,5 +1,8 @@
 package org.audienzz.mobile.util
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.res.Resources
 import android.graphics.Rect
 import android.util.Log
@@ -118,15 +121,17 @@ internal fun View.isRefreshEligible(): Boolean {
  * the returned listener is manually removed from the [ViewTreeObserver].
  */
 fun View.addContinuousVisibilityListener(
+    useDirectionalGate: Boolean,
     onBecameVisible: () -> Unit,
     onBecameHidden: () -> Unit,
 ): ViewTreeObserver.OnPreDrawListener {
-    // Smart refresh pauses/resumes on the directional eligibility rule (top edge fully on
-    // screen AND ≤50% off the bottom), not the looser ≥20% initial-load threshold.
-    var wasVisible = isRefreshEligible()
+    // Smart-refresh v2 pauses/resumes on the directional eligibility rule (top edge fully on screen
+    // AND ≤50% off the bottom); the legacy model uses the ≥20% visible-height threshold.
+    fun eligible(): Boolean = if (useDirectionalGate) isRefreshEligible() else isVisibleForSmartRefresh()
+    var wasVisible = eligible()
     val listener = object : ViewTreeObserver.OnPreDrawListener {
         override fun onPreDraw(): Boolean {
-            val isVisible = isRefreshEligible()
+            val isVisible = eligible()
             if (isVisible && !wasVisible) {
                 wasVisible = true
                 onBecameVisible()
@@ -314,3 +319,17 @@ fun View.lazyAdLoader(
 }
 
 fun Resources.pxToDp(@Px px: Int): Int = (px / displayMetrics.density).toInt()
+
+/**
+ * Unwraps this [Context] to its host [Activity] by walking the [ContextWrapper] chain, or returns
+ * null for a non-Activity context (e.g. application context). Used to match an ad to its screen
+ * for screen-aware smart refresh.
+ */
+internal fun Context.unwrapActivity(): Activity? {
+    var ctx: Context? = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
