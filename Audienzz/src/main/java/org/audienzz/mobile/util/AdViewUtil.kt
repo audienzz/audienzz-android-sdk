@@ -13,6 +13,13 @@ internal val Iterable<AdSize>.sizeString
 internal val AdSize.sizeString: String
     get() = "${width}x$height"
 
+/**
+ * `sizes` as a JSON-array-encoded string (web-schema parity, like `media_types`) — e.g.
+ * `["300x250","320x50"]`. Empty iterables produce `[]`.
+ */
+internal val Iterable<AdSize>.sizesJson: String
+    get() = joinToString(separator = ",", prefix = "[", postfix = "]") { "\"${it.sizeString}\"" }
+
 internal val Iterable<org.prebid.mobile.AdSize>.prebidSizeString
     get() = joinToString { it.prebidSizeString }
 
@@ -24,3 +31,7 @@ internal val Iterable<AudienzzAdSize>.audienzzSizeString
 
 internal val AudienzzAdSize.audienzzSizeString: String
     get() = "${width}x$height"
+
+/** `sizes` as a JSON-array-encoded string (web-schema parity) — e.g. `["300x250","320x50"]`. */
+internal val Iterable<AudienzzAdSize>.audienzzSizesJson: String
+    get() = joinToString(separator = ",", prefix = "[", postfix = "]") { "\"${it.audienzzSizeString}\"" }

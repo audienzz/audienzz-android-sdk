@@ -24,6 +24,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.Fragment
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzRemoteBannerView
 import org.audienzz.mobile.AudienzzRemoteConfigInterstitial
 import org.audienzz.mobile.AudienzzStickyAdWrapperView
@@ -55,6 +56,13 @@ class RemoteConfigStickyFragment : Fragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View = inflater.inflate(R.layout.fragment_remote_config_sticky, container, false)
+
+    override fun onResume() {
+        super.onResume()
+        if (AudienzzPrebidMobile.isSdkInitialized) {
+            activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
+        }
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)

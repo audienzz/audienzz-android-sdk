@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.databinding.DataBindingUtil
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.adapter.AdsAdapter
 import org.audienzz.mobile.testapp.databinding.AdsPageFragmentBinding
@@ -29,6 +30,13 @@ class SingleAdActivity : AppCompatActivity() {
                 add(adType)
             },
         )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (AudienzzPrebidMobile.isSdkInitialized) {
+            AudienzzPrebidMobile.onScreenResumed(this)
+        }
     }
 
     companion object {

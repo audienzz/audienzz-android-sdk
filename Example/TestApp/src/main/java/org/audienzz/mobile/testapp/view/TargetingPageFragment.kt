@@ -7,6 +7,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzRemoteBannerView
 import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.testapp.R
@@ -29,6 +30,13 @@ class TargetingPageFragment : Fragment() {
             false,
         )
         return binding.root
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (AudienzzPrebidMobile.isSdkInitialized) {
+            activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
+        }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
