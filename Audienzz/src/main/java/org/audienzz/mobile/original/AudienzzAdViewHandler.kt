@@ -31,7 +31,7 @@ import org.audienzz.mobile.util.addContinuousVisibilityListener
 import org.audienzz.mobile.util.adViewId
 import org.audienzz.mobile.util.addOnBecameVisibleOnScreenListener
 import org.audienzz.mobile.util.addPrefetchMarginListener
-import org.audienzz.mobile.util.isVisibleForSmartRefresh
+import org.audienzz.mobile.util.isRefreshEligible
 import org.audienzz.mobile.util.noBidResultCode
 import org.audienzz.mobile.util.prebidKeyword
 import org.audienzz.mobile.util.sizesJson
@@ -215,10 +215,11 @@ class AudienzzAdViewHandler(
         // C3: onBecameHidden above is edge-triggered (visible -> hidden). A view that was
         // prefetched while off-screen and is still not on screen never produced that edge, so its
         // auto-refresh — armed by the prefetch fetchDemand — would loop forever at 0% viewability.
-        // Do an initial *level* check here: if the view isn't visible yet, stop refresh now; the
-        // onBecameVisible edge will resume/refresh it (stale-aware) once it enters the viewport.
-        if (!adView.isVisibleForSmartRefresh()) {
-            Log.d(TAG, "enableSmartRefresh() adUnitId=${adView.adUnitId} — view not visible at enable time (likely prefetched off-screen), stopping auto-refresh until it enters the viewport")
+        // Do an initial *level* check here: if the view isn't refresh-eligible yet, stop refresh
+        // now; the onBecameVisible edge will resume/refresh it (stale-aware) once its top is fully
+        // on screen with >=50% visible.
+        if (!adView.isRefreshEligible()) {
+            Log.d(TAG, "enableSmartRefresh() adUnitId=${adView.adUnitId} — view not refresh-eligible at enable time (likely prefetched off-screen or top clipped), stopping auto-refresh until it enters the viewport")
             adUnit.stopAutoRefresh()
         }
     }

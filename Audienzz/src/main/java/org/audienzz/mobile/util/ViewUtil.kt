@@ -63,6 +63,48 @@ fun View.isVisibleForSmartRefresh(): Boolean =
     visibleHeightFraction() >= SMART_REFRESH_VISIBILITY_THRESHOLD
 
 /**
+ * Fraction of the ad's height that may hang off the BOTTOM of the viewport while the ad still
+ * qualifies for smart refresh. More than this off the bottom → pause (see [isRefreshEligible]).
+ */
+private const val SMART_REFRESH_MAX_BOTTOM_OFFSCREEN_FRACTION = 0.5f
+
+/**
+ * Directional smart-**refresh** eligibility (stricter than [isVisibleForSmartRefresh], which
+ * gates the initial load). The ad is eligible only when BOTH hold:
+ * - its **top edge is fully on screen** — if 1px or more of the top is clipped above the
+ *   viewport, it is ineligible (pause), and
+ * - **no more than 50%** of its height is off the **bottom** of the viewport — if more than
+ *   half is below the fold, it is ineligible (pause on start).
+ *
+ * A fully-visible ad, or one entering from the bottom with ≥50% on screen, is eligible.
+ *
+ * Geometry: [getGlobalVisibleRect] gives the visible portion clipped by every ancestor
+ * (so nested scroll containers are honoured) and [getLocationInWindow] gives the view's full
+ * top — both in window coordinates, so their tops/bottoms are directly comparable. Kept
+ * separate from [visibleHeightFraction] so the viewability tracker's ≥50% math is untouched.
+ */
+internal fun View.isRefreshEligible(): Boolean {
+    if (visibility != View.VISIBLE) return false
+    val totalHeight = measuredHeight
+    if (totalHeight <= 0) return false
+    val visibleRect = Rect()
+    if (!getGlobalVisibleRect(visibleRect)) return false // fully off screen
+
+    val location = IntArray(2)
+    getLocationInWindow(location)
+    val viewTop = location[1]
+    val viewBottom = viewTop + totalHeight
+
+    // getGlobalVisibleRect clamps to the visible area, so both are >= 0.
+    val topOffscreenPx = visibleRect.top - viewTop
+    val bottomOffscreenPx = viewBottom - visibleRect.bottom
+
+    val topFullyOnScreen = topOffscreenPx < 1
+    val bottomWithinHalf = bottomOffscreenPx <= totalHeight * SMART_REFRESH_MAX_BOTTOM_OFFSCREEN_FRACTION
+    return topFullyOnScreen && bottomWithinHalf
+}
+
+/**
  * Triggers [listener] if view is already visible on screen or subscribes to
  * [ViewTreeObserver.OnPreDrawListener]
  *
@@ -79,10 +121,12 @@ fun View.addContinuousVisibilityListener(
     onBecameVisible: () -> Unit,
     onBecameHidden: () -> Unit,
 ): ViewTreeObserver.OnPreDrawListener {
-    var wasVisible = isVisibleForSmartRefresh()
+    // Smart refresh pauses/resumes on the directional eligibility rule (top edge fully on
+    // screen AND ≤50% off the bottom), not the looser ≥20% initial-load threshold.
+    var wasVisible = isRefreshEligible()
     val listener = object : ViewTreeObserver.OnPreDrawListener {
         override fun onPreDraw(): Boolean {
-            val isVisible = isVisibleForSmartRefresh()
+            val isVisible = isRefreshEligible()
             if (isVisible && !wasVisible) {
                 wasVisible = true
                 onBecameVisible()
