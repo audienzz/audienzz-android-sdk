@@ -426,6 +426,13 @@ object AudienzzPrebidMobile {
                         publisherConfig.prebidServerConfig.accountId.toString(),
                     )
 
+                    // The Prebid init health check (GET /status) must target the configured PBS
+                    // server, not the hardcoded default. A failed status check aborts init and
+                    // clears the Prebid context, so every fetchDemand then returns INVALID_CONTEXT
+                    // (empty ads). Use the backend-provided statusUrl when present; otherwise keep
+                    // whatever default was set.
+                    publisherConfig.prebidServerConfig.statusUrl?.let { customStatusEndpoint = it }
+
                     publisherConfig.ortbConfig?.let { configureOrtb(it) }
                     publisherConfig.androidConfig?.ortbConfig?.let { configureAndroidOrtb(it) }
                 }
