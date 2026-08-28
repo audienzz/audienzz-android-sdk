@@ -1,5 +1,6 @@
 package org.audienzz.mobile.testapp.view
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.databinding.DataBindingUtil
@@ -7,6 +8,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.tabs.TabLayoutMediator
+import org.audienzz.mobile.testapp.DemoFeatureFlags
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.databinding.ActivityMainBinding
 
@@ -18,6 +20,25 @@ class MainActivity : AppCompatActivity() {
         binding = DataBindingUtil.setContentView(this, R.layout.activity_main)
 
         setupTabs()
+        setupSmartRefreshV2Toggle()
+    }
+
+    /// Demo control: a Smart Refresh v2 switch. Persists the choice and restarts the app so the SDK
+    /// picks up the new `smartRefreshV2Override` at launch (applied in App.onCreate()).
+    private fun setupSmartRefreshV2Toggle() {
+        binding.smartRefreshV2Switch.isChecked = DemoFeatureFlags.isSmartRefreshV2Enabled(this)
+        binding.smartRefreshV2Switch.setOnCheckedChangeListener { _, isChecked ->
+            DemoFeatureFlags.setSmartRefreshV2Enabled(this, isChecked)
+            restartApp()
+        }
+    }
+
+    private fun restartApp() {
+        val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+        startActivity(intent)
+        Runtime.getRuntime().exit(0)
     }
 
     private fun setupTabs() {
