@@ -1,6 +1,7 @@
 package org.audienzz.mobile.original
 
 import android.util.Log
+import android.view.View
 import android.view.ViewTreeObserver
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
@@ -153,8 +154,23 @@ class AudienzzAdViewHandler(
         if (storedCallback == null || lastRefreshTime == 0L) return
         pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
         pendingRefreshRunnable = null
+        // Optionally blank the current creative (keeping the slot size — INVISIBLE reserves space)
+        // so the refresh is visually obvious; restored when the fresh ad loads.
+        if (AudienzzPrebidMobile.blankOnScreenReload) {
+            adView.visibility = View.INVISIBLE
+            blankedForReload = true
+        }
         fetchDemand()
         adUnit.resumeAutoRefresh()
+    }
+
+    private var blankedForReload = false
+
+    private fun restoreFromBlankIfNeeded() {
+        if (blankedForReload) {
+            blankedForReload = false
+            adView.visibility = View.VISIBLE
+        }
     }
 
     /**
@@ -602,6 +618,7 @@ class AudienzzAdViewHandler(
             }
 
             override fun onAdLoaded() {
+                restoreFromBlankIfNeeded()
                 actualListener?.onAdLoaded()
             }
 
@@ -627,6 +644,7 @@ class AudienzzAdViewHandler(
             }
 
             override fun onAdFailedToLoad(error: LoadAdError) {
+                restoreFromBlankIfNeeded()
                 actualListener?.onAdFailedToLoad(error)
             }
 

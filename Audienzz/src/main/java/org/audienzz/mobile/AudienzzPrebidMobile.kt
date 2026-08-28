@@ -86,6 +86,14 @@ object AudienzzPrebidMobile {
     @JvmStatic
     var autoScreenTracking: Boolean = true
 
+    /**
+     * When true, a screen-change reload (smart refresh v2, on returning to a screen) briefly blanks
+     * the current banner — keeping the slot's size — until the fresh ad renders, making the refresh
+     * visually obvious. Default false. Only affects screen-change reloads, not periodic refresh.
+     */
+    @JvmStatic
+    var blankOnScreenReload: Boolean = false
+
     private var screenTracker: org.audienzz.mobile.screen.ScreenTracker? = null
 
     /** Single sink for both the auto tracker and the manual API: page impression + v2 coordinator. */
