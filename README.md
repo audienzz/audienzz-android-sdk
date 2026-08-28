@@ -11,6 +11,25 @@ The implementation includes lazy loading functionality to optimize application p
 > - **Screen tracking is automatic.** The SDK tracks screens for you (Activities, fragment navigation, and ViewPager2 tabs) — no per-screen code. It powers analytics page impressions and screen-aware Smart Refresh. Opt out with `AudienzzPrebidMobile.autoScreenTracking = false`, or report screens auto-tracking can't see (e.g. Jetpack Compose) with `onScreenResumed(routeKey)`. See [Screen tracking](#step-2--screen-tracking-automatic).
 > - **Smart Refresh v2 is opt-in.** The screen-aware refresh model (directional viewport gate + pause/reload on screen navigation) is **off by default** — the classic viewport-aware refresh runs unless you enable it via the backend `smartRefreshV2` flag or `AudienzzPrebidMobile.smartRefreshV2Override = true`. See [Smart Refresh](#smart-refresh).
 
+## How screens & ads work (read this first)
+
+The SDK is **screen-aware**: it knows which screen is active and which ads belong to it, and drives
+each ad's lifecycle (page impressions + smart refresh) for you. Understanding this model is the key
+to integrating correctly.
+
+- **A screen** is an `Activity`, a `Fragment`, or a **ViewPager2 tab** — tracked **automatically**
+  (see [Screen tracking](#step-2--screen-tracking-automatic)). You write no per-screen code. Opt out
+  with `AudienzzPrebidMobile.autoScreenTracking = false`.
+- **An ad belongs to the screen it is placed in.** The SDK resolves each banner's host from the
+  view hierarchy — `FragmentManager.findFragment(adView)`, falling back to its `Activity` — and
+  matches by **object identity**, so two tabs, or two instances of the same screen class, are
+  distinct screens. The host is pinned once resolved, so the association never drifts.
+- **Lifecycle:** when a screen becomes active, its banners (re)load; when you leave it, they pause;
+  returning reloads them (with Smart Refresh v2). This stops off-screen slots from auctioning and
+  gives each visit a fresh, viewable ad.
+- **Screens the SDK can't infer** (Jetpack Compose destinations, a custom navigation model) —
+  report them by route key: `AudienzzPrebidMobile.onScreenResumed("home")`.
+
 ## Underlying Technologies
 
 ### Prebid Mobile SDK

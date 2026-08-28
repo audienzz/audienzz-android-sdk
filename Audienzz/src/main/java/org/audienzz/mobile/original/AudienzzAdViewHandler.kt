@@ -108,13 +108,23 @@ class AudienzzAdViewHandler(
     // and fragment navigation are distinct screens), else its host Activity. Resolved on demand
     // (transitions are infrequent) so it stays correct once the view is attached; a non-Activity,
     // non-Fragment context yields null and the ad is never matched to any screen (behaves as today).
+    // Pinned once a host Fragment is definitively resolved (the ad belongs to exactly one screen and
+    // never migrates). The Activity fallback is NOT cached, so an early resolution before the ad is
+    // attached to its Fragment can still upgrade to the Fragment on the next call.
+    private var cachedHostScreen: Any? = null
+
     private fun resolveHostScreen(): Any? {
+        cachedHostScreen?.let { return it }
         val fragment = try {
             FragmentManager.findFragment<Fragment>(adView)
         } catch (e: IllegalStateException) {
-            null // adView is not within a Fragment's view hierarchy
+            null // adView is not (yet) within a Fragment's view hierarchy
         }
-        return fragment ?: adView.context.unwrapActivity()
+        if (fragment != null) {
+            cachedHostScreen = fragment
+            return fragment
+        }
+        return adView.context.unwrapActivity()
     }
 
     /** True when this ad lives on [screen] (object identity, not class name). */
