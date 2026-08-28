@@ -6,6 +6,11 @@ Audienzz Android SDK
 A mobile advertising SDK that combines header bidding capabilities from Prebid Mobile with Google's advertising ecosystem through a unified interface.
 The implementation includes lazy loading functionality to optimize application performance by deferring ad initialization until needed.
 
+> ### ⚠️ Important
+>
+> - **Track every ad screen.** Call `AudienzzPrebidMobile.onScreenResumed(activity)` from the `onResume()` of **every Activity or Fragment that shows ads**. It is required for analytics, and it also drives screen-aware Smart Refresh. See [Track screen impressions](#step-2--track-screen-impressions-required).
+> - **Smart Refresh v2 is opt-in.** The screen-aware refresh model (directional viewport gate + pause/reload on screen navigation) is **off by default** — the classic viewport-aware refresh runs unless you enable it via the backend `smartRefreshV2` flag or `AudienzzPrebidMobile.smartRefreshV2Override = true`. See [Smart Refresh](#smart-refresh).
+
 ## Underlying Technologies
 
 ### Prebid Mobile SDK
@@ -186,6 +191,27 @@ override fun onDestroyView() {
 ```
 
 > **Note:** `enableSmartRefresh()` has no effect if no auto-refresh interval is set on the ad unit (i.e. `setAutoRefreshInterval()` was not called).
+
+### Smart Refresh v2 (screen-aware) — opt-in
+
+Smart Refresh v2 refines the model in two ways. It is **off by default**; when disabled, the classic behavior above applies unchanged.
+
+**1. Directional visibility gate.** A refresh runs only while the ad's **top edge is fully on screen** and **at least 50% of the ad is visible**. It pauses the moment the top scrolls off (even 1px) or more than half the ad drops below the fold — a stricter, less "wasteful" rule than a plain visible-percentage threshold. The **initial load is unaffected** (the ad still loads as early as possible via lazy/prefetch).
+
+**2. Screen-aware pause & reload.** Refresh is matched to the screen (Activity) the ad lives on. When you open a new screen, the previous screen's banners **pause**; when you navigate back — a new page impression — that screen's banners **reload** with a fresh ad. This is driven entirely by your existing `onScreenResumed(activity)` calls, so no per-ad wiring is needed.
+
+> **Fragment note:** publishers pass the host **Activity** to `onScreenResumed`, so Fragments sharing one Activity are treated as one screen. A Fragment swap triggers a transition only if `onScreenResumed` is called again.
+
+The scroll-off/scroll-back timer is unchanged (stale-aware, respecting your refresh interval); only **screen navigation** forces an immediate reload.
+
+Enable it per publisher from the backend remote config (`smartRefreshV2: true` on the publisher config), or locally in the app (the local override wins):
+
+```kotlin
+// Force the screen-aware model on (or off) regardless of the backend flag.
+AudienzzPrebidMobile.smartRefreshV2Override = true
+```
+
+> **Note:** v2 still requires `enableSmartRefresh()` and an auto-refresh interval on each banner — the flag switches *which* refresh model runs, not whether refresh is enabled.
 
 API Reference
 ========
@@ -744,6 +770,10 @@ first launch, where `onResume()` may run before initialization completes.
 There is **no `onPause`/teardown counterpart** to call. If you omit `onScreenResumed`, ad events are
 still reported (the SDK assigns a fallback page-impression id so nothing is lost), but they won't be
 tied to a named screen.
+
+Under **[Smart Refresh v2](#smart-refresh-v2-screen-aware--opt-in)** this call also drives
+screen-matched refresh: opening a new screen pauses the previous screen's banners, and returning
+reloads the current screen's banners. No effect under the classic model.
 
 ### Demand-source attribution (`bidder_code`) — optional GAM setup
 
