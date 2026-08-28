@@ -311,7 +311,14 @@ object AudienzzPrebidMobile {
 
     init {
         prebidServerAccountId = "3927"
-        customStatusEndpoint = "https://ib.adnxs.com/status"
+        // No hardcoded /status endpoint. A wrong/unreachable status URL blocks Prebid init: the
+        // status request runs on a 10s executor timeout (SdkInitializer), and on timeout Prebid
+        // calls initializationFailed(), which CLEARS the context — so every fetchDemand then returns
+        // INVALID_CONTEXT (empty ads). With null, Prebid derives /status only for appnexus-style
+        // hosts (…/openrtb2/auction) and safely SKIPS the check for custom hosts (e.g. nexx360).
+        // The remote path overrides this with the backend statusUrl when the publisher config
+        // provides one.
+        customStatusEndpoint = null
         isShareGeoLocation = true
         enabledAssignNativeAssetId = true
         AudienzzTargetingParams.omidPartnerName = "Google"
