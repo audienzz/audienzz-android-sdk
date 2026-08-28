@@ -77,6 +77,25 @@ object AudienzzPrebidMobile {
     fun isSmartRefreshV2Enabled(): Boolean =
         smartRefreshV2Override ?: backendSmartRefreshV2 ?: false
 
+    /**
+     * Automatic screen tracking. When true (default), the SDK observes Activity and Fragment
+     * lifecycle and fires a page impression (and drives screen-aware smart refresh) on every screen
+     * change — Activities, fragment navigation, and ViewPager2 tabs — with no per-screen code.
+     * Set to false before init to opt out and drive screens yourself via [onScreenResumed].
+     */
+    @JvmStatic
+    var autoScreenTracking: Boolean = true
+
+    private var screenTracker: org.audienzz.mobile.screen.ScreenTracker? = null
+
+    /** Single sink for both the auto tracker and the manual API: page impression + v2 coordinator. */
+    private fun notifyScreenResumed(screen: Any, screenName: String) {
+        eventLogger?.onScreenResumed(screenName)
+        if (isSmartRefreshV2Enabled()) {
+            org.audienzz.mobile.screen.screenAdCoordinator?.onScreenResumed(screen)
+        }
+    }
+
     /** Schain object for audienzz **/
     internal var schainObject: JSONObject? = null
 
@@ -521,9 +540,16 @@ object AudienzzPrebidMobile {
     }
 
     private fun registerActivityCallbacks(context: Context) {
-        (context.applicationContext as? Application)?.apply {
-            registerActivityLifecycleCallbacks(CURRENT_ACTIVITY_TRACKER)
-            registerActivityLifecycleCallbacks(org.audienzz.mobile.util.AppForegroundMonitor)
+        val app = context.applicationContext as? Application ?: return
+        app.registerActivityLifecycleCallbacks(CURRENT_ACTIVITY_TRACKER)
+        app.registerActivityLifecycleCallbacks(org.audienzz.mobile.util.AppForegroundMonitor)
+        // Automatic screen tracking (opt-out via autoScreenTracking). Registered once.
+        if (autoScreenTracking && screenTracker == null) {
+            val tracker = org.audienzz.mobile.screen.ScreenTracker { screen, name ->
+                notifyScreenResumed(screen, name)
+            }
+            screenTracker = tracker
+            app.registerActivityLifecycleCallbacks(tracker)
         }
     }
 
@@ -536,17 +562,31 @@ object AudienzzPrebidMobile {
      */
     @JvmStatic
     fun onScreenResumed(activity: Activity) {
-        eventLogger?.onScreenResumed(activity.componentName.className)
-        // Screen-aware smart refresh (v2 only): pause the previous screen's banners and force-reload
-        // the incoming screen's banners. No-op under the legacy model.
-        //
-        // Fragment note: publishers pass the host Activity even for Fragments, so Fragments sharing
-        // one Activity are treated as one screen — a Fragment swap triggers a transition only if
-        // onScreenResumed is called again (re-resuming the same Activity still reloads that
-        // Activity's active banners, per the hard-transition rule).
-        if (isSmartRefreshV2Enabled()) {
-            MainComponent.screenAdCoordinator?.onScreenResumed(activity)
-        }
+        // Ignored while automatic tracking is on — it already observes Activities (avoids
+        // double-counting). Turn off autoScreenTracking to drive screens manually.
+        if (autoScreenTracking) return
+        notifyScreenResumed(activity, activity.componentName.className)
+    }
+
+    /**
+     * Manual screen signal for a Fragment. The Fragment is the screen identity, so different
+     * Fragments — including ViewPager2 tabs — are distinct screens. Ignored while
+     * [autoScreenTracking] is on (auto already observes Fragments).
+     */
+    @JvmStatic
+    fun onScreenResumed(fragment: androidx.fragment.app.Fragment) {
+        if (autoScreenTracking) return
+        notifyScreenResumed(fragment, fragment.javaClass.name)
+    }
+
+    /**
+     * Manual screen signal by an opaque key (e.g. a route name from Jetpack Compose / Flutter /
+     * React Native). The key string is the screen identity. Always applied — automatic tracking
+     * can't see non-Activity/Fragment screens, so this is how you report them.
+     */
+    @JvmStatic
+    fun onScreenResumed(screenKey: String) {
+        notifyScreenResumed(screenKey, screenKey)
     }
 
     @JvmStatic

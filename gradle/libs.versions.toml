@@ -73,6 +73,7 @@ detekt-api = { module = "io.gitlab.arturbosch.detekt:detekt-api", version.ref = 
 detekt-cli = { module = "io.gitlab.arturbosch.detekt:detekt-cli", version.ref = "detekt" }
 detekt-formatting = { module = "io.gitlab.arturbosch.detekt:detekt-formatting", version.ref = "detekt" }
 core-ktx = { module = "androidx.core:core-ktx", version = "1.13.1" }
+fragment-ktx = { module = "androidx.fragment:fragment-ktx", version = "1.8.5" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "gradle-android" }

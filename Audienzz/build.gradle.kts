@@ -133,6 +133,9 @@ dependencies {
     detektPlugins(libs.detekt.formatting)
 
     implementation(libs.core.ktx)
+
+    // Fragment lifecycle + FragmentManager.findFragment for automatic screen tracking.
+    implementation(libs.fragment.ktx)
 }
 
 signing {

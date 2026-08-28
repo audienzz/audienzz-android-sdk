@@ -1,8 +1,9 @@
 package org.audienzz.mobile.original
 
-import android.app.Activity
 import android.util.Log
 import android.view.ViewTreeObserver
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentManager
 import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.LoadAdError
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
@@ -103,13 +104,21 @@ class AudienzzAdViewHandler(
     // call onScreenResumed, behave exactly as before; the coordinator flips it on screen changes.
     @Volatile
     private var screenActive = true
-    // The ad's host Activity ("screen"), resolved once from the AdManagerAdView's context. An
-    // AdManagerAdView's context does not change over its lifetime, so caching is safe; a non-Activity
-    // context yields null and the ad is never matched to any screen (behaves as today).
-    private val hostActivity: Activity? by lazy(LazyThreadSafetyMode.NONE) { adView.context.unwrapActivity() }
+    // The ad's host "screen": its host Fragment when the adView lives inside one (so ViewPager2 tabs
+    // and fragment navigation are distinct screens), else its host Activity. Resolved on demand
+    // (transitions are infrequent) so it stays correct once the view is attached; a non-Activity,
+    // non-Fragment context yields null and the ad is never matched to any screen (behaves as today).
+    private fun resolveHostScreen(): Any? {
+        val fragment = try {
+            FragmentManager.findFragment<Fragment>(adView)
+        } catch (e: IllegalStateException) {
+            null // adView is not within a Fragment's view hierarchy
+        }
+        return fragment ?: adView.context.unwrapActivity()
+    }
 
-    /** True when this ad lives on [activity] (object identity, not class name). */
-    internal fun isHostedBy(activity: Activity): Boolean = hostActivity === activity
+    /** True when this ad lives on [screen] (object identity, not class name). */
+    internal fun isHostedBy(screen: Any): Boolean = resolveHostScreen() === screen
 
     /**
      * Screen-aware transition (v2). Active + already loaded → force a fresh auction; inactive →
@@ -279,8 +288,8 @@ class AudienzzAdViewHandler(
         // registration is harmless and screenActive stays true (nothing pauses on screen change).
         screenAdCoordinator?.register(this)
         if (useV2) {
-            val active = screenAdCoordinator?.activeActivity
-            screenActive = active == null || (hostActivity != null && hostActivity === active)
+            val active = screenAdCoordinator?.activeScreen
+            screenActive = active == null || isHostedBy(active)
             if (!screenActive) {
                 pauseSmartRefresh()
             }

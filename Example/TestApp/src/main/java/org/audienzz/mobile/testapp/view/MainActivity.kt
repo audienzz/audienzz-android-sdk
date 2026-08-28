@@ -7,9 +7,7 @@ import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
-import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayoutMediator
-import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.testapp.DemoFeatureFlags
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.databinding.ActivityMainBinding
@@ -57,19 +55,9 @@ class MainActivity : AppCompatActivity() {
                 else -> "Tab ${position + 1}"
             }
         }.attach()
-
-        // Fire a page impression on every tab change. The tab fragments all live in this one
-        // Activity, so a page-change callback is the reliable per-tab signal (fragment onResume is
-        // not dependable across ViewPager2 swaps). onScreenResumed also drives screen-aware smart
-        // refresh — though, since every tab shares this Activity, the SDK treats them as one screen
-        // (documented Fragment limitation).
-        binding.viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                if (AudienzzPrebidMobile.isSdkInitialized) {
-                    AudienzzPrebidMobile.onScreenResumed(this@MainActivity)
-                }
-            }
-        })
+        // Screen tracking is automatic (AudienzzPrebidMobile.autoScreenTracking, on by default):
+        // the SDK observes Fragment lifecycle, so each tab fires its own page impression and
+        // drives screen-aware smart refresh with no code here.
     }
 }
 
