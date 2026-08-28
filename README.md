@@ -8,7 +8,7 @@ The implementation includes lazy loading functionality to optimize application p
 
 > ### ⚠️ Important
 >
-> - **Track every ad screen.** Call `AudienzzPrebidMobile.onScreenResumed(activity)` from the `onResume()` of **every Activity or Fragment that shows ads**. It is required for analytics, and it also drives screen-aware Smart Refresh. See [Track screen impressions](#step-2--track-screen-impressions-required).
+> - **Screen tracking is automatic.** The SDK tracks screens for you (Activities, fragment navigation, and ViewPager2 tabs) — no per-screen code. It powers analytics page impressions and screen-aware Smart Refresh. Opt out with `AudienzzPrebidMobile.autoScreenTracking = false`, or report screens auto-tracking can't see (e.g. Jetpack Compose) with `onScreenResumed(routeKey)`. See [Screen tracking](#step-2--screen-tracking-automatic).
 > - **Smart Refresh v2 is opt-in.** The screen-aware refresh model (directional viewport gate + pause/reload on screen navigation) is **off by default** — the classic viewport-aware refresh runs unless you enable it via the backend `smartRefreshV2` flag or `AudienzzPrebidMobile.smartRefreshV2Override = true`. See [Smart Refresh](#smart-refresh).
 
 ## Underlying Technologies
@@ -200,7 +200,7 @@ Smart Refresh v2 refines the model in two ways. It is **off by default**; when d
 
 **2. Screen-aware pause & reload.** Refresh is matched to the screen (Activity) the ad lives on. When you open a new screen, the previous screen's banners **pause**; when you navigate back — a new page impression — that screen's banners **reload** with a fresh ad. This is driven entirely by your existing `onScreenResumed(activity)` calls, so no per-ad wiring is needed.
 
-> **Fragment note:** publishers pass the host **Activity** to `onScreenResumed`, so Fragments sharing one Activity are treated as one screen. A Fragment swap triggers a transition only if `onScreenResumed` is called again.
+> **Fragments & tabs:** with automatic [screen tracking](#step-2--screen-tracking-automatic) (default), each Fragment — including ViewPager2 tabs — is a distinct screen, so switching tabs pauses the previous tab's banners and reloads the incoming tab's. (If you disable auto-tracking and report only Activities manually, all fragments in one Activity collapse to a single screen.)
 
 The scroll-off/scroll-back timer is unchanged (stale-aware, respecting your refresh interval); only **screen navigation** forces an immediate reload.
 
@@ -737,43 +737,43 @@ Banner, interstitial and rewarded ads on the Original API are all covered.
 Analytics is keyed on your **Company ID** (provided by Audienzz), supplied when you initialize the
 SDK. Nothing is reported until initialization succeeds. See [Initialize SDK](#initialize-sdk).
 
-### Step 2 — Track screen impressions (required)
+### Step 2 — Screen tracking (automatic)
 
-Call `AudienzzPrebidMobile.onScreenResumed(activity)` from the `onResume()` of **every Activity or
-Fragment that shows ads**. This fires a `pageImpression` and generates a fresh page-impression ID
-that tags all ad events on that screen visit, so the backend can correlate them. Screens without
-ads don't need it.
+**You don't need to write any per-screen code.** After the SDK is initialized it automatically
+observes screen changes and fires a `pageImpression` (with a fresh page-impression id that tags all
+ad events on that visit). It hooks both Activity and Fragment lifecycle, so **Activity navigation,
+fragment navigation, and ViewPager2 tabs** are each tracked as distinct screens. This same signal
+drives screen-aware [Smart Refresh v2](#smart-refresh-v2-screen-aware--opt-in): entering a screen
+reloads its banners, leaving pauses them.
 
-```kotlin
-// In an Activity:
-override fun onResume() {
-    super.onResume()
-    if (AudienzzPrebidMobile.isSdkInitialized) {
-        AudienzzPrebidMobile.onScreenResumed(this)
-    }
-}
-```
+That's it — no `onResume` wiring, no page-change callbacks.
+
+**Opt out / manual control.** Set `AudienzzPrebidMobile.autoScreenTracking = false` **before init**
+to disable it and drive screens yourself:
 
 ```kotlin
-// In a Fragment:
-override fun onResume() {
-    super.onResume()
-    if (AudienzzPrebidMobile.isSdkInitialized) {
-        activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
-    }
-}
+AudienzzPrebidMobile.autoScreenTracking = false
+// then, from your screens:
+override fun onResume() { super.onResume(); AudienzzPrebidMobile.onScreenResumed(this) }        // Activity
+// or  AudienzzPrebidMobile.onScreenResumed(fragment)                                            // Fragment
 ```
 
-Call it only **after** the SDK is initialized — the `isSdkInitialized` guard above handles the
-first launch, where `onResume()` may run before initialization completes.
+**Screens auto-tracking can't see** (Jetpack Compose destinations, or a custom navigation model)
+can always be reported by an opaque route key — this works whether or not auto-tracking is on:
 
-There is **no `onPause`/teardown counterpart** to call. If you omit `onScreenResumed`, ad events are
-still reported (the SDK assigns a fallback page-impression id so nothing is lost), but they won't be
-tied to a named screen.
+```kotlin
+AudienzzPrebidMobile.onScreenResumed("home")   // route id / name as the screen identity
+```
 
-Under **[Smart Refresh v2](#smart-refresh-v2-screen-aware--opt-in)** this call also drives
-screen-matched refresh: opening a new screen pauses the previous screen's banners, and returning
-reloads the current screen's banners. No effect under the classic model.
+Notes:
+- While auto-tracking is on, manual `onScreenResumed(activity)` / `onScreenResumed(fragment)` calls
+  are **ignored** (auto already covers them) to avoid double-counting; the string-key overload is
+  always applied.
+- Dialogs, invisible fragments, and non-primary child/sibling fragments are filtered out.
+- Legacy framework `android.app.Fragment` (not AndroidX) isn't auto-observed — use the manual API
+  there.
+- There is **no `onPause`/teardown counterpart**. If no screen is ever reported, ad events still
+  send with a fallback page-impression id; they just aren't tied to a named screen.
 
 ### Demand-source attribution (`bidder_code`) — optional GAM setup
 
