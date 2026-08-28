@@ -223,6 +223,8 @@ Smart Refresh v2 refines the model in two ways. It is **off by default**; when d
 
 The scroll-off/scroll-back timer is unchanged (stale-aware, respecting your refresh interval); only **screen navigation** forces an immediate reload.
 
+Optionally, set `AudienzzPrebidMobile.blankOnScreenReload = true` to briefly blank the slot (keeping its size, so no layout shift) during a screen-change reload — a clear visual cue that the ad refreshed. Default is off.
+
 Enable it per publisher from the backend remote config (`smartRefreshV2: true` on the publisher config), or locally in the app (the local override wins):
 
 ```kotlin
