@@ -22,6 +22,8 @@ object DemoFeatureFlags {
             .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_SR_V2, enabled)
-            .apply()
+            // commit() (synchronous) — the toggle restarts the process via exit(0) immediately after,
+            // which would drop an async apply() write before it reaches disk.
+            .commit()
     }
 }
