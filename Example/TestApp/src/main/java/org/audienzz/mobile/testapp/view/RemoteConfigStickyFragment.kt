@@ -84,6 +84,10 @@ class RemoteConfigStickyFragment : Fragment() {
         view.findViewById<Button>(R.id.btnLoadInterstitial).setOnClickListener {
             loadInterstitial()
         }
+
+        view.findViewById<Button>(R.id.btnOpenAdScreen).setOnClickListener {
+            startActivity(android.content.Intent(requireContext(), RemoteConfigAdActivity::class.java))
+        }
     }
 
     // ── Ad loading helpers ─────────────────────────────────────────────────────────────────────

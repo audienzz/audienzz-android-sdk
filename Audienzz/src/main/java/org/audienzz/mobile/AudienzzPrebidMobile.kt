@@ -98,6 +98,7 @@ object AudienzzPrebidMobile {
 
     /** Single sink for both the auto tracker and the manual API: page impression + v2 coordinator. */
     private fun notifyScreenResumed(screen: Any, screenName: String) {
+        android.util.Log.d(TAG, "screenResumed: $screenName (smartRefreshV2=${isSmartRefreshV2Enabled()})")
         eventLogger?.onScreenResumed(screenName)
         if (isSmartRefreshV2Enabled()) {
             org.audienzz.mobile.screen.screenAdCoordinator?.onScreenResumed(screen)

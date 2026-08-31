@@ -48,10 +48,18 @@ class ScreenAdCoordinator @Inject constructor() {
     fun onScreenResumed(screen: Any) {
         activeScreenRef = WeakReference(screen)
         synchronized(registry) {
+            android.util.Log.d(
+                TAG,
+                "onScreenResumed screen=${screen.javaClass.simpleName}@${System.identityHashCode(screen)} — ${registry.size} banner(s) registered",
+            )
             for (handler in registry) {
                 handler.onScreenActiveChanged(handler.isHostedBy(screen))
             }
         }
+    }
+
+    private companion object {
+        const val TAG = "ScreenAdCoordinator"
     }
 }
 

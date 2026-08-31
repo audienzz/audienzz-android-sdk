@@ -138,9 +138,16 @@ class AudienzzAdViewHandler(
      */
     internal fun onScreenActiveChanged(active: Boolean) {
         screenActive = active
+        val host = resolveHostScreen()?.javaClass?.simpleName ?: "none"
         if (active) {
-            if (lastRefreshTime != 0L) reloadForScreenChange()
+            if (lastRefreshTime != 0L) {
+                Log.d(TAG, "screenChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, reloading (loaded before)")
+                reloadForScreenChange()
+            } else {
+                Log.d(TAG, "screenChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, not yet loaded (lazy load handles it)")
+            }
         } else {
+            Log.d(TAG, "screenChange adUnitId=${adView.adUnitId} host=$host — INACTIVE, pausing")
             pauseSmartRefresh()
         }
     }

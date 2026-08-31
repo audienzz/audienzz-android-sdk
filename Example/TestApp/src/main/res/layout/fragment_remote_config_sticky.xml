@@ -121,8 +121,15 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:layout_marginBottom="24dp"
             android:text="Load Interstitial" />
+
+        <Button
+            android:id="@+id/btnOpenAdScreen"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="24dp"
+            android:text="Open ad screen (test screen nav)" />
 
     </LinearLayout>
 
