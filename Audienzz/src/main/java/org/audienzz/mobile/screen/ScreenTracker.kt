@@ -54,19 +54,25 @@ internal class ScreenTracker(
         scheduleScreen(currentScreenOf(activity))
     }
 
-    /** An Activity's most specific current screen: its deepest primary-navigation Fragment (the
-     *  visible tab / destination), else the Activity itself when it hosts no navigation fragment. */
+    /** An Activity's most specific current screen: its deepest visible Fragment (the current tab /
+     *  destination), else the Activity itself when it hosts no trackable fragment. */
     private fun currentScreenOf(activity: Activity): Any {
         if (activity is FragmentActivity) {
-            val fragment = deepestPrimaryNavigationFragment(activity.supportFragmentManager)
-            if (fragment != null && isTrackableFragment(fragment)) return fragment
+            currentTrackableFragment(activity.supportFragmentManager)?.let { return it }
         }
         return activity
     }
 
-    private fun deepestPrimaryNavigationFragment(fm: FragmentManager): Fragment? {
-        val primary = fm.primaryNavigationFragment ?: return null
-        return deepestPrimaryNavigationFragment(primary.childFragmentManager) ?: primary
+    /** The deepest currently-showing trackable fragment: the primary-navigation fragment when one
+     *  is set (Navigation component), else the resumed & visible fragment — ViewPager2's
+     *  FragmentStateAdapter does NOT set a primary navigation fragment, so the tab must be found by
+     *  its resumed/visible state. */
+    private fun currentTrackableFragment(fm: FragmentManager): Fragment? {
+        val candidate = fm.primaryNavigationFragment
+            ?: fm.fragments.firstOrNull { it.isResumed && it.isVisible && it.view != null }
+            ?: return null
+        if (!isTrackableFragment(candidate)) return null
+        return currentTrackableFragment(candidate.childFragmentManager) ?: candidate
     }
 
     override fun onActivityDestroyed(activity: Activity) {
