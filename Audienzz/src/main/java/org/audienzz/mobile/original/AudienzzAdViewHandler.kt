@@ -114,7 +114,16 @@ class AudienzzAdViewHandler(
     // attached to its Fragment can still upgrade to the Fragment on the next call.
     private var cachedHostScreen: Any? = null
 
+    /**
+     * Caller-supplied screen token for hosts the SDK can't infer from the view tree — a Jetpack
+     * Compose destination, or any custom navigation model. When set it wins over Fragment/Activity
+     * resolution, so the ad belongs to whatever screen the integrator reported to `onScreenResumed`.
+     * Typically a route-key `String`, matched by value (see [isHostedBy]).
+     */
+    internal var hostScreenOverride: Any? = null
+
     private fun resolveHostScreen(): Any? {
+        hostScreenOverride?.let { return it }
         cachedHostScreen?.let { return it }
         val fragment = try {
             FragmentManager.findFragment<Fragment>(adView)
@@ -128,8 +137,15 @@ class AudienzzAdViewHandler(
         return adView.context.unwrapActivity()
     }
 
-    /** True when this ad lives on [screen] (object identity, not class name). */
-    internal fun isHostedBy(screen: Any): Boolean = resolveHostScreen() === screen
+    /**
+     * True when this ad lives on [screen]. Activities and Fragments match by object identity (no
+     * `equals` override, so `==` collapses to `===`); an explicit [hostScreenOverride] such as a
+     * route-key `String` matches by value, so the same key reported from two places still pairs up.
+     */
+    internal fun isHostedBy(screen: Any): Boolean {
+        val host = resolveHostScreen() ?: return false
+        return host === screen || host == screen
+    }
 
     /**
      * Screen-aware transition (v2). Active + already loaded → force a fresh auction; inactive →

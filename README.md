@@ -28,7 +28,8 @@ to integrating correctly.
   returning reloads them (with Smart Refresh v2). This stops off-screen slots from auctioning and
   gives each visit a fresh, viewable ad.
 - **Screens the SDK can't infer** (Jetpack Compose destinations, a custom navigation model) —
-  report them by route key: `AudienzzPrebidMobile.onScreenResumed("home")`.
+  report them by route key: `AudienzzPrebidMobile.onScreenResumed("home")`, and tag each banner on
+  that screen with the same key via `banner.setScreen("home")`. See [Jetpack Compose](#jetpack-compose).
 
 ## Underlying Technologies
 
@@ -661,6 +662,10 @@ remoteBannerView.setAdListener(object : AdListener() {
 remoteBannerView.loadAd()
 ```
 
+> **Jetpack Compose:** when this banner lives on a composable destination (not an Activity/Fragment),
+> tag it with the screen's route key — `remoteBannerView.setScreen("home")` — and report that same
+> key with `AudienzzPrebidMobile.onScreenResumed("home")`. See [Jetpack Compose](#jetpack-compose).
+
 #### Fixed Size Banner
 To request a specific fixed size for your banner, you can set the layout parameters of the `AudienzzRemoteBannerView` before calling `loadAd()`. If the remote configuration contains matching sizes, they will be used:
 
@@ -780,7 +785,8 @@ override fun onResume() { super.onResume(); AudienzzPrebidMobile.onScreenResumed
 ```
 
 **Screens auto-tracking can't see** (Jetpack Compose destinations, or a custom navigation model)
-can always be reported by an opaque route key — this works whether or not auto-tracking is on:
+are reported by an opaque **route key** — this works whether or not auto-tracking is on. See
+[Jetpack Compose](#jetpack-compose) for the full pattern.
 
 ```kotlin
 AudienzzPrebidMobile.onScreenResumed("home")   // route id / name as the screen identity
@@ -795,6 +801,63 @@ Notes:
   there.
 - There is **no `onPause`/teardown counterpart**. If no screen is ever reported, ad events still
   send with a fallback page-impression id; they just aren't tied to a named screen.
+
+### Jetpack Compose
+
+Compose destinations live inside a single `Activity` and have no Fragment, so automatic tracking
+can't tell them apart — every composable screen would resolve to the same host. Wire them up with
+two calls that share **one route key**:
+
+1. **Report the screen** on entry with `onScreenResumed(routeKey)` — fires the `pageImpression` and
+   drives the screen-aware pause/reload.
+2. **Tag the banner** with the *same* key via `banner.setScreen(routeKey)` so the SDK knows which
+   screen that ad belongs to. Without this the banner would resolve to the Activity and never match
+   a route key (it would pause on the first navigation and not reload).
+
+The key is any stable, per-screen token (your nav route id works well); it's matched **by value**,
+so the string reported to `onScreenResumed` and the one passed to `setScreen` just have to be equal.
+
+```kotlin
+// A composable that hosts an Audienzz banner and reports its own screen.
+@Composable
+fun HomeWithAd(route: String = "home") {
+    // Report the screen once per entry (and on every re-entry).
+    LaunchedEffect(route) {
+        AudienzzPrebidMobile.onScreenResumed(route)
+    }
+
+    AndroidView(
+        factory = { context ->
+            AudienzzRemoteBannerView(context, adConfigId = "your-config-id").apply {
+                setScreen(route)   // same key you reported above
+                loadAd()
+            }
+        },
+        onRelease = { banner -> banner.destroy() },
+    )
+}
+```
+
+With Navigation-Compose you can report from a single place instead of inside each screen:
+
+```kotlin
+val navController = rememberNavController()
+val entry by navController.currentBackStackEntryAsState()
+LaunchedEffect(entry?.destination?.route) {
+    entry?.destination?.route?.let { AudienzzPrebidMobile.onScreenResumed(it) }
+}
+// …still call banner.setScreen(route) on each banner so it's paired to its screen.
+```
+
+Notes:
+- Use the same key for `onScreenResumed` and `setScreen`. Navigating to another route pauses this
+  screen's banners; navigating back re-fires `onScreenResumed(route)` and reloads them (with
+  [Smart Refresh v2](#smart-refresh-v2-screen-aware--opt-in)).
+- `setScreen` can be called before or after `loadAd()`.
+- Analytics-only is enough if you don't use Smart Refresh v2: `onScreenResumed(route)` alone gives
+  correct per-screen `pageImpression`s; `setScreen` only matters for the screen-aware reload.
+- Keep **auto-tracking on** (the default) — the Activity hosting your Compose tree is still tracked,
+  and route keys layer cleanly on top; the two don't conflict.
 
 ### Demand-source attribution (`bidder_code`) — optional GAM setup
 
