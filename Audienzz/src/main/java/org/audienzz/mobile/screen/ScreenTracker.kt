@@ -31,6 +31,7 @@ internal class ScreenTracker(
 
     private val dispatchRunnable = Runnable {
         val screen = pendingScreen ?: return@Runnable
+        pendingScreen = null
         onScreen(screen, screenName(screen))
     }
 
@@ -46,7 +47,26 @@ internal class ScreenTracker(
     }
 
     override fun onActivityResumed(activity: Activity) {
-        scheduleScreen(activity)
+        // The Activity callback fires AFTER the Fragment one (it runs after onResume()), so instead
+        // of scheduling the Activity — which would clobber the tab's Fragment in the coalesce window
+        // and pause every fragment-hosted banner on return — resolve the Activity to its current
+        // visible screen (the primary-navigation Fragment / tab) when it hosts one.
+        scheduleScreen(currentScreenOf(activity))
+    }
+
+    /** An Activity's most specific current screen: its deepest primary-navigation Fragment (the
+     *  visible tab / destination), else the Activity itself when it hosts no navigation fragment. */
+    private fun currentScreenOf(activity: Activity): Any {
+        if (activity is FragmentActivity) {
+            val fragment = deepestPrimaryNavigationFragment(activity.supportFragmentManager)
+            if (fragment != null && isTrackableFragment(fragment)) return fragment
+        }
+        return activity
+    }
+
+    private fun deepestPrimaryNavigationFragment(fm: FragmentManager): Fragment? {
+        val primary = fm.primaryNavigationFragment ?: return null
+        return deepestPrimaryNavigationFragment(primary.childFragmentManager) ?: primary
     }
 
     override fun onActivityDestroyed(activity: Activity) {
