@@ -64,12 +64,14 @@ internal class ScreenTracker(
     }
 
     /** The deepest currently-showing trackable fragment: the primary-navigation fragment when one
-     *  is set (Navigation component), else the resumed & visible fragment — ViewPager2's
-     *  FragmentStateAdapter does NOT set a primary navigation fragment, so the tab must be found by
-     *  its resumed/visible state. */
+     *  is set (Navigation component), else the visible fragment. Selection keys on visibility, NOT
+     *  lifecycle state: ViewPager2's FragmentStateAdapter sets no primary-navigation fragment and
+     *  bumps the current page back to RESUMED asynchronously, so on return from a child Activity the
+     *  tab is still merely STARTED when onActivityResumed fires — but it is `isVisible` throughout,
+     *  and (offscreenPageLimit default) it is the only added fragment here. */
     private fun currentTrackableFragment(fm: FragmentManager): Fragment? {
         val candidate = fm.primaryNavigationFragment
-            ?: fm.fragments.firstOrNull { it.isResumed && it.isVisible && it.view != null }
+            ?: fm.fragments.firstOrNull { it.isVisible }
             ?: return null
         if (!isTrackableFragment(candidate)) return null
         return currentTrackableFragment(candidate.childFragmentManager) ?: candidate
@@ -85,8 +87,11 @@ internal class ScreenTracker(
     override fun onActivityStopped(activity: Activity) {}
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
 
-    /** Coalesce the Activity + Fragment callbacks that fire together into one dispatch (last wins). */
+    /** Coalesce the Activity + Fragment callbacks that fire together into one dispatch. A Fragment is
+     *  more specific than its host Activity, and onFragmentResumed fires before onActivityResumed, so
+     *  once a Fragment is pending don't let the coalesced Activity callback clobber it. */
     private fun scheduleScreen(screen: Any) {
+        if (screen is Activity && pendingScreen is Fragment) return
         pendingScreen = screen
         mainHandler.removeCallbacks(dispatchRunnable)
         mainHandler.post(dispatchRunnable)
