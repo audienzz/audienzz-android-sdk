@@ -187,6 +187,25 @@ class AudienzzAdViewHandler(
         adUnit.resumeAutoRefresh()
     }
 
+    /**
+     * Force a fresh auction now, ignoring the stale-aware timing of [resumeSmartRefresh].
+     *
+     * Public entry point for a manual reload — e.g. the React Native / Flutter bridges reloading a
+     * banner when its screen (route/tab) becomes active again, or a publisher triggering a refresh
+     * on demand. No-op before the handler has been set up (the initial load hasn't started yet).
+     */
+    fun reloadAd() {
+        if (storedCallback == null) return
+        pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
+        pendingRefreshRunnable = null
+        if (AudienzzPrebidMobile.blankOnScreenReload) {
+            adView.visibility = View.INVISIBLE
+            blankedForReload = true
+        }
+        fetchDemand()
+        adUnit.resumeAutoRefresh()
+    }
+
     private var blankedForReload = false
 
     private fun restoreFromBlankIfNeeded() {
