@@ -101,6 +101,15 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         adViewHandler?.pauseSmartRefresh() ?: adUnit?.stopAutoRefresh()
     }
 
+    /**
+     * Force a fresh auction now on the underlying banner, ignoring the stale-aware refresh timing.
+     * Forwards to [AudienzzAdViewHandler.reloadAd] — used by the RN/Flutter bridges to reload on
+     * screen change, and for a manual reload. No-op until the underlying banner has been built.
+     */
+    fun reloadAd() {
+        adViewHandler?.reloadAd()
+    }
+
     fun setAdListener(listener: AdListener) {
         externalAdListener = listener
     }
