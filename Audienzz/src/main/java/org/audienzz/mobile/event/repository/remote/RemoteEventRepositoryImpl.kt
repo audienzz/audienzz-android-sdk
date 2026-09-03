@@ -10,7 +10,7 @@ internal class RemoteEventRepositoryImpl @Inject constructor(
     private val mapper: EventNetworkMapper,
 ) : RemoteEventRepository {
 
-    override suspend fun submit(event: EventDomain) {
-        api.submit(listOf(mapper.toNetwork(event)))
+    override suspend fun submitBatch(events: List<EventDomain>) {
+        api.submit(events.map { mapper.toNetwork(it) })
     }
 }
