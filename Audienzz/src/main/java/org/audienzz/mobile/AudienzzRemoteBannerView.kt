@@ -213,7 +213,18 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         }
 
         adView = adViewLocal
-        addView(adViewLocal)
+        // Center the GAM view within this full-width (MATCH_PARENT) host. Without a
+        // gravity the child defaults to TOP|START, so a creative narrower than the host
+        // (e.g. a 300-wide banner on a wide/tablet screen, or a smaller multisize fill)
+        // renders left-aligned. Same class of fix as the RN bridge / AURemoteConfigBannerView.
+        addView(
+            adViewLocal,
+            LayoutParams(
+                LayoutParams.WRAP_CONTENT,
+                LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER_HORIZONTAL,
+            ),
+        )
 
         val parameters = AudienzzBannerParameters().apply {
             api = listOf(
