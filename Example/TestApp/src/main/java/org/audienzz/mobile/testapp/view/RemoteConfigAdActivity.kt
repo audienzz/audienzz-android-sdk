@@ -3,13 +3,14 @@ package org.audienzz.mobile.testapp.view
 import android.os.Bundle
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzRemoteBannerView
 import org.audienzz.mobile.testapp.R
 
 /**
  * A separate screen with a remote-config banner, opened from the Remote Config tab. Navigating here
- * and back exercises screen-navigation pause/resume/reload and ad↔screen matching (screen tracking
- * is automatic — no onScreenResumed calls here).
+ * and back exercises screen-navigation pause/resume/reload and ad↔screen matching. Reports itself via
+ * pageImpression(this) — the SDK derives the screen name from the Activity.
  */
 class RemoteConfigAdActivity : AppCompatActivity() {
 
@@ -31,6 +32,11 @@ class RemoteConfigAdActivity : AppCompatActivity() {
             ),
         )
         b.loadAd()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        AudienzzPrebidMobile.pageImpression(this)
     }
 
     override fun onDestroy() {

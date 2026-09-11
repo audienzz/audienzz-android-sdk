@@ -60,7 +60,7 @@ class RemoteConfigStickyFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         if (AudienzzPrebidMobile.isSdkInitialized) {
-            activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
+            AudienzzPrebidMobile.pageImpression(this)
         }
     }
 

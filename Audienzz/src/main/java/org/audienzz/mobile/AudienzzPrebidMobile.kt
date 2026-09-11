@@ -78,15 +78,6 @@ object AudienzzPrebidMobile {
         smartRefreshV2Override ?: backendSmartRefreshV2 ?: false
 
     /**
-     * Automatic screen tracking. When true (default), the SDK observes Activity and Fragment
-     * lifecycle and fires a page impression (and drives screen-aware smart refresh) on every screen
-     * change — Activities, fragment navigation, and ViewPager2 tabs — with no per-screen code.
-     * Set to false before init to opt out and drive screens yourself via [onScreenResumed].
-     */
-    @JvmStatic
-    var autoScreenTracking: Boolean = true
-
-    /**
      * When true, a screen-change reload (smart refresh v2, on returning to a screen) briefly blanks
      * the current banner — keeping the slot's size — until the fresh ad renders, making the refresh
      * visually obvious. Default false. Only affects screen-change reloads, not periodic refresh.
@@ -94,11 +85,9 @@ object AudienzzPrebidMobile {
     @JvmStatic
     var blankOnScreenReload: Boolean = false
 
-    private var screenTracker: org.audienzz.mobile.screen.ScreenTracker? = null
-
     /** Single sink for both the auto tracker and the manual API: page impression + v2 coordinator. */
     private fun notifyScreenResumed(screen: Any, screenName: String) {
-        android.util.Log.d(TAG, "screenResumed: $screenName (smartRefreshV2=${isSmartRefreshV2Enabled()})")
+        android.util.Log.d(TAG, "pageImpression: firing → \"$screenName\" (smartRefreshV2=${isSmartRefreshV2Enabled()})")
         eventLogger?.onScreenResumed(screenName)
         if (isSmartRefreshV2Enabled()) {
             org.audienzz.mobile.screen.screenAdCoordinator?.onScreenResumed(screen)
@@ -552,50 +541,44 @@ object AudienzzPrebidMobile {
         val app = context.applicationContext as? Application ?: return
         app.registerActivityLifecycleCallbacks(CURRENT_ACTIVITY_TRACKER)
         app.registerActivityLifecycleCallbacks(org.audienzz.mobile.util.AppForegroundMonitor)
-        // Automatic screen tracking (opt-out via autoScreenTracking). Registered once.
-        if (autoScreenTracking && screenTracker == null) {
-            val tracker = org.audienzz.mobile.screen.ScreenTracker { screen, name ->
-                notifyScreenResumed(screen, name)
-            }
-            screenTracker = tracker
-            app.registerActivityLifecycleCallbacks(tracker)
-        }
     }
 
     /**
-     * Call this in every Activity or Fragment's onResume() to track screen impressions.
-     * Generates a new pageImpressionId for the screen and fires a pageImpression event.
-     * All ad events fired after this call will be associated with this screen visit.
-     *
-     * @param activity the current Activity
+     * Report an ad-bearing screen, dialog, or popup by an explicit [name] (e.g. a route name from
+     * Jetpack Compose / Flutter / React Native). Always applied — automatic tracking can't see
+     * non-Activity/Fragment screens, so this is how you report them. Generates a fresh
+     * pageImpressionId and fires a pageImpression event; all ad events after this call are
+     * associated with this screen visit.
      */
     @JvmStatic
-    fun onScreenResumed(activity: Activity) {
-        // Ignored while automatic tracking is on — it already observes Activities (avoids
-        // double-counting). Turn off autoScreenTracking to drive screens manually.
-        if (autoScreenTracking) return
-        notifyScreenResumed(activity, activity.componentName.className)
+    fun pageImpression(name: String) {
+        android.util.Log.d(TAG, "pageImpression: name=\"$name\"")
+        notifyScreenResumed(name, name)
     }
 
     /**
-     * Manual screen signal for a Fragment. The Fragment is the screen identity, so different
-     * Fragments — including ViewPager2 tabs — are distinct screens. Ignored while
-     * [autoScreenTracking] is on (auto already observes Fragments).
+     * Report an ad-bearing screen, dialog, or popup by the screen object itself — pass `this` from an
+     * Activity, Fragment, Dialog, or DialogFragment. The screen name is derived from the object's type
+     * unless [name] is provided. Call it when the screen/dialog appears (e.g. `onResume()`).
      */
     @JvmStatic
-    fun onScreenResumed(fragment: androidx.fragment.app.Fragment) {
-        if (autoScreenTracking) return
-        notifyScreenResumed(fragment, fragment.javaClass.name)
+    @JvmOverloads
+    fun pageImpression(screen: Any, name: String? = null) {
+        val screenName = name ?: deriveScreenName(screen)
+        android.util.Log.d(
+            TAG,
+            "pageImpression: screen=${screen.javaClass.name} → \"$screenName\" (${if (name == null) "derived" else "override"})",
+        )
+        notifyScreenResumed(screen, screenName)
     }
 
-    /**
-     * Manual screen signal by an opaque key (e.g. a route name from Jetpack Compose / Flutter /
-     * React Native). The key string is the screen identity. Always applied — automatic tracking
-     * can't see non-Activity/Fragment screens, so this is how you report them.
-     */
-    @JvmStatic
-    fun onScreenResumed(screenKey: String) {
-        notifyScreenResumed(screenKey, screenKey)
+    /** Derive a stable screen name from a screen entity (Activity/Fragment/Dialog/Context/other). */
+    private fun deriveScreenName(screen: Any): String = when (screen) {
+        is Activity -> screen.componentName.className
+        is androidx.fragment.app.Fragment -> screen.javaClass.name
+        is android.app.Dialog -> screen.javaClass.name
+        is android.content.Context -> (screen as? Activity)?.componentName?.className ?: screen.javaClass.name
+        else -> screen.javaClass.name
     }
 
     @JvmStatic

@@ -102,7 +102,7 @@ class AudienzzAdViewHandler(
     private var slotReloadCount: Int = 0
 
     // Screen-aware smart refresh (v2). screenActive defaults true so legacy, and screens that never
-    // call onScreenResumed, behave exactly as before; the coordinator flips it on screen changes.
+    // call pageImpression, behave exactly as before; the coordinator flips it on screen changes.
     @Volatile
     private var screenActive = true
     // The ad's host "screen": its host Fragment when the adView lives inside one (so ViewPager2 tabs
@@ -117,7 +117,7 @@ class AudienzzAdViewHandler(
     /**
      * Caller-supplied screen token for hosts the SDK can't infer from the view tree — a Jetpack
      * Compose destination, or any custom navigation model. When set it wins over Fragment/Activity
-     * resolution, so the ad belongs to whatever screen the integrator reported to `onScreenResumed`.
+     * resolution, so the ad belongs to whatever screen the integrator reported to `pageImpression`.
      * Typically a route-key `String`, matched by value (see [isHostedBy]).
      */
     internal var hostScreenOverride: Any? = null
