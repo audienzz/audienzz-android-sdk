@@ -35,7 +35,7 @@ class SingleAdActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (AudienzzPrebidMobile.isSdkInitialized) {
-            AudienzzPrebidMobile.onScreenResumed(this)
+            AudienzzPrebidMobile.pageImpression(this)
         }
     }
 

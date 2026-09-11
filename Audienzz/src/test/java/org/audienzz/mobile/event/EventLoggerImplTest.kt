@@ -2,7 +2,6 @@ package org.audienzz.mobile.event
 
 import android.util.Log
 import io.mockk.MockKAnnotations
-import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.impl.annotations.RelaxedMockK
 import io.mockk.mockkStatic
@@ -15,7 +14,6 @@ import org.audienzz.mobile.event.entity.EventType
 import org.audienzz.mobile.event.id.AdIdProvider
 import org.audienzz.mobile.event.id.CompanyIdProvider
 import org.audienzz.mobile.event.preferences.EventPreferences
-import org.audienzz.mobile.event.repository.remote.RemoteEventRepository
 import org.junit.Before
 import org.junit.Test
 import java.util.UUID
@@ -25,7 +23,7 @@ internal class EventLoggerImplTest {
     private lateinit var logger: EventLogger
 
     @RelaxedMockK
-    lateinit var remoteRepository: RemoteEventRepository
+    lateinit var batcher: EventBatcher
 
     @RelaxedMockK
     lateinit var preferences: EventPreferences
@@ -64,7 +62,7 @@ internal class EventLoggerImplTest {
         dispatcher = StandardTestDispatcher()
 
         logger = EventLoggerImpl(
-            remoteRepository = remoteRepository,
+            batcher = batcher,
             preferences = preferences,
             adIdProvider = adIdProvider,
             dispatcher = dispatcher,
@@ -73,15 +71,15 @@ internal class EventLoggerImplTest {
     }
 
     @Test
-    fun logEvent_submitDirectly() {
+    fun logEvent_enqueuesEnrichedEvent() {
         every { preferences.getVisitorId() } returns mockUUID.toString()
         every { adIdProvider.getAdId() } returns mockAdId
 
         logger.logEvent(mockEvent)
         dispatcher.scheduler.runCurrent()
 
-        coVerify(exactly = 1) {
-            remoteRepository.submit(match {
+        verify(exactly = 1) {
+            batcher.enqueue(match {
                 it.uuid == mockUUID.toString() &&
                     it.visitorId == mockUUID.toString() &&
                     it.sessionId == mockUUID.toString() &&
@@ -97,8 +95,8 @@ internal class EventLoggerImplTest {
         logger.onScreenResumed("com.example.MainActivity")
         dispatcher.scheduler.runCurrent()
 
-        coVerify(exactly = 1) {
-            remoteRepository.submit(
+        verify(exactly = 1) {
+            batcher.enqueue(
                 match {
                     it.eventType == EventType.PAGE_IMPRESSION &&
                         it.screenName == "com.example.MainActivity" &&
@@ -121,8 +119,8 @@ internal class EventLoggerImplTest {
         logger.onScreenResumed("com.example.ScreenB")
         dispatcher.scheduler.runCurrent()
 
-        coVerify(exactly = 2) {
-            remoteRepository.submit(match { it.eventType == EventType.PAGE_IMPRESSION })
+        verify(exactly = 2) {
+            batcher.enqueue(match { it.eventType == EventType.PAGE_IMPRESSION })
         }
     }
 
@@ -149,8 +147,8 @@ internal class EventLoggerImplTest {
         logger.logEvent(mockEvent)
         dispatcher.scheduler.runCurrent()
 
-        coVerify(exactly = 1) {
-            remoteRepository.submit(any())
+        verify(exactly = 1) {
+            batcher.enqueue(any())
         }
     }
 }

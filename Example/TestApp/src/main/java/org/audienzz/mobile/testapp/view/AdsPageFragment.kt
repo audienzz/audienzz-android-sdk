@@ -43,7 +43,7 @@ class AdsPageFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         if (AudienzzPrebidMobile.isSdkInitialized) {
-            activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
+            AudienzzPrebidMobile.pageImpression(this)
         }
     }
 
@@ -130,7 +130,7 @@ class AdsPageFragment : Fragment() {
             // and you should NOT override them here.
             adapter.submitList(createMockData())
             binding.progressBar.isVisible = false
-            activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
+            AudienzzPrebidMobile.pageImpression(this)
             setSchainObject(
                 """
                     { "source": 

@@ -47,8 +47,8 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     /**
      * Associate this banner with a screen the SDK can't infer from the view tree — a Jetpack Compose
      * destination, or a custom navigation model. Pass the same token you report to
-     * `AudienzzPrebidMobile.onScreenResumed(token)` (typically the route key `String`); on that
-     * screen's `onScreenResumed` this banner reloads, and it pauses on every other. Call it before or
+     * `AudienzzPrebidMobile.pageImpression(token)` (typically the route key `String`); on that
+     * screen's `pageImpression` this banner reloads, and it pauses on every other. Call it before or
      * after `loadAd()` — the handler is created asynchronously, so the key is applied when ready.
      * Not needed for Activity/Fragment/ViewPager2 hosts (those are resolved automatically).
      */

@@ -1,7 +1,6 @@
 package org.audienzz.mobile.event
 
 import android.util.Log
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -16,7 +15,6 @@ import org.audienzz.mobile.event.entity.EventType
 import org.audienzz.mobile.event.id.AdIdProvider
 import org.audienzz.mobile.event.id.CompanyIdProvider
 import org.audienzz.mobile.event.preferences.EventPreferences
-import org.audienzz.mobile.event.repository.remote.RemoteEventRepository
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
@@ -24,7 +22,7 @@ import javax.inject.Singleton
 
 @Singleton
 internal class EventLoggerImpl @Inject constructor(
-    private val remoteRepository: RemoteEventRepository,
+    private val batcher: EventBatcher,
     private val preferences: EventPreferences,
     private val adIdProvider: AdIdProvider,
     private val companyIdProvider: CompanyIdProvider,
@@ -82,16 +80,10 @@ internal class EventLoggerImpl @Inject constructor(
         }
         // Assign the sequence synchronously, in call order, before the coroutine launches.
         val sequencedEvent = event.copy(sessionSequence = sessionSequence.getAndIncrement())
+        // Inject ids off the main thread (adId lookup can block), then hand to the batcher, which
+        // coalesces events and POSTs them to /submit/batch on size/time/background triggers.
         launch {
-            val eventWithIds = sequencedEvent.injectIds()
-            Log.d(TAG, "logEvent: $eventWithIds")
-            try {
-                remoteRepository.submit(eventWithIds)
-            } catch (exception: CancellationException) {
-                throw exception
-            } catch (throwable: Throwable) {
-                Log.e(TAG, "Failed to send event", throwable)
-            }
+            batcher.enqueue(sequencedEvent.injectIds())
         }
     }
 
