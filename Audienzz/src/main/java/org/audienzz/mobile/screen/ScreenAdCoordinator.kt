@@ -1,5 +1,7 @@
 package org.audienzz.mobile.screen
 
+import android.os.Handler
+import android.os.Looper
 import org.audienzz.mobile.di.MainComponent
 import org.audienzz.mobile.original.AudienzzAdViewHandler
 import java.lang.ref.WeakReference
@@ -67,6 +69,13 @@ class ScreenAdCoordinator @Inject constructor() {
      * app foreground) or another instance of the same class appears. Runs on the main thread.
      */
     fun onScreenResumed(screen: Any, name: String? = null) {
+        // The sweep touches View state (visibility blanking), Prebid timers and the GAM ad view, all
+        // of which are main-thread-only. React Native @ReactMethod calls arrive on the NativeModules
+        // thread, so hop if needed rather than trusting the caller.
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            Handler(Looper.getMainLooper()).post { onScreenResumed(screen, name) }
+            return
+        }
         activeScreenRef = WeakReference(screen)
         activeScreenName = name
         epoch++

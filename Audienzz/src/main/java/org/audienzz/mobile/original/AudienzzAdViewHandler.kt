@@ -171,14 +171,19 @@ class AudienzzAdViewHandler(
      */
     internal fun onPageActiveChanged(active: Boolean, epoch: Int) {
         screenActive = active
-        pageEpoch = epoch
         val host = resolveHostScreen()?.javaClass?.simpleName ?: "none"
         if (active) {
+            // Only an ACTIVE transition stamps the epoch. Stamping on release too would leave a
+            // released banner at pageEpoch == coordinator.epoch, and the attach-time adoption test
+            // (pageEpoch < epoch) could then never fire — which is exactly the case adoption exists
+            // to repair: a banner released because its host wasn't resolvable yet.
+            pageEpoch = epoch
             if (lastRefreshTime != 0L) {
                 Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, recreating (loaded before)")
                 reloadForScreenChange()
             } else {
-                Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, not yet loaded (lazy load handles it)")
+                Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, never loaded — re-arming initial load")
+                rearmInitialLoad()
             }
         } else {
             Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — INACTIVE, releasing")
@@ -191,8 +196,24 @@ class AudienzzAdViewHandler(
      * auto-refresh, so the handler issues no further auctions or GAM loads until its page returns.
      */
     private fun releaseForPage() {
+        // Bump the generation FIRST so a response already in flight is recognised as stale and
+        // cannot re-arm Prebid's timer or push a creative into a slot the user has left.
+        auctionGeneration++
         pauseSmartRefresh()
     }
+
+    /**
+     * Incremented whenever this banner's liveness changes (page release, background). An auction
+     * captures it at [fetchDemand] and every callback invocation re-checks it.
+     *
+     * Prebid's `BidLoader` re-arms its refresh timer from BOTH the success and the failure response
+     * handler (`onResponse` / `failedToLoadBid` both call `setupRefreshTimer()`). So cancelling the
+     * timer at release time is not enough: an auction started just before the release delivers its
+     * response afterwards, re-arms the timer, and resurrects exactly the zombie loop page-scoping
+     * exists to prevent.
+     */
+    @Volatile
+    private var auctionGeneration: Int = 0
 
     /** The page epoch this banner was registered under; see [ScreenAdCoordinator.epoch]. */
     @Volatile
@@ -240,16 +261,29 @@ class AudienzzAdViewHandler(
      * GAM-loading indefinitely, producing requests that can never become impressions. (iOS gets this
      * for free: its refresh is a main-RunLoop `Timer`, which the OS freezes on backgrounding.)
      *
-     * Coming back to the foreground is handled as a fresh page impression, which recreates the
-     * active page's banners — so there is nothing to resume here.
+     * Coming back to the foreground is normally handled as a fresh page impression, which recreates
+     * the active page's banners. An app that never calls `pageImpression` has no such transition, so
+     * this restores its refresh directly — otherwise backgrounding once would silently kill refresh
+     * for the rest of the process, changing behaviour for apps that don't use page impressions at
+     * all.
      */
     private val foregroundListener = object : AppForegroundMonitor.Listener {
         override fun onEnterBackground() {
             Log.d(TAG, "background adUnitId=${adView.adUnitId} — stopping auto refresh")
+            // Invalidate in-flight auctions as well: a response landing while backgrounded would
+            // re-arm Prebid's timer (it re-arms from both its success and failure handlers).
+            auctionGeneration++
             pauseSmartRefresh()
         }
 
-        override fun onEnterForeground() = Unit
+        override fun onEnterForeground() {
+            if (screenAdCoordinator?.activeScreen != null) {
+                // Page-scoped app: the foreground page impression recreates this banner.
+                return
+            }
+            Log.d(TAG, "foreground adUnitId=${adView.adUnitId} — no page impressions in use, resuming refresh")
+            resumeSmartRefresh()
+        }
     }
 
     /**
@@ -327,35 +361,66 @@ class AudienzzAdViewHandler(
     ) {
         this.gamRequestBuilder = gamRequestBuilder
         storedCallback = callback
+        lazyLoadConfig = withLazyLoading to prefetchMarginDp
         joinCurrentPage()
 
         if (withLazyLoading) {
             if (prefetchMarginDp > 0) {
                 Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy ON, prefetchMargin=${prefetchMarginDp}dp, waiting for view to enter range")
-                adView.addPrefetchMarginListener(marginDp = prefetchMarginDp) {
-                    if (!screenActive) {
-                        Log.d(TAG, "load() adUnitId=${adView.adUnitId} — prefetch margin reached but page released, skipping")
-                        return@addPrefetchMarginListener
-                    }
-                    Log.d(TAG, "load() adUnitId=${adView.adUnitId} — prefetch margin reached (${prefetchMarginDp}dp), starting fetchDemand")
-                    fetchDemand()
-                }
+                adView.addPrefetchMarginListener(marginDp = prefetchMarginDp) { onLazyTrigger() }
             } else {
                 Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy ON, prefetchMargin=0 (exact visibility), waiting for view to appear")
-                adView.addOnBecameVisibleOnScreenListener {
-                    if (!screenActive) {
-                        Log.d(TAG, "load() adUnitId=${adView.adUnitId} — became visible but page released, skipping")
-                        return@addOnBecameVisibleOnScreenListener
-                    }
-                    Log.d(TAG, "load() adUnitId=${adView.adUnitId} — view became visible, starting fetchDemand")
-                    fetchDemand()
-                }
+                adView.addOnBecameVisibleOnScreenListener { onLazyTrigger() }
             }
-        } else {
+        } else if (screenActive) {
             Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy OFF, starting fetchDemand immediately")
             fetchDemand()
+        } else {
+            // Built for a page the user has already left (async setup that finished after the
+            // transition). Stay dormant; onPageActiveChanged re-arms this when the page returns.
+            Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy OFF but page not active, deferring")
         }
     }
+
+    /**
+     * Re-arm the very first load for a banner that never got one because its page wasn't active
+     * when the trigger fired.
+     *
+     * The viewport helpers are one-shot: they remove their listener before invoking the callback, so
+     * a callback rejected for an inactive page consumes the only trigger the banner had. Without
+     * this the slot stays dormant forever — page activation does nothing, because activation only
+     * recreates banners that have loaded before.
+     */
+    private fun rearmInitialLoad() {
+        if (storedCallback == null || lastRefreshTime != 0L) return
+        val lazy = lazyLoadConfig
+        if (lazy == null) {
+            fetchDemand()
+            return
+        }
+        val (withLazyLoading, prefetchMarginDp) = lazy
+        if (!withLazyLoading) {
+            fetchDemand()
+        } else if (prefetchMarginDp > 0) {
+            adView.addPrefetchMarginListener(marginDp = prefetchMarginDp) { onLazyTrigger() }
+        } else {
+            adView.addOnBecameVisibleOnScreenListener { onLazyTrigger() }
+        }
+    }
+
+    /** Shared body for the lazy-load triggers, so [load] and [rearmInitialLoad] behave identically. */
+    private fun onLazyTrigger() {
+        if (!screenActive) {
+            Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy trigger fired but page released, will re-arm on activation")
+            return
+        }
+        if (lastRefreshTime != 0L) return
+        Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy trigger fired, starting fetchDemand")
+        fetchDemand()
+    }
+
+    /** Lazy-load settings from [load], retained so [rearmInitialLoad] can re-register the trigger. */
+    private var lazyLoadConfig: Pair<Boolean, Int>? = null
 
     /**
      * M1: builds a fresh [AdManagerAdRequest] from the retained builder, re-reading the PPID and
@@ -478,6 +543,13 @@ class AudienzzAdViewHandler(
      * resets Prebid's timer to 0, ignoring however long the ad has already been displayed.
      */
     fun resumeSmartRefresh() {
+        // A released banner must stay dormant: the Flutter/RN visibility layer and
+        // AudienzzRemoteBannerView.onResume() both reach this, and without the guard either would
+        // restart the timer — or immediately re-auction — for a page the user has left.
+        if (!screenActive) {
+            Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — page released, skipping")
+            return
+        }
         if (storedCallback == null) {
             Log.w(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — not loaded yet (no callback), skipping")
             return
@@ -596,8 +668,22 @@ class AudienzzAdViewHandler(
         // Prebid re-invokes this listener on every auto-refresh without re-entering fetchDemand().
         // The first invocation pairs with the bidRequest above; each later one is a refresh auction
         // that emits its own bidRequest so the bidRequest/bidResponse funnel stays balanced.
+        val generationAtRequest = auctionGeneration
         var isFirstAuction = true
         adUnit.fetchDemand(request) { resultCode ->
+            // Stale-response guard. Prebid re-arms its refresh timer from both the success and the
+            // failure handler, so a response that lands after a page release would restart the loop
+            // and load a creative into a slot the user has left. Re-cancel the timer Prebid just
+            // armed and drop the response.
+            if (generationAtRequest != auctionGeneration || !screenActive) {
+                Log.d(
+                    TAG,
+                    "fetchDemand() adUnitId=${adView.adUnitId} — response for a released page " +
+                        "(gen $generationAtRequest vs $auctionGeneration, screenActive=$screenActive), dropping",
+                )
+                adUnit.stopAutoRefresh()
+                return@fetchDemand
+            }
             val auctionIsRefresh = isRefresh || !isFirstAuction
             if (!isFirstAuction) {
                 // A Prebid auto-refresh is a new auction — mint a fresh id for its funnel.

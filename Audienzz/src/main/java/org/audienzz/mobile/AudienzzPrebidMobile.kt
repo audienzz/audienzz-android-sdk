@@ -88,7 +88,8 @@ object AudienzzPrebidMobile {
     /** Single sink for both the auto tracker and the manual API: page impression + v2 coordinator. */
     private fun notifyScreenResumed(screen: Any, screenName: String) {
         android.util.Log.d(TAG, "pageImpression: firing → \"$screenName\"")
-        lastPageImpressionAt = System.currentTimeMillis()
+        // An explicit report always wins over a pending automatic foreground one.
+        cancelPendingForegroundReimpression()
         eventLogger?.onScreenResumed(screenName)
         // Ads are page-scoped unconditionally. This is NOT gated on isSmartRefreshV2Enabled(), which
         // now only selects the viewport gate used for scroll pause/resume: every page impression
@@ -97,11 +98,21 @@ object AudienzzPrebidMobile {
         org.audienzz.mobile.screen.screenAdCoordinator?.onScreenResumed(screen, screenName)
     }
 
-    @Volatile
-    private var lastPageImpressionAt: Long = 0L
+    /**
+     * Delay before an automatic foreground re-impression fires. An app that reports its own page
+     * impression on resume cancels the pending one within this window, so the two orderings —
+     * `onActivityStarted` (which drives the foreground callback) before `onResume` (where apps
+     * typically report) — both end in exactly one page impression.
+     */
+    private const val FOREGROUND_REIMPRESSION_DELAY_MS = 400L
 
-    /** Window after an explicit pageImpression in which a foreground activation does not re-fire. */
-    private const val FOREGROUND_REIMPRESSION_DEBOUNCE_MS = 300L
+    private val foregroundHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingForegroundReimpression: Runnable? = null
+
+    private fun cancelPendingForegroundReimpression() {
+        pendingForegroundReimpression?.let { foregroundHandler.removeCallbacks(it) }
+        pendingForegroundReimpression = null
+    }
 
     /**
      * Returning from the background is a new page impression for the screen the user comes back to:
@@ -122,12 +133,14 @@ object AudienzzPrebidMobile {
                 return
             }
             val name = coordinator.activeScreenName ?: screen.javaClass.name
-            if (System.currentTimeMillis() - lastPageImpressionAt < FOREGROUND_REIMPRESSION_DEBOUNCE_MS) {
-                android.util.Log.d(TAG, "pageImpression: foreground — app already reported \"$name\", skipping")
-                return
+            cancelPendingForegroundReimpression()
+            val runnable = Runnable {
+                pendingForegroundReimpression = null
+                android.util.Log.d(TAG, "pageImpression: foreground → re-firing \"$name\"")
+                notifyScreenResumed(screen, name)
             }
-            android.util.Log.d(TAG, "pageImpression: foreground → re-firing \"$name\"")
-            notifyScreenResumed(screen, name)
+            pendingForegroundReimpression = runnable
+            foregroundHandler.postDelayed(runnable, FOREGROUND_REIMPRESSION_DELAY_MS)
         }
     }
 
