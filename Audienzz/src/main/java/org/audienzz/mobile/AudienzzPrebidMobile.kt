@@ -88,7 +88,9 @@ object AudienzzPrebidMobile {
     /** Single sink for both the auto tracker and the manual API: page impression + v2 coordinator. */
     private fun notifyScreenResumed(screen: Any, screenName: String) {
         android.util.Log.d(TAG, "pageImpression: firing → \"$screenName\"")
-        // An explicit report always wins over a pending automatic foreground one.
+        // An explicit report always wins over a pending automatic foreground one, and is recorded
+        // so an activation arriving just afterwards doesn't schedule a duplicate.
+        lastPageImpressionAt = System.currentTimeMillis()
         cancelPendingForegroundReimpression()
         eventLogger?.onScreenResumed(screenName)
         // Ads are page-scoped unconditionally. This is NOT gated on isSmartRefreshV2Enabled(), which
@@ -105,6 +107,9 @@ object AudienzzPrebidMobile {
      * typically report) — both end in exactly one page impression.
      */
     private const val FOREGROUND_REIMPRESSION_DELAY_MS = 400L
+
+    @Volatile
+    private var lastPageImpressionAt: Long = 0L
 
     private val foregroundHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var pendingForegroundReimpression: Runnable? = null
@@ -138,6 +143,13 @@ object AudienzzPrebidMobile {
                 return
             }
             val name = coordinator.activeScreenName ?: screen.javaClass.name
+            // Cancelling covers only "activation first". An app that reports during activity
+            // creation reports BEFORE onActivityStarted, so there is nothing pending to cancel and
+            // scheduling here would emit a second page impression 400ms later. Look back too.
+            if (System.currentTimeMillis() - lastPageImpressionAt < FOREGROUND_REIMPRESSION_DELAY_MS) {
+                android.util.Log.d(TAG, "pageImpression: foreground — app already reported \"$name\", skipping")
+                return
+            }
             cancelPendingForegroundReimpression()
             val runnable = Runnable {
                 pendingForegroundReimpression = null

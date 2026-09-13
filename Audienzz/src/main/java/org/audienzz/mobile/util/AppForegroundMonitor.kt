@@ -27,8 +27,21 @@ internal object AppForegroundMonitor : Application.ActivityLifecycleCallbacks {
     private val listeners = CopyOnWriteArraySet<Listener>()
     private var startedActivities = 0
 
+    /**
+     * Whether any activity lifecycle callback has been seen yet.
+     *
+     * Android does not replay lifecycle callbacks for an activity that already started, and the SDK
+     * is usually initialized from within a running activity — always so for the Flutter and React
+     * Native bridges, which init from Dart/JS. Until a transition is observed the counter says
+     * "zero started activities", which is indistinguishable from backgrounded unless tracked
+     * separately. Treating that unknown state as background made the auction gate reject every
+     * first load on the launch screen.
+     */
+    private var hasObservedLifecycle = false
+
+    /** True while the app is in the foreground, or while that is not yet known. */
     val isForeground: Boolean
-        get() = startedActivities > 0
+        get() = !hasObservedLifecycle || startedActivities > 0
 
     fun addListener(listener: Listener) {
         listeners.add(listener)
@@ -39,7 +52,8 @@ internal object AppForegroundMonitor : Application.ActivityLifecycleCallbacks {
     }
 
     override fun onActivityStarted(activity: Activity) {
-        val wasForeground = startedActivities > 0
+        val wasForeground = isForeground
+        hasObservedLifecycle = true
         startedActivities++
         if (!wasForeground) {
             listeners.forEach { it.onEnterForeground() }
@@ -47,6 +61,7 @@ internal object AppForegroundMonitor : Application.ActivityLifecycleCallbacks {
     }
 
     override fun onActivityStopped(activity: Activity) {
+        hasObservedLifecycle = true
         startedActivities = (startedActivities - 1).coerceAtLeast(0)
         if (startedActivities == 0) {
             listeners.forEach { it.onEnterBackground() }

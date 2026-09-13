@@ -200,10 +200,26 @@ class AudienzzAdViewHandler(
      * auto-refresh, so the handler issues no further auctions or GAM loads until its page returns.
      */
     private fun releaseForPage() {
-        // Bump the generation FIRST so a response already in flight is recognised as stale and
-        // cannot re-arm Prebid's timer or push a creative into a slot the user has left.
+        // Bump the generation FIRST so a response already in flight is recognised as stale.
         auctionGeneration++
+        retireCurrentAuction()
+    }
+
+    /**
+     * Stop the refresh timer AND retire the Prebid loader behind it.
+     *
+     * Cancelling the timer is not enough on its own: a response still in flight re-arms it from both
+     * Prebid's success and failure handlers, and Prebid's own refresh calls `load()` directly — it
+     * never passes through [canStartAuction]. Without an in-flight successor to destroy it, that
+     * loader keeps auctioning forever while every callback is dropped as stale.
+     *
+     * `AdUnit.destroy()` retires the loader properly (nulls its listeners, kills its timer task) and
+     * leaves the ad unit reusable: the next [fetchDemand] builds a fresh loader.
+     */
+    private fun retireCurrentAuction() {
         pauseSmartRefresh()
+        adUnit.destroy()
+        initialRequestGeneration = null
     }
 
     /**
@@ -277,10 +293,11 @@ class AudienzzAdViewHandler(
     private val foregroundListener = object : AppForegroundMonitor.Listener {
         override fun onEnterBackground() {
             Log.d(TAG, "background adUnitId=${adView.adUnitId} — stopping auto refresh")
-            // Invalidate in-flight auctions as well: a response landing while backgrounded would
-            // re-arm Prebid's timer (it re-arms from both its success and failure handlers).
+            // Invalidate in-flight auctions and retire the loader behind them: a response landing
+            // while backgrounded re-arms Prebid's timer from both its success and failure handlers,
+            // and that refresh calls load() directly without passing the auction gate.
             auctionGeneration++
-            pauseSmartRefresh()
+            retireCurrentAuction()
         }
 
         override fun onEnterForeground() {
@@ -308,8 +325,9 @@ class AudienzzAdViewHandler(
             adView.visibility = View.INVISIBLE
             blankedForReload = true
         }
-        fetchDemand()
-        adUnit.resumeAutoRefresh()
+        if (fetchDemand()) {
+            adUnit.resumeAutoRefresh()
+        }
     }
 
     /**
@@ -333,8 +351,12 @@ class AudienzzAdViewHandler(
             adView.visibility = View.INVISIBLE
             blankedForReload = true
         }
-        fetchDemand()
-        adUnit.resumeAutoRefresh()
+        // Only restart Prebid's timer when the auction was actually allowed. Resuming regardless
+        // restarts the existing loader, whose refresh calls load() directly and never passes
+        // through canStartAuction() — an auction straight past the gate.
+        if (fetchDemand()) {
+            adUnit.resumeAutoRefresh()
+        }
     }
 
     private var blankedForReload = false
@@ -404,7 +426,7 @@ class AudienzzAdViewHandler(
         // Don't stack triggers. The original listener may never have fired (still outside the
         // margin), in which case it is still armed; and an initial request may already be in
         // flight, in which case lastRefreshTime is still 0 but a second fetch would double-auction.
-        if (initialTriggerArmed || initialLoadRequested) {
+        if (initialTriggerArmed || initialRequestGeneration == auctionGeneration) {
             Log.d(TAG, "rearmInitialLoad() adUnitId=${adView.adUnitId} — trigger already armed or request in flight")
             return
         }
@@ -429,8 +451,14 @@ class AudienzzAdViewHandler(
     /** True while a one-shot lazy trigger is registered and unconsumed. */
     private var initialTriggerArmed: Boolean = false
 
-    /** True once a first request has actually been issued, so a re-arm can't double-auction. */
-    private var initialLoadRequested: Boolean = false
+    /**
+     * Generation of the in-flight first request, or null when none is live.
+     *
+     * A plain "already requested" boolean could never be cleared, so once a first auction was superseded
+     * (same-page re-report, background) the banner refused to re-arm and stayed blank forever.
+     * Comparing against [auctionGeneration] distinguishes a live request from an invalidated one.
+     */
+    private var initialRequestGeneration: Int? = null
 
     /** Shared body for the lazy-load triggers, so [load] and [rearmInitialLoad] behave identically. */
     private fun onLazyTrigger() {
@@ -585,11 +613,13 @@ class AudienzzAdViewHandler(
         pendingRefreshRunnable = null
 
         if (lastRefreshTime == 0L) {
-            // Never completed a first fetch. Resuming the timer would restart the RETIRED loader,
-            // whose callback still carries a superseded generation — so its response would be
-            // dropped and the slot would stay blank forever. Issue a fresh request instead.
-            Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — no prior fetch, starting a fresh one")
-            fetchDemand()
+            // Never completed a first fetch. Resuming the timer would restart a RETIRED loader,
+            // whose callback carries a superseded generation, so its response would be dropped and
+            // the slot would stay blank. Re-arm the first load instead of fetching directly: that
+            // respects the lazy settings (an offscreen lazy banner must not auction here) and
+            // refuses when a live request is already in flight.
+            Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — no prior fetch, re-arming first load")
+            rearmInitialLoad()
             return
         }
 
@@ -605,14 +635,16 @@ class AudienzzAdViewHandler(
 
         if (remaining == 0L) {
             Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — ad is STALE (elapsed=${elapsed}ms >= interval=${refreshIntervalMs}ms), force-refreshing now")
-            fetchDemand()
-            adUnit.resumeAutoRefresh()
+            if (fetchDemand()) {
+                adUnit.resumeAutoRefresh()
+            }
         } else {
             Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — ad is fresh (elapsed=${elapsed}ms, remaining=${remaining}ms), scheduling refresh in ${remaining}ms")
             val runnable = Runnable {
                 Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — scheduled refresh fired after ${remaining}ms delay")
-                fetchDemand()
-                adUnit.resumeAutoRefresh()
+                if (fetchDemand()) {
+                    adUnit.resumeAutoRefresh()
+                }
             }
             pendingRefreshRunnable = runnable
             refreshHandler.postDelayed(runnable, remaining)
@@ -676,15 +708,15 @@ class AudienzzAdViewHandler(
         return true
     }
 
-    private fun fetchDemand() {
+    private fun fetchDemand(): Boolean {
         val callback = storedCallback ?: run {
             Log.w(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — no stored callback, skipping")
-            return
+            return false
         }
-        if (!canStartAuction()) return
+        if (!canStartAuction()) return false
         // Every new auction supersedes the previous one.
         auctionGeneration++
-        initialLoadRequested = true
+        initialRequestGeneration = auctionGeneration
         val request = buildRequest()
         val isAutorefresh = adUnit.autoRefreshTime > 0
         val autorefreshTime = adUnit.autoRefreshTime.toLong()
@@ -853,6 +885,7 @@ class AudienzzAdViewHandler(
             slotReloadCount++
             isFirstAuction = false
         }
+        return true
     }
 
     private fun setEventsListenerToAdView() {
