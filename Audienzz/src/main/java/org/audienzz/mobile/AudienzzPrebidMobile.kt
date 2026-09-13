@@ -407,8 +407,6 @@ object AudienzzPrebidMobile {
      *
      * @param context  any context (must be not null)
      * @param companyId Company ID provided for the app by Audienzz
-     * @param enablePpid Controls if unique PPID would be generated for users and used along with
-     * ad requests
      * @param appVolume Global GMA ad audio level. Range: 0.0 (muted) – 1.0 (full device volume).
      *                  Defaults to 0.0 (muted). Can be overridden at any time via [setAppVolume].
      * @param sdkInitializationListener initialization listener (can be null).
@@ -419,7 +417,6 @@ object AudienzzPrebidMobile {
     fun initializeSdk(
         context: Context,
         companyId: String,
-        enablePpid: Boolean = false,
         prebidServerUrl: String? = null,
         @FloatRange(from = 0.0, to = 1.0) appVolume: Float = 0f,
         sdkInitializationListener: AudienzzSdkInitializationListener?,
@@ -431,7 +428,6 @@ object AudienzzPrebidMobile {
             sdkInitializationListener?.onInitializationComplete(
                 AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
             )
-            ppidManager?.setAutomaticPpidEnabled(enablePpid)
         }
         registerActivityCallbacks(context)
         MainComponent.init(context)
@@ -445,8 +441,6 @@ object AudienzzPrebidMobile {
      *
      * @param context  any context (must be not null)
      * @param publisherId Publisher ID provided by Audienzz for remote configuration
-     * @param enablePpid Controls if unique PPID would be generated for users and used along with
-     * ad requests
      * @param sdkInitializationListener initialization listener (can be null)
      */
     @MainThread
@@ -454,7 +448,6 @@ object AudienzzPrebidMobile {
     fun initializeRemoteSdk(
         context: Context,
         publisherId: String,
-        enablePpid: Boolean = false,
         sdkInitializationListener: AudienzzSdkInitializationListener?,
     ) {
         registerActivityCallbacks(context)
@@ -504,7 +497,6 @@ object AudienzzPrebidMobile {
                     sdkInitializationListener?.onInitializationComplete(
                         AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
                     )
-                    ppidManager?.setAutomaticPpidEnabled(enablePpid)
                 }
 
                 configureGam(context, publisherConfig?.gamConfig)

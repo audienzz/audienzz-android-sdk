@@ -100,7 +100,7 @@ First of all, SDK needs to be initialized with context. It's done asynchronously
 is triggered with `SUCCEEDED` status, SDK is ready to use.
 
 ```kotlin
-AudienzzPrebidMobile.initializeSdk(applicationContext, COMPANY_ID, enablePpid = false) { status ->
+AudienzzPrebidMobile.initializeSdk(applicationContext, COMPANY_ID) { status ->
     if (status == AudienzzInitializationStatus.SUCCEEDED) {
         Log.d(App.TAG, "SDK was initialized successfully")
     } else {
@@ -397,8 +397,8 @@ This object contains methods to initialize the SDK and configure global settings
 
 | Name                                | Parameters                                                                                                                                                                          | Description                                                                                                                                                                                                                                                                                   |
 |-------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `initializeSdk`                     | `context: Context`, `companyId: String`, `enablePpid: Boolean = false`, `appVolume: Float = 0f`, `sdkInitializationListener: AudienzzSdkInitializationListener?`                   | Initializes the SDK. When enablePPID is true - SDK will automatically generate unique identifier, store it in Shared Preferences and add it to all Google Ad Manager requests as a Publisher Provided identifier. On additional methods to work with PPID look at [PpidManager](#ppidmanager) |
-| `initializeRemoteSdk`               | `context: Context`, `publisherId: String`, `enablePpid: Boolean = false`, `sdkInitializationListener: AudienzzSdkInitializationListener?`                                           | Initializes the SDK with remote configuration support, fetching ad unit configs from the Audienzz backend using the publisher ID.                                                                                                                                                             |
+| `initializeSdk`                     | `context: Context`, `companyId: String`, `appVolume: Float = 0f`, `sdkInitializationListener: AudienzzSdkInitializationListener?`                   | Initializes the SDK. A Publisher Provided Identifier is generated, persisted and attached to every Google Ad Manager request automatically — see [PpidManager](#ppidmanager) to supply your own instead. |
+| `initializeRemoteSdk`               | `context: Context`, `publisherId: String`, `sdkInitializationListener: AudienzzSdkInitializationListener?`                                           | Initializes the SDK with remote configuration support, fetching ad unit configs from the Audienzz backend using the publisher ID.                                                                                                                                                             |
 | `onScreenResumed`                   | `activity: Activity`                                                                                                                                                                | Call in every Activity or Fragment's `onResume()` to track screen impressions. Fires a `pageImpression` analytics event and generates a new page impression ID shared by all ad events on that screen visit. See [Analytics](#analytics).                  |
 | `getAdUnitConfig`                   | `configId: String`, `callback: (RemoteAdUnitConfig?) -> Unit`                                                                                                                       | Fetches a remote ad unit configuration by its ID. The SDK must have been initialized via `initializeRemoteSdk` first.                                                                                                                                                                         |
 | `setAppVolume`                      | `volume: Float`                                                                                                                                                                     | Sets the global app volume for Google Mobile Ads ad audio. Range: 0.0 (muted) – 1.0 (full device volume). Can be called at any time after SDK initialization.                                                                                                                                 |
@@ -418,9 +418,14 @@ Available through `AudienzzPrebidMobile.ppidManager` public variable.
 
 | Name                      | Parameters                        | Description                                                                                                                              |
 |---------------------------|-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
-| `isAutomaticPpidEnabled`  |                                   | Used to get current status of automatic PPID usage (if true - PPID is generated and used with all requests, if false - PPID is not used) |
-| `setAutomaticPpidEnabled` | `isAutomaticPpidEnabled: Boolean` | Used to enable or disable automatic PPID usage                                                                                           |
-| `getPpid`                 |                                   | Used to obtain current PPID if automaticPpid is enabled                                                                                  |
+| `setPublisherPpid`        | `ppid: String?`                   | Supply your own PPID (e.g. a hashed e-mail). Takes precedence over the SDK-generated one; pass `null` to clear and fall back to it.       |
+| `getPpid`                 |                                   | The PPID currently being sent: yours if set, otherwise the SDK-generated UUID. `null` only when consent is missing.                       |
+
+A PPID is **always** sent with ad requests — the SDK generates one (a UUID,
+persisted in SharedPreferences and rotated every 12 months) whenever you haven't
+supplied your own. There is no enable/disable switch: a missing PPID costs
+frequency capping and cross-session targeting. It is suppressed only when
+consent is missing.
 
 ### `AudienzzAdViewHandler`
 
@@ -622,8 +627,7 @@ RemoteConfigManager.initialize(
 // 2. Initialize SDK with remote configuration support
 AudienzzPrebidMobile.initializeRemoteSdk(
     context = applicationContext,
-    publisherId = "YOUR_PUBLISHER_ID",
-    enablePpid = false
+    publisherId = "YOUR_PUBLISHER_ID"
 ) { status ->
     if (status == AudienzzInitializationStatus.SUCCEEDED) {
         Log.d(TAG, "SDK was initialized successfully with remote config")

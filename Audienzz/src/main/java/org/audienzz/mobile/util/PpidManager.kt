@@ -10,17 +10,6 @@ import javax.inject.Singleton
 
 @Singleton
 class PpidManager @Inject constructor(private val preferences: SharedPreferences) {
-    /** Check if automatic PPID is enabled */
-    fun isAutomaticPpidEnabled() = isAutomaticPpidEnabled
-
-    /**
-     * Enable or disable automatic PPID. Defaults to `true` — a UUID is generated
-     * automatically unless the publisher opts out by passing `false`.
-     */
-    fun setAutomaticPpidEnabled(isAutomaticPpidEnabled: Boolean) {
-        PpidManager.isAutomaticPpidEnabled = isAutomaticPpidEnabled
-    }
-
     /**
      * Provide a publisher-owned PPID (e.g. a hashed e-mail address).
      * When set this always takes precedence over the SDK-generated UUID.
@@ -32,15 +21,16 @@ class PpidManager @Inject constructor(private val preferences: SharedPreferences
 
     /**
      * Returns the active PPID:
-     *   1. Publisher-supplied PPID (if set).
+     *   1. Publisher-supplied PPID (if set via [setPublisherPpid]).
      *   2. SDK-generated UUID (persisted, rotated every 12 months).
-     *   3. `null` if automatic PPID is disabled or consent is missing.
+     *   3. `null` only when consent is missing.
+     *
+     * A PPID is always sent otherwise — there is no opt-out switch. A missing PPID costs frequency
+     * capping and cross-session targeting, so the SDK generates and persists one rather than
+     * leaving the field empty.
      */
     fun getPpid(): String? {
-        if (!isAutomaticPpidEnabled) {
-            Log.d(TAG, "Automatic PPID is disabled")
-            return null
-        } else if (TargetingParams.getPurposeConsents()?.isEmpty() ?: false) {
+        if (TargetingParams.getPurposeConsents()?.isEmpty() ?: false) {
             Log.d(TAG, "Consent missing, cannot get PPID")
             return null
         }
@@ -51,7 +41,7 @@ class PpidManager @Inject constructor(private val preferences: SharedPreferences
         val ppidTimestamp = getPpidTimestamp()
 
         return if (ppid != null && ppidTimestamp != 0L) {
-            if (isOlderThenYear(ppidTimestamp)) {
+            if (isOlderThanYear(ppidTimestamp)) {
                 Log.d(TAG, "PPID timestamp is older than 12 months, generating new one")
                 ppid = UUID.randomUUID().toString()
                 storePpidToSharedPreferences(ppid)
@@ -82,7 +72,7 @@ class PpidManager @Inject constructor(private val preferences: SharedPreferences
         }
     }
 
-    private fun isOlderThenYear(timestamp: Long): Boolean {
+    private fun isOlderThanYear(timestamp: Long): Boolean {
         val currentTime = System.currentTimeMillis()
         val calendar = Calendar.getInstance()
         calendar.timeInMillis = currentTime
@@ -92,8 +82,7 @@ class PpidManager @Inject constructor(private val preferences: SharedPreferences
     }
 
     companion object Companion {
-        /** PPID is on by default — UUID generated automatically if publisher doesn't supply one. */
-        private var isAutomaticPpidEnabled = true
+        @Volatile
         private var publisherPpid: String? = null
 
         private const val TAG = "PPIDManager"
