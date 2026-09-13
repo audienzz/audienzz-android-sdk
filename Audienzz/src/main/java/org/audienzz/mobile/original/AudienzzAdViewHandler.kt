@@ -30,6 +30,7 @@ import org.audienzz.mobile.event.util.adSubtype
 import org.audienzz.mobile.event.viewabilityStart
 import org.audienzz.mobile.event.viewabilitySuccess
 import org.audienzz.mobile.screen.screenAdCoordinator
+import org.audienzz.mobile.util.AppForegroundMonitor
 import org.audienzz.mobile.util.ViewabilityTracker
 import org.audienzz.mobile.util.addContinuousVisibilityListener
 import org.audienzz.mobile.util.adViewId
@@ -148,24 +149,94 @@ class AudienzzAdViewHandler(
     }
 
     /**
-     * Screen-aware transition (v2). Active + already loaded → force a fresh auction; inactive →
-     * pause (overrides viewport eligibility). A never-loaded active banner is left for its normal
-     * lazy load.
+     * Page transition. Active + already loaded → recreate (force a fresh auction); inactive →
+     * release: stop the auction and refresh entirely and leave the slot dormant until its page comes
+     * back. A never-loaded active banner is left for its normal lazy load.
+     *
+     * [screenActive] is what keeps the viewport gate, lazy load and [reloadAd] from reviving a
+     * released banner in the meantime.
      */
-    internal fun onScreenActiveChanged(active: Boolean) {
+    internal fun onPageActiveChanged(active: Boolean, epoch: Int) {
         screenActive = active
+        pageEpoch = epoch
         val host = resolveHostScreen()?.javaClass?.simpleName ?: "none"
         if (active) {
             if (lastRefreshTime != 0L) {
-                Log.d(TAG, "screenChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, reloading (loaded before)")
+                Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, recreating (loaded before)")
                 reloadForScreenChange()
             } else {
-                Log.d(TAG, "screenChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, not yet loaded (lazy load handles it)")
+                Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, not yet loaded (lazy load handles it)")
             }
         } else {
-            Log.d(TAG, "screenChange adUnitId=${adView.adUnitId} host=$host — INACTIVE, pausing")
+            Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — INACTIVE, releasing")
+            releaseForPage()
+        }
+    }
+
+    /**
+     * Page release: stop everything. Cancels any pending stale-aware refresh and stops Prebid's
+     * auto-refresh, so the handler issues no further auctions or GAM loads until its page returns.
+     */
+    private fun releaseForPage() {
+        pauseSmartRefresh()
+    }
+
+    /** The page epoch this banner was registered under; see [ScreenAdCoordinator.epoch]. */
+    @Volatile
+    private var pageEpoch: Int = 0
+
+    /**
+     * Join the page that is active at [load] time and start listening for the signals that can
+     * change this banner's liveness: the app going to the background, and the ad view attaching
+     * (which is when a host that wasn't resolvable during the page sweep finally resolves).
+     *
+     * Registration is unconditional — every banner is page-scoped, not just smart-refresh ones —
+     * which is what lets the coordinator see banners created through the Flutter and React Native
+     * bridges, since those never call [enableSmartRefresh].
+     */
+    private fun joinCurrentPage() {
+        val coordinator = screenAdCoordinator
+        coordinator?.register(this)
+        pageEpoch = coordinator?.epoch ?: 0
+        val active = coordinator?.activeScreen
+        screenActive = active == null || isHostedBy(active)
+        if (!screenActive) {
+            Log.d(TAG, "joinCurrentPage() adUnitId=${adView.adUnitId} — built for a non-active page, released")
+            releaseForPage()
+        }
+
+        AppForegroundMonitor.addListener(foregroundListener)
+
+        // A banner whose view isn't attached yet cannot resolve its host Fragment/Activity, so a page
+        // sweep running in that window releases it. Re-check on attach.
+        adView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                if (!screenActive && pageEpoch < (screenAdCoordinator?.epoch ?: 0)) {
+                    screenAdCoordinator?.adoptIfOnActiveScreen(this@AudienzzAdViewHandler)
+                }
+            }
+
+            override fun onViewDetachedFromWindow(v: View) = Unit
+        })
+    }
+
+    /**
+     * Prebid's refresh on Android is a `Handler.postDelayed` on the main Looper, which keeps running
+     * while the app is in the background — and the original API hardcodes its visibility check to
+     * always-true, so nothing else stops it. Left alone, a backgrounded app keeps auctioning and
+     * GAM-loading indefinitely, producing requests that can never become impressions. (iOS gets this
+     * for free: its refresh is a main-RunLoop `Timer`, which the OS freezes on backgrounding.)
+     *
+     * Coming back to the foreground is handled as a fresh page impression, which recreates the
+     * active page's banners — so there is nothing to resume here.
+     */
+    private val foregroundListener = object : AppForegroundMonitor.Listener {
+        override fun onEnterBackground() {
+            Log.d(TAG, "background adUnitId=${adView.adUnitId} — stopping auto refresh")
             pauseSmartRefresh()
         }
+
+        override fun onEnterForeground() = Unit
     }
 
     /**
@@ -196,6 +267,12 @@ class AudienzzAdViewHandler(
      */
     fun reloadAd() {
         if (storedCallback == null) return
+        // Never re-auction a banner the page sweep has released — the bridges broadcast reloads, and
+        // without this a released banner on a kept-mounted route would come back to life.
+        if (!screenActive) {
+            Log.d(TAG, "reloadAd() adUnitId=${adView.adUnitId} — page released, skipping")
+            return
+        }
         pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
         pendingRefreshRunnable = null
         if (AudienzzPrebidMobile.blankOnScreenReload) {
@@ -237,17 +314,26 @@ class AudienzzAdViewHandler(
     ) {
         this.gamRequestBuilder = gamRequestBuilder
         storedCallback = callback
+        joinCurrentPage()
 
         if (withLazyLoading) {
             if (prefetchMarginDp > 0) {
                 Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy ON, prefetchMargin=${prefetchMarginDp}dp, waiting for view to enter range")
                 adView.addPrefetchMarginListener(marginDp = prefetchMarginDp) {
+                    if (!screenActive) {
+                        Log.d(TAG, "load() adUnitId=${adView.adUnitId} — prefetch margin reached but page released, skipping")
+                        return@addPrefetchMarginListener
+                    }
                     Log.d(TAG, "load() adUnitId=${adView.adUnitId} — prefetch margin reached (${prefetchMarginDp}dp), starting fetchDemand")
                     fetchDemand()
                 }
             } else {
                 Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy ON, prefetchMargin=0 (exact visibility), waiting for view to appear")
                 adView.addOnBecameVisibleOnScreenListener {
+                    if (!screenActive) {
+                        Log.d(TAG, "load() adUnitId=${adView.adUnitId} — became visible but page released, skipping")
+                        return@addOnBecameVisibleOnScreenListener
+                    }
                     Log.d(TAG, "load() adUnitId=${adView.adUnitId} — view became visible, starting fetchDemand")
                     fetchDemand()
                 }
@@ -351,17 +437,7 @@ class AudienzzAdViewHandler(
             adUnit.stopAutoRefresh()
         }
 
-        // Screen-aware smart refresh (v2 only): register in the coordinator and set the initial
-        // screen-active state so a banner built for a non-active screen starts paused. Under legacy,
-        // registration is harmless and screenActive stays true (nothing pauses on screen change).
-        screenAdCoordinator?.register(this)
-        if (useV2) {
-            val active = screenAdCoordinator?.activeScreen
-            screenActive = active == null || isHostedBy(active)
-            if (!screenActive) {
-                pauseSmartRefresh()
-            }
-        }
+        // Page registration happens in load(), unconditionally -- see joinCurrentPage().
     }
 
     /**
@@ -442,6 +518,7 @@ class AudienzzAdViewHandler(
         pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
         pendingRefreshRunnable = null
         screenAdCoordinator?.deregister(this)
+        AppForegroundMonitor.removeListener(foregroundListener)
         // disableSmartRefresh() is the teardown hook called from the ad view's destroy().
         viewabilityTracker?.stop()
         viewabilityTracker = null
