@@ -123,6 +123,19 @@ class AudienzzAdViewHandler(
      */
     internal var hostScreenOverride: Any? = null
 
+    /**
+     * Associate this ad with a screen the SDK can't infer from the view tree — a Jetpack Compose
+     * destination, a custom navigation model, or a Flutter / React Native route. Pass the same token
+     * you report to [AudienzzPrebidMobile.pageImpression]; it is matched by value, so the key
+     * reported on the page impression and the one set here only have to be equal.
+     *
+     * Must be called **before** [load], which is when the ad joins the current page. A `null` token
+     * clears the override and falls back to Fragment/Activity resolution.
+     */
+    fun setScreen(screenKey: Any?) {
+        hostScreenOverride = screenKey
+    }
+
     private fun resolveHostScreen(): Any? {
         hostScreenOverride?.let { return it }
         cachedHostScreen?.let { return it }
