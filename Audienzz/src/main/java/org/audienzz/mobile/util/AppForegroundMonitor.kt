@@ -25,7 +25,18 @@ internal object AppForegroundMonitor : Application.ActivityLifecycleCallbacks {
     }
 
     private val listeners = CopyOnWriteArraySet<Listener>()
-    private var startedActivities = 0
+
+    /**
+     * Identities of the activities observed started, not a bare count.
+     *
+     * A counter breaks after late initialization: register while activity A is already started,
+     * start B (count 0 → 1), then stop A — the count returns to 0 and reports background even though
+     * B is still visible, destroying B's loaders. Tracking identities means stopping an activity we
+     * never saw start is simply ignored.
+     */
+    private val startedActivities = java.util.Collections.newSetFromMap(
+        java.util.WeakHashMap<Activity, Boolean>(),
+    )
 
     /**
      * Whether any activity lifecycle callback has been seen yet.
@@ -41,7 +52,7 @@ internal object AppForegroundMonitor : Application.ActivityLifecycleCallbacks {
 
     /** True while the app is in the foreground, or while that is not yet known. */
     val isForeground: Boolean
-        get() = !hasObservedLifecycle || startedActivities > 0
+        get() = !hasObservedLifecycle || startedActivities.isNotEmpty()
 
     fun addListener(listener: Listener) {
         listeners.add(listener)
@@ -54,16 +65,18 @@ internal object AppForegroundMonitor : Application.ActivityLifecycleCallbacks {
     override fun onActivityStarted(activity: Activity) {
         val wasForeground = isForeground
         hasObservedLifecycle = true
-        startedActivities++
+        startedActivities.add(activity)
         if (!wasForeground) {
             listeners.forEach { it.onEnterForeground() }
         }
     }
 
     override fun onActivityStopped(activity: Activity) {
+        // Ignore an activity we never saw start: it was already running when the SDK registered,
+        // so it was never part of the set and removing it would under-count the visible ones.
+        if (!startedActivities.remove(activity)) return
         hasObservedLifecycle = true
-        startedActivities = (startedActivities - 1).coerceAtLeast(0)
-        if (startedActivities == 0) {
+        if (startedActivities.isEmpty()) {
             listeners.forEach { it.onEnterBackground() }
         }
     }

@@ -93,6 +93,7 @@ object AudienzzPrebidMobile {
         lastPageImpressionAt = System.currentTimeMillis()
         cancelPendingForegroundReimpression()
         eventLogger?.onScreenResumed(screenName)
+        pageImpressionObserver?.invoke(screenName)
         // Ads are page-scoped unconditionally. This is NOT gated on isSmartRefreshV2Enabled(), which
         // now only selects the viewport gate used for scroll pause/resume: every page impression
         // releases the previous page's banners and recreates the incoming page's, so a banner can
@@ -110,6 +111,19 @@ object AudienzzPrebidMobile {
 
     @Volatile
     private var lastPageImpressionAt: Long = 0L
+
+    /**
+     * Notified after every page impression, including the automatic one fired on returning to the
+     * foreground.
+     *
+     * The Flutter and React Native bridges need to know a page transition happened so they can
+     * remount platform views and page-scope the ad types the native coordinator doesn't track. They
+     * used to observe their own app lifecycle and report a page impression themselves, which meant
+     * two independent owners each scheduling and de-duplicating — no ordering of the two ever came
+     * out right. Native owns foreground reporting; the bridges just listen.
+     */
+    @JvmStatic
+    var pageImpressionObserver: ((String) -> Unit)? = null
 
     private val foregroundHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var pendingForegroundReimpression: Runnable? = null

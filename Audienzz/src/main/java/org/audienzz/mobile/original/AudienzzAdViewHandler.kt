@@ -180,8 +180,11 @@ class AudienzzAdViewHandler(
             pageEpoch = epoch
             // A hard transition invalidates the outgoing auction even when the SAME page is
             // re-reported: an in-flight response from the previous visit must not load a creative
-            // or overwrite this visit's auction analytics.
+            // or overwrite this visit's auction analytics. Retire it rather than only invalidating
+            // it — the replacement may be deferred (a lazy banner out of range), and an
+            // un-retired loader keeps auctioning while every callback is dropped as stale.
             auctionGeneration++
+            retireCurrentAuction()
             if (lastRefreshTime != 0L) {
                 Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, recreating (loaded before)")
                 reloadForScreenChange()
@@ -301,6 +304,8 @@ class AudienzzAdViewHandler(
         }
 
         override fun onEnterForeground() {
+            // An auction the gate deferred runs now, whichever way the callbacks interleaved.
+            retryDeferredAuction()
             if (screenAdCoordinator?.activeScreen != null) {
                 // Page-scoped app: the foreground page impression recreates this banner.
                 return
@@ -702,10 +707,32 @@ class AudienzzAdViewHandler(
             return false
         }
         if (!AppForegroundMonitor.isForeground) {
-            Log.d(TAG, "auction blocked adUnitId=${adView.adUnitId} — app is backgrounded")
+            // Remember it and retry when the gate opens. Rejecting outright made correctness depend
+            // on callback ordering — a page reported from onCreate is rejected because
+            // onActivityStarted hasn't run yet, and nothing ever retried that load. With a deferral
+            // the interleaving stops mattering: the work happens once, when it legitimately can.
+            Log.d(TAG, "auction deferred adUnitId=${adView.adUnitId} — app is backgrounded")
+            auctionDeferred = true
             return false
         }
         return true
+    }
+
+    /** Set when the gate rejected an auction that should run as soon as the app is foreground. */
+    @Volatile
+    private var auctionDeferred: Boolean = false
+
+    /** Retry an auction the gate deferred. Called when the app reaches the foreground. */
+    private fun retryDeferredAuction() {
+        if (!auctionDeferred) return
+        auctionDeferred = false
+        if (!screenActive) return
+        Log.d(TAG, "auction deferred adUnitId=${adView.adUnitId} — retrying now that the app is foreground")
+        if (lastRefreshTime == 0L) {
+            rearmInitialLoad()
+        } else if (fetchDemand()) {
+            adUnit.resumeAutoRefresh()
+        }
     }
 
     private fun fetchDemand(): Boolean {
