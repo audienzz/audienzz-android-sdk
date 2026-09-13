@@ -124,7 +124,12 @@ object AudienzzPrebidMobile {
      * Activity/Fragment also calls pageImpression), so a restore never double-auctions.
      */
     private val foregroundReimpressionListener = object : org.audienzz.mobile.util.AppForegroundMonitor.Listener {
-        override fun onEnterBackground() = Unit
+        override fun onEnterBackground() {
+            // Backgrounding again inside the scheduling window must drop the pending re-impression,
+            // or it would fire while backgrounded and recreate the whole active page — auctions that
+            // would pass the response guard because they carry the current generation.
+            cancelPendingForegroundReimpression()
+        }
 
         override fun onEnterForeground() {
             val coordinator = org.audienzz.mobile.screen.screenAdCoordinator ?: return
@@ -136,6 +141,10 @@ object AudienzzPrebidMobile {
             cancelPendingForegroundReimpression()
             val runnable = Runnable {
                 pendingForegroundReimpression = null
+                if (!org.audienzz.mobile.util.AppForegroundMonitor.isForeground) {
+                    android.util.Log.d(TAG, "pageImpression: foreground → no longer foreground, skipping")
+                    return@Runnable
+                }
                 android.util.Log.d(TAG, "pageImpression: foreground → re-firing \"$name\"")
                 notifyScreenResumed(screen, name)
             }
