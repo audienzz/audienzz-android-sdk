@@ -103,7 +103,6 @@ class AdsPageFragment : Fragment() {
             AudienzzPrebidMobile.initializeRemoteSdk(
                 requireContext().applicationContext,
                 PUBLISHER_ID,
-                true,
             ) { status ->
                 handleInitializationStatus(status)
             }
@@ -111,7 +110,6 @@ class AdsPageFragment : Fragment() {
             AudienzzPrebidMobile.initializeSdk(
                 requireContext().applicationContext,
                 "TestCompany",
-                true,
             ) { status ->
                 handleInitializationStatus(status)
             }

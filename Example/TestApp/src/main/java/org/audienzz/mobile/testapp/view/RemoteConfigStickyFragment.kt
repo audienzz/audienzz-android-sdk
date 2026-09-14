@@ -81,6 +81,7 @@ class RemoteConfigStickyFragment : Fragment() {
         // Section 4 — sticky banner
         loadStickyBannerInto(view.findViewById(R.id.stickyContainer2), BANNER_CONFIG_ID)
 
+        view.findViewById<Button>(R.id.btnLoadInterstitial).text = "Preload / show interstitial"
         view.findViewById<Button>(R.id.btnLoadInterstitial).setOnClickListener {
             loadInterstitial()
         }
@@ -133,9 +134,15 @@ class RemoteConfigStickyFragment : Fragment() {
     }
 
     private fun loadInterstitial() {
-        interstitial?.destroy()
-        interstitial = AudienzzRemoteConfigInterstitial(requireContext(), INTERSTITIAL_CONFIG_ID)
-        interstitial?.loadAd()
+        val existing = interstitial
+        if (existing?.isReady == true) {
+            existing.showAtOpportunity(requireActivity(), eligible = true)
+        } else {
+            if (interstitial == null) {
+                interstitial = AudienzzRemoteConfigInterstitial(requireContext(), INTERSTITIAL_CONFIG_ID)
+            }
+            interstitial?.preload()
+        }
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────────────────────

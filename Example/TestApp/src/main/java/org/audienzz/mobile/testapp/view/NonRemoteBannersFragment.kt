@@ -74,7 +74,6 @@ class NonRemoteBannersFragment : Fragment() {
         AudienzzPrebidMobile.initializeRemoteSdk(
             requireContext().applicationContext,
             PUBLISHER_ID,
-            true,
         ) { status ->
             if (status == AudienzzInitializationStatus.SUCCEEDED) {
                 AudienzzTargetingParams.bundleName = requireContext().packageName

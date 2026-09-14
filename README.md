@@ -716,31 +716,15 @@ override fun onDestroy() {
 Use `AudienzzRemoteConfigInterstitial` to load an interstitial defined by a remote configuration ID.
 
 ```kotlin
-// 1. Create the remote interstitial with the configuration ID
-val remoteInterstitial = AudienzzRemoteConfigInterstitial(
-    context = context,
-    adConfigId = "YOUR_CONFIG_ID"
-)
+// Retain one owner per placement outside transient page views.
+val interstitial = AudienzzRemoteConfigInterstitial(context, "YOUR_CONFIG_ID")
+interstitial.preload() // No automatic presentation; repeated calls preserve ready inventory.
 
-// 2. Set a listener (optional)
-remoteInterstitial.setListener(object : AudienzzRemoteConfigInterstitial.Listener {
-    override fun onAdLoaded() {
-        Log.d(TAG, "Remote interstitial loaded successfully")
-        // Show the ad when ready
-        remoteInterstitial.show()
-    }
-
-    override fun onAdFailedToLoad(error: String) {
-        Log.e(TAG, "Remote interstitial failed to load: $error")
-    }
-
-    override fun onAdClosed() {
-        Log.d(TAG, "Remote interstitial closed")
-    }
-})
-
-// 3. Load the ad
-remoteInterstitial.load()
+// At a later eligible transition, after evaluating the publisher's frequency cap:
+val submitted = interstitial.showAtOpportunity(activity, eligible = publisherAllowsAd)
+// false: skip this opportunity. A later load completion will not display it.
+// true: submitted to Google; Events.onOpened/onFailedToShow report the outcome.
+// Destroy when this owner is no longer needed; presentation cleanup is deferred.
 ```
 
 Analytics
@@ -1055,3 +1039,19 @@ are rejected through `Events.onError`. Destroying a pending instance prevents la
 Google callbacks from showing an ad. Destruction while presenting waits for its terminal callback.
 `Events.onLifecycleEvent` supplies a load ID, event name, response ID and failure/disposal reason
 for publisher analytics. Loading, presenting, and recording an impression are distinct events.
+
+
+### Recommended interstitial preload and presentation
+
+Retain one `AudienzzRemoteConfigInterstitial` per logical placement. `preload()` retains ready
+inventory and suppresses repeated loads. Call `showAtOpportunity(activity, eligible)` on the main
+thread at the actual transition, supplying the publisher's current frequency-cap decision.
+It skips unavailable/expired inventory, inactive hosts, ineligible opportunities and concurrent
+SDK remote interstitial presentations. A skip never schedules a later show. The preload stays
+available for a later explicit opportunity; expiry requires another explicit `preload()`.
+
+True means submitted to Google, with `Events` callbacks reporting presentation/impression/failure.
+The publisher still owns frequency caps and other fullscreen content. Check eligibility before
+preloading when practical. Do not create owners or requests on rebuild, rotation or pageImpression.
+`destroy()` during presentation retains the owner through the terminal callback. The legacy
+`loadAd()` automatic-display API remains compatible; new integrations should use the explicit flow.

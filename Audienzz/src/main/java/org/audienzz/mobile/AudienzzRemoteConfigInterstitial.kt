@@ -1,5 +1,7 @@
 package org.audienzz.mobile
 
+import android.app.Activity
+import android.os.SystemClock
 import android.content.Context
 import android.util.Log
 import com.google.android.gms.ads.AdError
@@ -22,6 +24,7 @@ import org.audienzz.mobile.original.callbacks.AudienzzInterstitialAdLoadCallback
 import org.audienzz.mobile.util.getActivity
 import java.util.EnumSet
 import java.util.UUID
+import java.lang.ref.WeakReference
 import org.audienzz.mobile.util.AppForegroundMonitor
 
 class AudienzzRemoteConfigInterstitial(
@@ -66,18 +69,70 @@ class AudienzzRemoteConfigInterstitial(
     private var destroyed = false
     private var disposeAfterPresentation = false
     private var loadId = ""
+    private var loadedAt: Long? = null
+    internal var now: () -> Long = { SystemClock.elapsedRealtime() }
+
+    val isReady: Boolean
+        get() = !destroyed && !presenting && loadedInterstitialAd != null &&
+            loadedAt?.let { now() - it < 3_600_000L } == true
+
+    /** Retain one ad for a later opportunity. Repeated preloads never replace ready inventory. */
+    fun preload() {
+        if (destroyed || loading || presenting || isReady) return
+        startLoad(automaticallyShow = false)
+    }
+
+    /**
+     * Call on the main thread at a publisher-approved transition, after checking frequency caps.
+     * False means this opportunity was skipped; it is never queued for a later load completion.
+     * True means presentation was submitted; onOpened/onFailedToShow report Google's outcome.
+     */
+    fun showAtOpportunity(activity: Activity, eligible: Boolean): Boolean {
+        val reason = when {
+            !eligible -> "ineligible"
+            !isReady -> "notReady"
+            !AppForegroundMonitor.isForeground || activity.isFinishing || activity.isDestroyed -> "inactive"
+            activePresentation?.get() != null -> "anotherInterstitialPresenting"
+            else -> null
+        }
+        if (reason != null) { emit("opportunitySkipped", reason); return false }
+        return present(activity)
+    }
+
+    private fun present(activity: Activity): Boolean {
+        val ad = loadedInterstitialAd ?: return false
+        if (presenting || destroyed || activePresentation?.get() != null) return false
+        presenting = true
+        activePresentation = WeakReference(this)
+        emit("showAttempted")
+        return try {
+            ad.show(activity)
+            true
+        } catch (error: RuntimeException) {
+            emit("showFailed", error.toString())
+            finishPresentation()
+            events?.onError(error.message ?: "Interstitial presentation failed")
+            false
+        }
+    }
 
     private fun emit(event: String, reason: String? = null) {
         events?.onLifecycleEvent(mapOf("event" to event, "loadId" to loadId, "timestampMillis" to System.currentTimeMillis(),
+            "loadAgeMillis" to loadedAt?.let { now() - it },
             "configId" to configId, "responseId" to loadedInterstitialAd?.responseInfo?.responseId,
             "reason" to reason))
     }
 
-    fun loadAd() {
-        if (destroyed || loading || presenting) {
+    /** Legacy immediate-display API. Prefer preload() and showAtOpportunity() for new integrations. */
+    fun loadAd() = startLoad(automaticallyShow = true)
+
+    private fun startLoad(automaticallyShow: Boolean) {
+        if (destroyed || loading || presenting || isReady) {
             events?.onError("Interstitial is destroyed or already loading/presenting")
             return
         }
+        loadedInterstitialAd = null
+        loadedAt = null
         loading = true
         val token = ++generation
         loadId = UUID.randomUUID().toString()
@@ -104,11 +159,11 @@ class AudienzzRemoteConfigInterstitial(
                 return@launch
             }
 
-            if (!destroyed && token == generation) setupInterstitial(config, token)
+            if (!destroyed && token == generation) setupInterstitial(config, token, automaticallyShow)
         }
     }
 
-    private fun setupInterstitial(config: RemoteAdUnitConfig, token: Int) {
+    private fun setupInterstitial(config: RemoteAdUnitConfig, token: Int, automaticallyShow: Boolean) {
         val interstitial = AudienzzInterstitialAdUnit(
             configId = config.prebidConfig.placementId,
             adUnitFormats = EnumSet.of(AudienzzAdUnitFormat.BANNER),
@@ -135,29 +190,23 @@ class AudienzzRemoteConfigInterstitial(
                 override fun onAdLoaded(interstitialAd: AdManagerInterstitialAd) {
                     if (destroyed || token != generation || !loading) return
                     loading = false
-                    Log.d(TAG, "Ad loaded, auto-showing. ConfigId $configId")
                     loadedInterstitialAd = interstitialAd
+                    loadedAt = now()
                     emit("loaded")
-                    // Reserve the presentation before publisher callbacks to prevent reentrant load.
-                    presenting = true
                     events?.onLoaded()
-                    if (disposeAfterPresentation) {
-                        presenting = false
-                        destroy()
-                        return
-                    }
-                    val activity = context.getActivity()
-                    emit("showAttempted")
-                    if (activity != null && !activity.isFinishing && !activity.isDestroyed && AppForegroundMonitor.isForeground) {
-                        loadedInterstitialAd?.show(activity)
-                    } else {
-                        presenting = false
-                        loadedInterstitialAd = null
-                        emit("showFailed", "No foreground Activity")
-                        // M6: a non-Activity context silently never shows — a paid auction with
-                        // zero impressions. Surface it instead of swallowing.
-                        Log.e(TAG, "No Activity context available to show interstitial for ConfigId $configId")
-                        events?.onError("No Activity context available to show interstitial for ConfigId $configId")
+                    // The ready ad reserves inventory across reentrant publisher callbacks.
+                    if (automaticallyShow && !destroyed && token == generation && isReady) {
+                        val activity = context.getActivity()
+                        if (activity != null && !activity.isFinishing && !activity.isDestroyed && AppForegroundMonitor.isForeground) {
+                            if (!present(activity)) {
+                                events?.onError("Another interstitial is already presenting")
+                            }
+                        } else {
+                            emit("showFailed", "No foreground Activity")
+                            loadedInterstitialAd = null
+                            loadedAt = null
+                            events?.onError("No Activity context available to show interstitial for ConfigId $configId")
+                        }
                     }
                     super.onAdLoaded(interstitialAd)
                 }
@@ -211,6 +260,8 @@ class AudienzzRemoteConfigInterstitial(
 
     private fun finishPresentation() {
         presenting = false
+        if (activePresentation?.get() === this) activePresentation = null
+        loadedAt = null
         loadedInterstitialAd = null
         if (disposeAfterPresentation) destroy()
     }
@@ -233,5 +284,6 @@ class AudienzzRemoteConfigInterstitial(
 
     companion object {
         private const val TAG = "AudienzzRemoteConfigInterstitial"
+        private var activePresentation: WeakReference<AudienzzRemoteConfigInterstitial>? = null
     }
 }

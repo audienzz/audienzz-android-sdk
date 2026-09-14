@@ -116,4 +116,80 @@ class RemoteInterstitialLifecycleTest {
         load()
         assertEquals(1, loads)
     }
+    private fun preload() { owner.preload(); shadowOf(Looper.getMainLooper()).idle() }
+
+    @Test fun `preload retains inventory and never remembers a missed opportunity`() {
+        preload(); preload()
+        assertFalse(owner.showAtOpportunity(activity, eligible = true))
+        val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
+        loaded.onAdLoaded(ad)
+        preload()
+        assertEquals(1, loads)
+        assertTrue(owner.isReady)
+        verify(exactly = 0) { ad.show(any()) }
+        assertFalse(owner.showAtOpportunity(activity, eligible = false))
+        assertTrue(owner.isReady)
+        assertTrue(owner.showAtOpportunity(activity, eligible = true))
+        assertFalse(owner.showAtOpportunity(activity, eligible = true))
+        verify(exactly = 1) { ad.show(activity) }
+    }
+
+    @Test fun `background skips opportunity without discarding ready inventory`() {
+        preload()
+        val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
+        loaded.onAdLoaded(ad)
+        AppForegroundMonitor.onActivityStarted(activity)
+        AppForegroundMonitor.onActivityStopped(activity)
+        assertFalse(owner.showAtOpportunity(activity, true))
+        assertTrue(owner.isReady)
+        AppForegroundMonitor.onActivityStarted(activity)
+        verify(exactly = 0) { ad.show(any()) }
+        assertTrue(owner.showAtOpportunity(activity, true))
+    }
+
+    @Test fun `expired preload is replaced only on explicit preload`() {
+        var clock = 0L
+        owner.now = { clock }
+        preload()
+        val old = mockk<AdManagerInterstitialAd>(relaxed = true)
+        loaded.onAdLoaded(old)
+        clock = 3_600_000
+        assertFalse(owner.isReady)
+        assertFalse(owner.showAtOpportunity(activity, true))
+        assertEquals(1, loads)
+        preload()
+        assertEquals(2, loads)
+        verify(exactly = 0) { old.show(any()) }
+    }
+
+    @Test fun `two owners cannot present concurrently and the second stays ready`() {
+        preload()
+        loaded.onAdLoaded(mockk(relaxed = true))
+        val firstFullscreen = fullscreen
+        val second = AudienzzRemoteConfigInterstitial(activity, "second", events)
+        second.configDispatcher = Dispatchers.Main
+        second.preload(); shadowOf(Looper.getMainLooper()).idle()
+        val secondAd = mockk<AdManagerInterstitialAd>(relaxed = true)
+        loaded.onAdLoaded(secondAd)
+        val secondFullscreen = fullscreen
+        assertTrue(owner.showAtOpportunity(activity, true))
+        assertFalse(second.showAtOpportunity(activity, true))
+        assertTrue(second.isReady)
+        firstFullscreen.onAdDismissedFullScreenContent()
+        assertTrue(second.showAtOpportunity(activity, true))
+        secondFullscreen.onAdDismissedFullScreenContent()
+        second.destroy()
+    }
+
+    @Test fun `preload presentation keeps ownership when destroy is requested`() {
+        preload()
+        loaded.onAdLoaded(mockk(relaxed = true))
+        assertTrue(owner.showAtOpportunity(activity, true))
+        owner.destroy()
+        fullscreen.onAdDismissedFullScreenContent()
+        verify(exactly = 1) { events.onClosed() }
+        preload()
+        assertEquals(1, loads)
+    }
+
 }
