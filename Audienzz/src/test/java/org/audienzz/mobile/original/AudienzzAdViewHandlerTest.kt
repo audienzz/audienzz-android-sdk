@@ -39,6 +39,7 @@ class AudienzzAdViewHandlerTest {
     private lateinit var adView: AdManagerAdView
     private lateinit var adUnit: AudienzzAdUnit
     private lateinit var handler: AudienzzAdViewHandler
+    private var googleListener: com.google.android.gms.ads.AdListener = object : com.google.android.gms.ads.AdListener() {}
 
     /** GAM loads the handler asked for — one entry per `adView.loadAd(request)`. */
     private lateinit var gamLoads: MutableList<AdManagerAdRequest>
@@ -51,11 +52,16 @@ class AudienzzAdViewHandlerTest {
         AppForegroundMonitor.resetForTesting()
         coordinator = ScreenAdCoordinator()
         screenAdCoordinatorOverride = coordinator
+        org.audienzz.mobile.AudienzzPrebidMobile.observeForegroundReimpression()
+        org.audienzz.mobile.AudienzzPrebidMobile.pageImpression("test-reset")
 
         gamLoads = mutableListOf()
         responses = mutableListOf()
 
         adView = mockk(relaxed = true)
+        every { adView.isAttachedToWindow } returns true
+        every { adView.adListener } answers { googleListener }
+        every { adView.adListener = any() } answers { googleListener = firstArg() }
         adUnit = mockk(relaxed = true)
 
         val listener = slot<(AudienzzResultCode?) -> Unit>()
@@ -71,12 +77,14 @@ class AudienzzAdViewHandlerTest {
 
     @After
     fun tearDown() {
+        handler.destroy()
+        org.audienzz.mobile.AudienzzPrebidMobile.pageImpression("cleanup")
         screenAdCoordinatorOverride = null
         AppForegroundMonitor.resetForTesting()
     }
 
     /** Report a page, as `pageImpression` does. */
-    private fun openPage(name: String) = coordinator.onScreenResumed(name, name)
+    private fun openPage(name: String) = org.audienzz.mobile.AudienzzPrebidMobile.pageImpression(name)
 
     /** Create the banner on [page] and start its load. */
     private fun loadOn(page: String, lazy: Boolean = false) {
@@ -87,7 +95,11 @@ class AudienzzAdViewHandlerTest {
     }
 
     /** Answer the Nth auction started (0-based). */
-    private fun respondTo(auction: Int) = responses[auction].invoke(AudienzzResultCode.SUCCESS)
+    private fun respondTo(auction: Int) {
+        val before = gamLoads.size
+        responses[auction].invoke(AudienzzResultCode.SUCCESS)
+        if (gamLoads.size > before) googleListener.onAdLoaded()
+    }
 
     private fun idle(millis: Long) =
         shadowOf(Looper.getMainLooper()).idleFor(millis, TimeUnit.MILLISECONDS)
@@ -148,7 +160,7 @@ class AudienzzAdViewHandlerTest {
     fun `an app that never reports a page still recovers on foreground`() {
         // Without page impressions nothing else will recover the banner, so the handler resumes it
         // directly. This is the legacy path and must keep working.
-        screenAdCoordinatorOverride = null
+        screenAdCoordinatorOverride = ScreenAdCoordinator()
         val standalone = AudienzzAdViewHandler(adView, adUnit)
         background()
         standalone.load(withLazyLoading = false, prefetchMarginDp = 0) { request, _ ->
@@ -341,8 +353,7 @@ class AudienzzAdViewHandlerTest {
         idle(100)
         foreground() // t=200
 
-        // The automatic foreground page impression, 400ms after this foreground.
-        android.os.Handler(Looper.getMainLooper()).postDelayed({ openPage("A") }, 400)
+        // The real native observer schedules the automatic impression 400 ms after foreground.
         idle(5_000)
 
         assertEquals(1, responses.size)

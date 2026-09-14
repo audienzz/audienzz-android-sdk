@@ -73,6 +73,15 @@ class AudienzzAdViewHandler(
         private const val AD_SERVER_BIDDER = "google"
     }
 
+    // Google does not identify requests in its callbacks. Keep one Google load outstanding even
+    // across page changes, then discard its stale terminal callback before loading the replacement.
+    private data class GoogleLoad(val auction: Int, val refresh: Int)
+    private var googleLoad: GoogleLoad? = null
+    private var googleEventGeneration: Int? = null
+    private val acceptsGoogleEvents: Boolean
+        get() = googleEventGeneration == auctionGeneration && screenActive && !refreshController.isDestroyed
+    private var pendingLoadReason: RefreshRequestReason? = null
+
     private var isFirstDemandFetch = true
     private var eventListenerInstalled = false
 
@@ -80,7 +89,6 @@ class AudienzzAdViewHandler(
     private var smartRefreshListener: ViewTreeObserver.OnPreDrawListener? = null
     private var lastRefreshTime: Long = 0
     private val refreshHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var pendingRefreshRunnable: Runnable? = null
     // M1: keep the request BUILDER (not a frozen request) so each auction rebuilds a fresh request
     // carrying the current PPID/consent/targeting rather than values baked in at first load().
     private var gamRequestBuilder: AdManagerAdRequest.Builder? = null
@@ -186,7 +194,11 @@ class AudienzzAdViewHandler(
             // or overwrite this visit's auction analytics.
             auctionGeneration++
             retireCurrentAuction()
-            refreshController.unblock(RefreshBlockReason.PAGE_INACTIVE)
+            pendingLoadReason = null
+            refreshController.unblock(RefreshBlockReason.PAGE_INACTIVE, schedule = false)
+            if (AppForegroundMonitor.isForeground) {
+                refreshController.unblock(RefreshBlockReason.APP_BACKGROUND, schedule = false)
+            }
             if (lastRefreshTime != 0L) {
                 Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, recreating (loaded before)")
                 reloadForScreenChange()
@@ -231,6 +243,7 @@ class AudienzzAdViewHandler(
         // Whether refresh is allowed afterwards is the caller's decision: a page release blocks
         // PAGE_INACTIVE, backgrounding blocks APP_BACKGROUND, and a page activation blocks nothing.
         refreshController.invalidatePending()
+        pendingLoadReason = null
         adUnit.destroy()
         initialRequestGeneration = null
     }
@@ -273,19 +286,24 @@ class AudienzzAdViewHandler(
             releaseForPage()
         }
 
+        // The impression owner must be registered before the banner's recovery listener.
+        AudienzzPrebidMobile.observeForegroundReimpression()
         AppForegroundMonitor.addListener(foregroundListener)
+        if (!adView.isAttachedToWindow) refreshController.block(RefreshBlockReason.DETACHED)
+        if (!AppForegroundMonitor.isForeground) refreshController.block(RefreshBlockReason.APP_BACKGROUND)
 
         // A banner whose view isn't attached yet cannot resolve its host Fragment/Activity, so a page
         // sweep running in that window releases it. Re-check on attach.
         adView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
-                refreshController.unblock(RefreshBlockReason.DETACHED)
+                refreshController.unblock(RefreshBlockReason.DETACHED, schedule = false)
                 // Any released banner is a candidate: the coordinator re-checks the host, which is
                 // the thing that just became resolvable. Requiring an older epoch here excluded the
                 // common case — created during the active epoch, before its Fragment was attached.
                 if (!screenActive) {
                     screenAdCoordinator?.adoptIfOnActiveScreen(this@AudienzzAdViewHandler)
                 }
+                resumeEligibleWork()
             }
 
             override fun onViewDetachedFromWindow(v: View) {
@@ -334,23 +352,11 @@ class AudienzzAdViewHandler(
             // its own Activity lifecycle is unaffected.
             runCatching { adView.resume() }
                 .onFailure { Log.w(TAG, "adView.resume() failed for adUnitId=${adView.adUnitId}", it) }
-            // Clears only the background reason; a publisher pause or an inactive page survives.
-            refreshController.unblock(RefreshBlockReason.APP_BACKGROUND)
+            // Decide ownership BEFORE unblocking can schedule an overdue periodic request.
+            if (AudienzzPrebidMobile.hasPendingForegroundReimpression) return
+            refreshController.unblock(RefreshBlockReason.APP_BACKGROUND, schedule = false)
+            resumeEligibleWork()
 
-            if (screenAdCoordinator?.activeScreen != null) {
-                // A page-scoped app gets a foreground page impression, and that impression owns the
-                // recovery for every banner on the active page. Re-arming or rescheduling here as
-                // well is how a foreground used to produce two auctions for one return.
-                Log.d(TAG, "foreground adUnitId=${adView.adUnitId} — a page impression owns the recovery")
-                return
-            }
-
-            // No page impressions in use, so nothing else will recover this banner.
-            Log.d(TAG, "foreground adUnitId=${adView.adUnitId} — no page impressions in use, resuming refresh")
-            refreshController.scheduleNext()
-            if (lastRefreshTime == 0L && !refreshController.isBlocked) {
-                rearmInitialLoad()
-            }
         }
     }
 
@@ -388,7 +394,8 @@ class AudienzzAdViewHandler(
             Log.d(TAG, "reloadAd() adUnitId=${adView.adUnitId} — page released, skipping")
             return
         }
-        refreshController.invalidatePending()
+        auctionGeneration++
+        retireCurrentAuction()
         if (AudienzzPrebidMobile.blankOnScreenReload) {
             adView.visibility = View.INVISIBLE
             blankedForReload = true
@@ -430,6 +437,15 @@ class AudienzzAdViewHandler(
         lazyLoadConfig = withLazyLoading to prefetchMarginDp
         // The configured cadence lives in the controller. Prebid is never given an interval, so it
         // schedules nothing on either its success or its failure path.
+        adUnit.refreshIntervalObserver = { millis ->
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+                refreshController.setIntervalMillis(millis)
+            } else {
+                refreshHandler.post {
+                    if (!refreshController.isDestroyed) refreshController.setIntervalMillis(millis)
+                }
+            }
+        }
         refreshController.setIntervalMillis(adUnit.audienzzRefreshIntervalMillis)
         joinCurrentPage()
 
@@ -444,7 +460,7 @@ class AudienzzAdViewHandler(
             }
         } else if (screenActive) {
             Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy OFF, starting fetchDemand immediately")
-            fetchDemand()
+            fetchDemand(RefreshRequestReason.FIRST_LOAD)
         } else {
             // Built for a page the user has already left (async setup that finished after the
             // transition). Stay dormant; onPageActiveChanged re-arms this when the page returns.
@@ -472,12 +488,12 @@ class AudienzzAdViewHandler(
         }
         val lazy = lazyLoadConfig
         if (lazy == null) {
-            fetchDemand()
+            fetchDemand(RefreshRequestReason.FIRST_LOAD)
             return
         }
         val (withLazyLoading, prefetchMarginDp) = lazy
         if (!withLazyLoading) {
-            fetchDemand()
+            fetchDemand(RefreshRequestReason.FIRST_LOAD)
         } else {
             initialTriggerArmed = true
             if (prefetchMarginDp > 0) {
@@ -510,7 +526,7 @@ class AudienzzAdViewHandler(
         }
         if (lastRefreshTime != 0L) return
         Log.d(TAG, "load() adUnitId=${adView.adUnitId} — lazy trigger fired, starting fetchDemand")
-        fetchDemand()
+        fetchDemand(RefreshRequestReason.FIRST_LOAD)
     }
 
     /** Lazy-load settings from [load], retained so [rearmInitialLoad] can re-register the trigger. */
@@ -587,7 +603,7 @@ class AudienzzAdViewHandler(
         smartRefreshListener = adView.addContinuousVisibilityListener(
             useDirectionalGate = useV2,
             onBecameVisible = {
-                refreshController.unblock(RefreshBlockReason.NOT_VISIBLE)
+                resumeSmartRefresh()
             },
             onBecameHidden = {
                 refreshController.block(RefreshBlockReason.NOT_VISIBLE)
@@ -633,10 +649,8 @@ class AudienzzAdViewHandler(
      */
     fun resumeAutoRefresh() {
         Log.d(TAG, "resumeAutoRefresh() adUnitId=${adView.adUnitId} — publisher resume")
-        refreshController.unblock(RefreshBlockReason.PUBLISHER)
-        if (lastRefreshTime == 0L && !refreshController.isBlocked) {
-            rearmInitialLoad()
-        }
+        refreshController.unblock(RefreshBlockReason.PUBLISHER, schedule = false)
+        resumeEligibleWork()
     }
 
     fun pauseSmartRefresh() {
@@ -658,17 +672,8 @@ class AudienzzAdViewHandler(
             Log.w(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — not loaded yet (no callback), skipping")
             return
         }
-        // Clears only the visibility reason. A page release or a publisher pause is a separate
-        // reason and stays in force, so scrolling a released banner back into view cannot revive it.
-        refreshController.unblock(RefreshBlockReason.NOT_VISIBLE)
-
-        if (lastRefreshTime == 0L && !refreshController.isBlocked) {
-            // Never completed a first fetch, so there is no interval to resume — the controller
-            // only schedules once something has loaded. Re-arm the first load instead, which
-            // respects the lazy settings rather than auctioning an offscreen banner.
-            Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — no prior fetch, re-arming first load")
-            rearmInitialLoad()
-        }
+        refreshController.unblock(RefreshBlockReason.NOT_VISIBLE, schedule = false)
+        resumeEligibleWork()
     }
 
     /** Stops smart refresh tracking started by [enableSmartRefresh]. */
@@ -680,10 +685,10 @@ class AudienzzAdViewHandler(
             }
         }
         smartRefreshListener = null
-        pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
-        pendingRefreshRunnable = null
         screenAdCoordinator?.deregister(this)
         refreshController.destroy()
+        adUnit.refreshIntervalObserver = null
+        pendingLoadReason = null
         AppForegroundMonitor.removeListener(foregroundListener)
         // disableSmartRefresh() is the teardown hook called from the ad view's destroy().
         viewabilityTracker?.stop()
@@ -732,51 +737,57 @@ class AudienzzAdViewHandler(
         fetchDemand(reason)
     }
 
-    /**
-     * Whether the auction ran to a usable conclusion, which is what decides between waiting out the
-     * normal interval and retrying with backoff.
-     *
-     * Only the two transient transport failures count as a failure. Everything else — including
-     * NO_BIDS, and including a permanent misconfiguration such as an invalid config id — is a
-     * completed auction: GAM is still loaded from the callback, so the slot is filled, and retrying
-     * would buy nothing while issuing up to three extra requests per interval against a low-fill
-     * slot. Requests without impressions are the exact problem this migration exists to reduce.
-     */
-    private fun completedAuction(resultCode: AudienzzResultCode?): Boolean =
-        resultCode != AudienzzResultCode.NETWORK_ERROR && resultCode != AudienzzResultCode.TIMEOUT
-
-    private fun canStartAuction(): Boolean {
-        if (refreshController.isDestroyed) return false
-        if (!screenActive) {
-            // Kept alongside the controller's own reasons: page ownership is decided by the
-            // coordinator and a banner can be built for an already-inactive page, before any block
-            // has been recorded.
-            Log.d(TAG, "auction blocked adUnitId=${adView.adUnitId} — page released")
-            return false
+    private fun canStartAuction(reason: RefreshRequestReason): Boolean {
+        if (refreshController.isDestroyed || !screenActive || !AppForegroundMonitor.isForeground) return false
+        if (AudienzzPrebidMobile.hasPendingForegroundReimpression) return false
+        // A first load may prefetch before attachment / refresh visibility. Publisher, page and
+        // foreground blocks still apply. Later requests must satisfy all eligibility conditions.
+        return refreshController.blockReasons.none {
+            reason != RefreshRequestReason.FIRST_LOAD ||
+                (it != RefreshBlockReason.DETACHED && it != RefreshBlockReason.NOT_VISIBLE)
         }
-        if (refreshController.isBlocked) {
-            Log.d(TAG, "auction blocked adUnitId=${adView.adUnitId} — ${refreshController.blockReasons}")
-            return false
-        }
-        if (!AppForegroundMonitor.isForeground) {
-            // Nothing is remembered here. Coming back to the foreground clears the
-            // APP_BACKGROUND reason, which makes the controller reschedule, and a banner that never
-            // loaded re-arms its first load — one owner for the recovery instead of a second timer
-            // racing the page impression.
-            Log.d(TAG, "auction blocked adUnitId=${adView.adUnitId} — app is backgrounded")
-            return false
-        }
-        return true
     }
 
+    private fun resumeEligibleWork() {
+        if (refreshController.isDestroyed || !screenActive) return
+        val pending = pendingLoadReason
+        if (pending != null && pending != RefreshRequestReason.FIRST_LOAD) {
+            fetchDemand(pending)
+        } else if (lastRefreshTime == 0L) {
+            rearmInitialLoad()
+        } else {
+            refreshController.scheduleNext()
+        }
+    }
 
+    /** Returns false for a Google result from a page that has already been superseded. */
+    private fun completeGoogleLoad(retryableFailure: Boolean): Boolean {
+        val load = googleLoad ?: return false
+        googleLoad = null
+        val current = load.auction == auctionGeneration && screenActive && !refreshController.isDestroyed
+        if (current) {
+            lastRefreshTime = System.currentTimeMillis()
+            refreshController.onRequestCompleted(load.refresh, success = !retryableFailure)
+        } else {
+            // No replacement may use this GAM view until its previous load has terminated.
+            resumeEligibleWork()
+        }
+        return current
+    }
 
     private fun fetchDemand(reason: RefreshRequestReason = RefreshRequestReason.PERIODIC_REFRESH): Boolean {
         val callback = storedCallback ?: run {
             Log.w(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — no stored callback, skipping")
             return false
         }
-        if (!canStartAuction()) return false
+        if (!canStartAuction(reason) || googleLoad != null) {
+            if (reason == RefreshRequestReason.FIRST_LOAD || reason == RefreshRequestReason.PAGE_IMPRESSION) {
+                pendingLoadReason = reason
+            }
+            return false
+        }
+        if (refreshController.hasRequestInFlight) return false
+        pendingLoadReason = null
         // An auction is actually starting, so nothing is owed any more.
         // Every new auction supersedes the previous one.
         auctionGeneration++
@@ -819,13 +830,15 @@ class AudienzzAdViewHandler(
         // The first invocation pairs with the bidRequest above; each later one is a refresh auction
         // that emits its own bidRequest so the bidRequest/bidResponse funnel stays balanced.
         val generationAtRequest = auctionGeneration
-        var isFirstAuction = true
+        var responseDelivered = false
         adUnit.fetchDemand(request) { resultCode ->
+            if (responseDelivered) return@fetchDemand
+            responseDelivered = true
             // Stale-response guard. Prebid re-arms its refresh timer from both the success and the
             // failure handler, so a response that lands after a page release would restart the loop
             // and load a creative into a slot the user has left. Re-cancel the timer Prebid just
             // armed and drop the response.
-            if (generationAtRequest != auctionGeneration || !screenActive) {
+            if (generationAtRequest != auctionGeneration || !screenActive || refreshController.isDestroyed) {
                 // Drop only. Calling adUnit.stopAutoRefresh() here would cancel whatever loader is
                 // current — after a reactivation that is the NEW auction's loader, so the stale
                 // callback would repeatedly kill its own replacement. The superseded loader was
@@ -837,42 +850,16 @@ class AudienzzAdViewHandler(
                 )
                 return@fetchDemand
             }
-            val auctionIsRefresh = isRefresh || !isFirstAuction
-            if (!isFirstAuction) {
-                // A Prebid auto-refresh is a new auction — mint a fresh id for its funnel.
-                currentAuctionId = UUID.randomUUID().toString()
-                eventLogger?.bidRequest(
-                    adViewId = adView.adViewId,
-                    adUnitId = adView.adUnitId,
-                    sizes = adView.adSizes?.asIterable()?.sizesJson,
-            auctionId = currentAuctionId,
-                    adType = AdType.BANNER,
-                    adSubtype = adUnit.adFormats.adSubtype,
-                    apiType = ApiType.ORIGINAL,
-                    autorefreshTime = autorefreshTime,
-                    isAutorefresh = isAutorefresh,
-                    isRefresh = true,
-                    adUnitCode = adUnit.configId,
-                    mediaTypes = mediaTypesJson(adUnit.adFormats.adSubtype),
-                )
-            }
             // New auction → reset render-winner state until the GAM render / app event report back.
             prebidLineItemWon = false
             prebidWinningBidder = null
             lastWinningBid = null
-            lastRefreshTime = System.currentTimeMillis()
-            setEventsListenerToAdView()
-            callback.invoke(request, resultCode)
-            // The controller decides what happens next. Prebid has no timer of its own to re-arm,
-            // and a completion that arrives while blocked or after a page transition schedules
-            // nothing.
-            refreshController.onRequestCompleted(refreshGeneration, success = completedAuction(resultCode))
 
             // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
             // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
             val winningBidder = request.prebidKeyword(HB_BIDDER_KEY)
             val timeToRespond =
-                if (isFirstAuction) System.currentTimeMillis() - requestStartMs else null
+                System.currentTimeMillis() - requestStartMs
             var economics: RenderEconomics? = null
             if (resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
                 prebidWinningBidder = winningBidder
@@ -910,7 +897,7 @@ class AudienzzAdViewHandler(
                 apiType = ApiType.ORIGINAL,
                 autorefreshTime = autorefreshTime,
                 isAutorefresh = isAutorefresh,
-                isRefresh = auctionIsRefresh,
+                isRefresh = isRefresh,
                 resultCode = resultCode?.toString(),
                 // Only the initial auction has a measurable request→response delta; Prebid does not
                 // expose the start time of an internal refresh.
@@ -928,7 +915,7 @@ class AudienzzAdViewHandler(
                     apiType = ApiType.ORIGINAL,
                     autorefreshTime = autorefreshTime,
                     isAutorefresh = isAutorefresh,
-                    isRefresh = auctionIsRefresh,
+                    isRefresh = isRefresh,
                     adUnitCode = adUnit.configId,
                     economics = economics,
                 )
@@ -943,7 +930,7 @@ class AudienzzAdViewHandler(
                     apiType = ApiType.ORIGINAL,
                     autorefreshTime = autorefreshTime,
                     isAutorefresh = isAutorefresh,
-                    isRefresh = auctionIsRefresh,
+                    isRefresh = isRefresh,
                     // Prebid returns SUCCESS with empty targeting on a no-bid; report NO_BIDS so the
                     // funnel doesn't show a "successful" no-bid. Real failures keep their result code.
                     resultCode = noBidResultCode(resultCode),
@@ -952,7 +939,10 @@ class AudienzzAdViewHandler(
                 )
             }
             slotReloadCount++
-            isFirstAuction = false
+            googleLoad = GoogleLoad(generationAtRequest, refreshGeneration)
+            googleEventGeneration = generationAtRequest
+            setEventsListenerToAdView()
+            callback.invoke(request, resultCode)
         }
         return true
     }
@@ -971,6 +961,7 @@ class AudienzzAdViewHandler(
         // listener the publisher already set.
         val actualAppEventListener = adView.appEventListener
         adView.appEventListener = AppEventListener { name, info ->
+            if (!acceptsGoogleEvents) return@AppEventListener
             actualAppEventListener?.onAppEvent(name, info)
             if (name.equals(PREBID_APP_EVENT, ignoreCase = true)) {
                 Log.d(TAG, "onAppEvent($name) — Prebid line item won for ${adView.adUnitId}")
@@ -982,6 +973,7 @@ class AudienzzAdViewHandler(
         adView.adListener = object : AdListener() {
 
             override fun onAdClicked() {
+                if (!acceptsGoogleEvents) return
                 actualListener?.onAdClicked()
                 eventLogger?.adClick(
                     adUnitId = adView.adUnitId,
@@ -994,19 +986,23 @@ class AudienzzAdViewHandler(
             }
 
             override fun onAdLoaded() {
+                if (!completeGoogleLoad(retryableFailure = false)) return
                 restoreFromBlankIfNeeded()
                 actualListener?.onAdLoaded()
             }
 
             override fun onAdOpened() {
+                if (!acceptsGoogleEvents) return
                 actualListener?.onAdOpened()
             }
 
             override fun onAdClosed() {
+                if (!acceptsGoogleEvents) return
                 actualListener?.onAdClosed()
             }
 
             override fun onAdImpression() {
+                if (!acceptsGoogleEvents) return
                 actualListener?.onAdImpression()
                 eventLogger?.adImpression(
                     adUnitId = adView.adUnitId,
@@ -1020,11 +1016,15 @@ class AudienzzAdViewHandler(
             }
 
             override fun onAdFailedToLoad(error: LoadAdError) {
+                val retryable = error.code == com.google.android.gms.ads.AdRequest.ERROR_CODE_NETWORK_ERROR ||
+                    error.code == com.google.android.gms.ads.AdRequest.ERROR_CODE_INTERNAL_ERROR
+                if (!completeGoogleLoad(retryableFailure = retryable)) return
                 restoreFromBlankIfNeeded()
                 actualListener?.onAdFailedToLoad(error)
             }
 
             override fun onAdSwipeGestureClicked() {
+                if (!acceptsGoogleEvents) return
                 actualListener?.onAdSwipeGestureClicked()
             }
         }

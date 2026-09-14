@@ -74,6 +74,8 @@ abstract class AudienzzAdUnit internal constructor(
     internal var audienzzRefreshIntervalMillis: Long = 0
         private set
 
+    internal var refreshIntervalObserver: ((Long) -> Unit)? = null
+
     /** Kept for analytics reporting, which records the configured cadence. */
     internal val autoRefreshTime get() = audienzzRefreshIntervalMillis.toInt()
 
@@ -96,6 +98,7 @@ abstract class AudienzzAdUnit internal constructor(
             else -> (seconds * 1000L)
                 .coerceIn(AUTO_REFRESH_DELAY_MIN.toLong(), AUTO_REFRESH_DELAY_MAX.toLong())
         }
+        refreshIntervalObserver?.invoke(audienzzRefreshIntervalMillis)
     }
 
     /**

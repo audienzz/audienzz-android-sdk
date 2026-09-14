@@ -122,11 +122,11 @@ internal class AudienzzRefreshController(
      * Removes one block reason. Refresh resumes only when every reason has been cleared, so a
      * visibility resume cannot undo a publisher pause.
      */
-    fun unblock(reason: RefreshBlockReason) {
+    fun unblock(reason: RefreshBlockReason, schedule: Boolean = true) {
         if (destroyed) return
         if (!blocks.remove(reason)) return
         Log.d(logTag, "refresh unblocked from $reason (remaining $blocks)")
-        if (blocks.isEmpty()) {
+        if (schedule && blocks.isEmpty()) {
             scheduleNext()
         }
     }
@@ -147,6 +147,7 @@ internal class AudienzzRefreshController(
      * to; the caller passes that back on completion so a superseded response can be recognised.
      */
     fun onRequestStarted(reason: RefreshRequestReason): Int {
+        generation++
         inFlightGeneration = generation
         scheduler.cancel()
         if (reason != RefreshRequestReason.LOAD_RETRY) {
@@ -163,16 +164,8 @@ internal class AudienzzRefreshController(
      * or schedule anything, since its page or eligibility no longer applies.
      */
     fun onRequestCompleted(generationAtRequest: Int, success: Boolean) {
-        if (destroyed) return
-        if (inFlightGeneration == generationAtRequest) {
-            inFlightGeneration = null
-        }
-        if (generationAtRequest != generation) {
-            // Superseded: the creative it fetched belongs to a page or an eligibility state that no
-            // longer applies, so it neither restarts the interval nor schedules a successor.
-            Log.d(logTag, "ignoring completion from superseded generation $generationAtRequest")
-            return
-        }
+        if (destroyed || generationAtRequest != generation || inFlightGeneration != generationAtRequest) return
+        inFlightGeneration = null
         lastCompletionAt = scheduler.nowMillis()
 
         if (success) {

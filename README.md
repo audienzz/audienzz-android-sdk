@@ -1037,3 +1037,11 @@ License
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
+
+## Banner refresh ownership
+
+`AudienzzAdViewHandler` owns Original banner refresh; Prebid receives no refresh interval. Leave the GAM ad unit's own refresh rate unset to avoid a second schedule. `AdManagerAdView.pause()/resume()` also follow app foreground state.
+
+The configured interval starts at Google's terminal load callback. No-fill waits the normal interval; transient Google failures use bounded retries. A Prebid timeout does not cause a fast replacement of a successful Google creative. Page transitions serialize replacement loads on a reused Google view: a stale Google load drains before its replacement starts, and its callback is not forwarded as the new page's result. Install the publisher's `AdListener` before calling `load` so the SDK can wrap it.
+
+`adUnit.setAutoRefreshInterval(seconds)` now updates a running handler, including `0` to disable periodic refresh. Use `handler.stopAutoRefresh()` / `handler.resumeAutoRefresh()` for a durable publisher pause. Viewport resume, reattachment, page impressions and foregrounding do not clear it. First-load prefetch may run before attachment/refresh visibility, but still respects publisher, page and foreground gates. Gate-rejected first loads and page replacements remain pending until they can run. Call `handler.destroy()` when the slot is disposed.
