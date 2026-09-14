@@ -50,6 +50,8 @@ class AudienzzAdViewHandler(
 ) {
     companion object {
         private const val TAG = "AudienzzAdViewHandler"
+        /** Past the automatic foreground page-impression delay, so that claims the retry first. */
+        private const val DEFERRED_RETRY_DELAY_MS = 600L
 
         /** Prebid targeting keys describing the winning bid. */
         private const val HB_BIDDER_KEY = "hb_bidder"
@@ -722,17 +724,26 @@ class AudienzzAdViewHandler(
     @Volatile
     private var auctionDeferred: Boolean = false
 
-    /** Retry an auction the gate deferred. Called when the app reaches the foreground. */
+    /**
+     * Retry an auction the gate deferred, once the app is foreground.
+     *
+     * Deliberately delayed past the automatic foreground page impression. That impression recreates
+     * every banner on the active page, and a deferred banner is by definition on the active page
+     * (the retry checks `screenActive`), so retrying immediately auctioned once here and again when
+     * the impression landed. [auctionDeferred] is cleared by any auction that actually starts, so if
+     * the impression got there first this is a no-op.
+     */
     private fun retryDeferredAuction() {
         if (!auctionDeferred) return
-        auctionDeferred = false
-        if (!screenActive) return
-        Log.d(TAG, "auction deferred adUnitId=${adView.adUnitId} — retrying now that the app is foreground")
-        if (lastRefreshTime == 0L) {
-            rearmInitialLoad()
-        } else if (fetchDemand()) {
-            adUnit.resumeAutoRefresh()
-        }
+        refreshHandler.postDelayed({
+            if (!auctionDeferred || !screenActive || !AppForegroundMonitor.isForeground) return@postDelayed
+            Log.d(TAG, "auction deferred adUnitId=${adView.adUnitId} — retrying, no page impression claimed it")
+            if (lastRefreshTime == 0L) {
+                rearmInitialLoad()
+            } else if (fetchDemand()) {
+                adUnit.resumeAutoRefresh()
+            }
+        }, DEFERRED_RETRY_DELAY_MS)
     }
 
     private fun fetchDemand(): Boolean {
@@ -741,6 +752,8 @@ class AudienzzAdViewHandler(
             return false
         }
         if (!canStartAuction()) return false
+        // An auction is actually starting, so nothing is owed any more.
+        auctionDeferred = false
         // Every new auction supersedes the previous one.
         auctionGeneration++
         initialRequestGeneration = auctionGeneration

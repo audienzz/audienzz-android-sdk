@@ -72,10 +72,20 @@ internal object AppForegroundMonitor : Application.ActivityLifecycleCallbacks {
     }
 
     override fun onActivityStopped(activity: Activity) {
-        // Ignore an activity we never saw start: it was already running when the SDK registered,
-        // so it was never part of the set and removing it would under-count the visible ones.
-        if (!startedActivities.remove(activity)) return
-        hasObservedLifecycle = true
+        val wasTracked = startedActivities.remove(activity)
+        if (!wasTracked && hasObservedLifecycle) {
+            // An activity we never saw start, stopping after we already have a reliable picture:
+            // it was running before the SDK registered and something else is visible now. Ignoring
+            // it is what stops the count going false-negative while another activity is up.
+            return
+        }
+        if (!wasTracked) {
+            // The sole activity that was already running when the SDK registered is now stopping,
+            // and we have observed nothing else. This IS the first background transition — treating
+            // it as "unknown, ignore" left isForeground stuck true, so refresh never stopped and the
+            // next start never reported foreground either.
+            hasObservedLifecycle = true
+        }
         if (startedActivities.isEmpty()) {
             listeners.forEach { it.onEnterBackground() }
         }
