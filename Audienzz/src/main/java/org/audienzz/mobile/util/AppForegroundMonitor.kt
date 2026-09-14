@@ -91,6 +91,14 @@ internal object AppForegroundMonitor : Application.ActivityLifecycleCallbacks {
         }
     }
 
+    /** Drops all observed state. Tests only — the monitor is a process-wide singleton. */
+    @androidx.annotation.VisibleForTesting
+    internal fun resetForTesting() {
+        startedActivities.clear()
+        hasObservedLifecycle = false
+        listeners.clear()
+    }
+
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
     override fun onActivityResumed(activity: Activity) = Unit
     override fun onActivityPaused(activity: Activity) = Unit

@@ -31,6 +31,7 @@ build-tools-version = "34.0.0"
 # test
 test-junit = "4.13.2"
 test-mockk = "1.13.11"
+test-robolectric = "4.13"
 # lint
 detekt = "1.23.6"
 # documentation
@@ -67,6 +68,7 @@ dagger-compiler = { module = "com.google.dagger:dagger-compiler", version.ref = 
 # test
 test-junit = { module = "junit:junit", version.ref = "test-junit" }
 test-mockk = { module = "io.mockk:mockk", version.ref = "test-mockk" }
+test-robolectric = { module = "org.robolectric:robolectric", version.ref = "test-robolectric" }
 test-kotlin-coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlin-coroutines" }
 # lint
 detekt-api = { module = "io.gitlab.arturbosch.detekt:detekt-api", version.ref = "detekt" }
@@ -114,5 +116,6 @@ network = [
 test = [
     "test-junit",
     "test-mockk",
+    "test-robolectric",
     "test-kotlin-coroutines",
 ]

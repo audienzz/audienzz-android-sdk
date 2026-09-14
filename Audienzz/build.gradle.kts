@@ -20,6 +20,13 @@ ksp {
 val audienzzSdkVersion = "0.2.2"
 
 android {
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+        }
+    }
+
     compileSdk = libs.versions.sdk.compile.get().toInt()
     buildToolsVersion = libs.versions.build.tools.version.get()
     version = audienzzSdkVersion

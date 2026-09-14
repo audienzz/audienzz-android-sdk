@@ -115,6 +115,14 @@ class ScreenAdCoordinator @Inject constructor() {
     }
 }
 
+/**
+ * Test-only override. Installing a coordinator here lets a unit test exercise page transitions
+ * without standing up the whole DI graph (which would also construct the event logger and its
+ * networking). Null in production.
+ */
+@androidx.annotation.VisibleForTesting
+internal var screenAdCoordinatorOverride: ScreenAdCoordinator? = null
+
 /** Facade accessor mirroring `eventLogger` — resolves the DI singleton, null before init. */
 internal val screenAdCoordinator: ScreenAdCoordinator?
-    get() = MainComponent.screenAdCoordinator
+    get() = screenAdCoordinatorOverride ?: MainComponent.screenAdCoordinator
