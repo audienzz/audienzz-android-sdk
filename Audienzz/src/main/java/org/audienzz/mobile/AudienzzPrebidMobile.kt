@@ -116,9 +116,9 @@ object AudienzzPrebidMobile {
     /** Single sink for both the auto tracker and the manual API: page impression + v2 coordinator. */
     private fun notifyScreenResumed(screen: Any, screenName: String) {
         android.util.Log.d(TAG, "pageImpression: firing → \"$screenName\"")
-        // An explicit report always wins over a pending automatic foreground one, and is recorded
-        // so an activation arriving just afterwards doesn't schedule a duplicate.
-        lastPageImpressionAt = System.currentTimeMillis()
+        // An explicit report always wins over a pending automatic foreground one, and claims this
+        // foreground visit so an activation arriving afterwards doesn't schedule a duplicate.
+        reportedInThisForegroundVisit = true
         cancelPendingForegroundReimpression()
         eventLogger?.onScreenResumed(screenName)
         // Ads are page-scoped unconditionally. This is NOT gated on isSmartRefreshV2Enabled(), which
@@ -140,8 +140,12 @@ object AudienzzPrebidMobile {
      */
     private const val FOREGROUND_REIMPRESSION_DELAY_MS = 400L
 
+    /**
+     * Whether the app reported a page impression itself during the current foreground visit. Reset
+     * when the app backgrounds, so each visit is judged on its own.
+     */
     @Volatile
-    private var lastPageImpressionAt: Long = 0L
+    private var reportedInThisForegroundVisit: Boolean = false
 
     /**
      * Notified after every page impression, including the automatic one fired on returning to the
@@ -187,6 +191,8 @@ object AudienzzPrebidMobile {
             // or it would fire while backgrounded and recreate the whole active page — auctions that
             // would pass the response guard because they carry the current generation.
             cancelPendingForegroundReimpression()
+            // A new foreground visit starts when we come back, and nothing has been reported for it.
+            reportedInThisForegroundVisit = false
         }
 
         override fun onEnterForeground() {
@@ -198,9 +204,14 @@ object AudienzzPrebidMobile {
             val name = coordinator.activeScreenName ?: screen.javaClass.name
             // Cancelling covers only "activation first". An app that reports during activity
             // creation reports BEFORE onActivityStarted, so there is nothing pending to cancel and
-            // scheduling here would emit a second page impression 400ms later. Look back too.
-            if (System.currentTimeMillis() - lastPageImpressionAt < FOREGROUND_REIMPRESSION_DELAY_MS) {
-                android.util.Log.d(TAG, "pageImpression: foreground — app already reported \"$name\", skipping")
+            // scheduling here would emit a second page impression 400ms later.
+            //
+            // Deliberately not an elapsed-time test. Age and ownership are different questions, and
+            // conflating them fails both ways: a slow start makes a report from this visit look old
+            // enough to ignore, and a quick background/return makes a report from the PREVIOUS visit
+            // look recent enough to suppress this one.
+            if (reportedInThisForegroundVisit) {
+                android.util.Log.d(TAG, "pageImpression: foreground — app already reported \"$name\" this visit, skipping")
                 return
             }
             cancelPendingForegroundReimpression()
@@ -657,11 +668,21 @@ object AudienzzPrebidMobile {
         }
     }
 
+    /**
+     * Subscribes the automatic foreground re-impression to the lifecycle monitor. Separated from
+     * [registerActivityCallbacks] so a unit test can exercise the foreground decision without
+     * standing up an Application.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun observeForegroundReimpression() {
+        org.audienzz.mobile.util.AppForegroundMonitor.addListener(foregroundReimpressionListener)
+    }
+
     private fun registerActivityCallbacks(context: Context) {
         val app = context.applicationContext as? Application ?: return
         app.registerActivityLifecycleCallbacks(CURRENT_ACTIVITY_TRACKER)
         app.registerActivityLifecycleCallbacks(org.audienzz.mobile.util.AppForegroundMonitor)
-        org.audienzz.mobile.util.AppForegroundMonitor.addListener(foregroundReimpressionListener)
+        observeForegroundReimpression()
     }
 
     /**
