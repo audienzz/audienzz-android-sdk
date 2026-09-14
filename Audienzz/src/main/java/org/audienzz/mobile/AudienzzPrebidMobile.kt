@@ -59,6 +59,34 @@ object AudienzzPrebidMobile {
     /** Cached backend smart-refresh-v2 flag from the publisher config (set during init). */
     private var backendSmartRefreshV2: Boolean? = null
 
+    /** Cached backend PPID switches from the publisher config (set during init). */
+    private var backendPpidEnabled: Boolean? = null
+    private var backendAutomaticPpidEnabled: Boolean? = null
+
+    /**
+     * Whether any PPID may be sent. Backend-controlled; absent → enabled.
+     *
+     * There is deliberately no public setter. A PPID is always sent unless the backend turns it off
+     * for that publisher, and the only thing an app decides is *which* identifier to use, via
+     * `PpidManager.setPublisherPpid`.
+     */
+    internal fun isPpidEnabled(): Boolean = backendPpidEnabled ?: true
+
+    /** Whether the SDK may mint its own PPID. Backend-controlled; absent → enabled. */
+    internal fun isAutomaticPpidEnabled(): Boolean = backendAutomaticPpidEnabled ?: true
+
+    /**
+     * Applies the publisher config's PPID switches.
+     *
+     * Called during remote init, and by the Flutter bridge, which fetches the publisher config in
+     * Dart and so has to hand the resolved values down. Not part of the documented app-facing API.
+     */
+    @JvmStatic
+    fun applyBackendPpidConfig(ppidEnabled: Boolean?, automaticPpidEnabled: Boolean?) {
+        backendPpidEnabled = ppidEnabled
+        backendAutomaticPpidEnabled = automaticPpidEnabled
+    }
+
     /**
      * Local override for the screen-aware smart-refresh model (directional viewport gate +
      * screen-navigation pause/reload). Takes precedence over the backend `smartRefreshV2` for the
@@ -524,6 +552,10 @@ object AudienzzPrebidMobile {
 
                 companyId = publisherConfig?.ortbConfig?.schainConfig?.sellerId ?: "1"
                 backendSmartRefreshV2 = publisherConfig?.smartRefreshV2
+                applyBackendPpidConfig(
+                    ppidEnabled = publisherConfig?.ppidEnabled,
+                    automaticPpidEnabled = publisherConfig?.automaticPpidEnabled,
+                )
 
                 val baseUrl = publisherConfig?.prebidServerConfig?.url ?: audienzzHost.hostUrl
                 val prebidServerUrl = if (isPbsDebug) {

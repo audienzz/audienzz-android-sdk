@@ -2,6 +2,7 @@ package org.audienzz.mobile.util
 
 import android.content.SharedPreferences
 import android.util.Log
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.prebid.mobile.TargetingParams
 import java.util.Calendar
 import java.util.UUID
@@ -21,13 +22,14 @@ class PpidManager @Inject constructor(private val preferences: SharedPreferences
 
     /**
      * Returns the active PPID:
-     *   1. Publisher-supplied PPID (if set via [setPublisherPpid]).
-     *   2. SDK-generated UUID (persisted, rotated every 12 months).
-     *   3. `null` only when consent is missing.
+     *   1. `null` when consent is missing, or the backend has switched PPIDs off entirely.
+     *   2. Publisher-supplied PPID (if set via [setPublisherPpid]).
+     *   3. SDK-generated UUID (persisted, rotated every 12 months), unless the backend has switched
+     *      automatic PPID off.
      *
-     * A PPID is always sent otherwise — there is no opt-out switch. A missing PPID costs frequency
-     * capping and cross-session targeting, so the SDK generates and persists one rather than
-     * leaving the field empty.
+     * There is no app-facing opt-out: a PPID is sent unless the backend disables it for this
+     * publisher. A missing PPID costs frequency capping and cross-session targeting, so the SDK
+     * generates and persists one rather than leaving the field empty.
      */
     fun getPpid(): String? {
         if (TargetingParams.getPurposeConsents()?.isEmpty() ?: false) {
@@ -35,7 +37,21 @@ class PpidManager @Inject constructor(private val preferences: SharedPreferences
             return null
         }
 
+        // Master switch: suppresses the publisher's own identifier too. It is a per-publisher
+        // privacy setting, so honouring it only for the generated UUID would miss the point.
+        if (!AudienzzPrebidMobile.isPpidEnabled()) {
+            Log.d(TAG, "PPID disabled by the publisher config")
+            return null
+        }
+
         publisherPpid?.let { return it }
+
+        // The publisher's own identifier is theirs to send; this switch governs only the one the
+        // SDK would invent.
+        if (!AudienzzPrebidMobile.isAutomaticPpidEnabled()) {
+            Log.d(TAG, "Automatic PPID disabled by the publisher config")
+            return null
+        }
 
         var ppid = getPpidFromSharedPreferences()
         val ppidTimestamp = getPpidTimestamp()
