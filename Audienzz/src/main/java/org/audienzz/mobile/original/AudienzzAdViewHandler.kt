@@ -601,6 +601,31 @@ class AudienzzAdViewHandler(
      * instead of the native [enableSmartRefresh] OnPreDrawListener, which is unreliable inside
      * Flutter because the platform view is never physically moved when a Flutter scroll occurs.
      */
+    /**
+     * Publisher pause. Durable and independent: a viewport resume, a page impression or a return to
+     * the foreground will not undo it — only [resumeAutoRefresh] will.
+     *
+     * This replaces [org.audienzz.mobile.AudienzzAdUnit.stopAutoRefresh], which acted on Prebid's
+     * `BidLoader` — an object `fetchDemand` replaces, so the call routinely stopped a loader that
+     * had already been retired while its replacement kept auctioning.
+     */
+    fun stopAutoRefresh() {
+        Log.d(TAG, "stopAutoRefresh() adUnitId=${adView.adUnitId} — publisher pause")
+        refreshController.block(RefreshBlockReason.PUBLISHER)
+    }
+
+    /**
+     * Clears the publisher pause. Refresh only actually resumes once nothing else is holding it —
+     * the banner is on the active page, visible, attached, and the app is in the foreground.
+     */
+    fun resumeAutoRefresh() {
+        Log.d(TAG, "resumeAutoRefresh() adUnitId=${adView.adUnitId} — publisher resume")
+        refreshController.unblock(RefreshBlockReason.PUBLISHER)
+        if (lastRefreshTime == 0L && !refreshController.isBlocked) {
+            rearmInitialLoad()
+        }
+    }
+
     fun pauseSmartRefresh() {
         Log.d(TAG, "pauseSmartRefresh() adUnitId=${adView.adUnitId} — viewport pause")
         refreshController.block(RefreshBlockReason.NOT_VISIBLE)

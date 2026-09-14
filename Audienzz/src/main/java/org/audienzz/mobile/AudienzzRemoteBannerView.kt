@@ -89,16 +89,34 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         scope.cancel()
     }
 
+    /**
+     * Visibility resume, for a host that tracks it itself. Clears only the visibility reason, so a
+     * publisher pause or a released page survives; the refresh controller decides whether the
+     * banner is overdue or should wait out the remainder of its interval.
+     */
     fun onResume() {
-        // H4/M10: resume through the handler's stale-aware smart refresh, which restores the
-        // correct remaining interval instead of resetting Prebid's timer to a full interval.
-        adViewHandler?.resumeSmartRefresh() ?: adUnit?.resumeAutoRefresh()
+        adViewHandler?.resumeSmartRefresh()
     }
 
+    /** Visibility pause: the banner is off screen, so a refresh into it would go unseen. */
     fun onPause() {
-        // H4: cancel any pending postDelayed refresh runnable too — stopping only Prebid's timer
-        // left the scheduled runnable to fire while backgrounded, issuing ad requests off-screen.
-        adViewHandler?.pauseSmartRefresh() ?: adUnit?.stopAutoRefresh()
+        adViewHandler?.pauseSmartRefresh()
+    }
+
+    /**
+     * Publisher pause. Durable and independent of [onPause]: nothing else clears it — not a scroll
+     * back into view, not a page impression, not a return to the foreground. Only
+     * [resumeAutoRefresh] does.
+     */
+    fun stopAutoRefresh() {
+        adViewHandler?.stopAutoRefresh()
+    }
+
+    /**
+     * Clears the publisher pause. Refresh actually resumes only once nothing else is holding it.
+     */
+    fun resumeAutoRefresh() {
+        adViewHandler?.resumeAutoRefresh()
     }
 
     /**

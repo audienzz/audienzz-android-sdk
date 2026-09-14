@@ -359,4 +359,62 @@ class AudienzzAdViewHandlerTest {
 
         assertEquals(1, responses.size)
     }
+
+    // ── The publisher pause ─────────────────────────────────────────────────
+
+    @Test
+    fun `a publisher pause stops the interval`() {
+        openPage("A")
+        loadOn("A")
+        respondTo(0)
+
+        handler.stopAutoRefresh()
+        idle(10 * 30_000)
+
+        assertEquals("no refresh while the publisher has it paused", 1, responses.size)
+    }
+
+    @Test
+    fun `a publisher pause survives a viewport resume`() {
+        // The reason a single boolean could not express this: scrolling the banner back into view
+        // used to undo an explicit stopAutoRefresh(), and the publisher had no way to notice.
+        openPage("A")
+        loadOn("A")
+        respondTo(0)
+        handler.stopAutoRefresh()
+
+        handler.pauseSmartRefresh()
+        handler.resumeSmartRefresh()
+        idle(10 * 30_000)
+
+        assertEquals(1, responses.size)
+    }
+
+    @Test
+    fun `a publisher pause survives a page round trip`() {
+        openPage("A")
+        loadOn("A")
+        respondTo(0)
+        handler.stopAutoRefresh()
+
+        openPage("B")
+        openPage("A")
+        idle(10 * 30_000)
+
+        assertEquals("a page impression must not resume what the publisher stopped", 1, responses.size)
+    }
+
+    @Test
+    fun `resuming after a publisher pause restarts the interval`() {
+        openPage("A")
+        loadOn("A")
+        respondTo(0)
+        handler.stopAutoRefresh()
+        idle(10 * 30_000)
+
+        handler.resumeAutoRefresh()
+        idle(1)
+
+        assertEquals("already overdue, so it refreshes at once", 2, responses.size)
+    }
 }

@@ -105,10 +105,16 @@ abstract class AudienzzAdUnit internal constructor(
      * resuming is expressed through the refresh controller's block reasons instead, which survive a
      * response and can be cleared independently.
      */
-    @Deprecated("Refresh is owned by the SDK; use the refresh controller's block reasons.")
+    @Deprecated(
+        "Refresh is owned by the SDK. Use AudienzzAdViewHandler.resumeAutoRefresh(), which clears the " +
+            "publisher pause without disturbing the other reasons refresh may be held for.",
+    )
     fun resumeAutoRefresh() = Unit
 
-    @Deprecated("Refresh is owned by the SDK; use the refresh controller's block reasons.")
+    @Deprecated(
+        "Refresh is owned by the SDK. Use AudienzzAdViewHandler.stopAutoRefresh(), which records a " +
+            "durable publisher pause instead of acting on a Prebid BidLoader that fetchDemand replaces.",
+    )
     fun stopAutoRefresh() = Unit
 
     fun destroy() {
