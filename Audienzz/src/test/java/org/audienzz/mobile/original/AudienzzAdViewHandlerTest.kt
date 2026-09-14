@@ -360,6 +360,35 @@ class AudienzzAdViewHandlerTest {
         assertEquals(1, responses.size)
     }
 
+    // ── The other refresh owner: GAM's own ──────────────────────────────────
+
+    @Test
+    fun `backgrounding pauses the GAM ad view too`() {
+        // A GAM ad unit can carry a server-configured refresh rate that the GMA banner runs by
+        // itself. Blocking our own scheduler does nothing about it; BaseAdView.pause() is the only
+        // lever the GMA API offers, and without it a backgrounded app keeps taking GAM refreshes
+        // that cannot become impressions.
+        openPage("A")
+        loadOn("A")
+        respondTo(0)
+
+        background()
+
+        verify(exactly = 1) { adView.pause() }
+    }
+
+    @Test
+    fun `returning to the foreground resumes the GAM ad view`() {
+        openPage("A")
+        loadOn("A")
+        respondTo(0)
+        background()
+
+        foreground()
+
+        verify(exactly = 1) { adView.resume() }
+    }
+
     // ── The publisher pause ─────────────────────────────────────────────────
 
     @Test

@@ -318,9 +318,22 @@ class AudienzzAdViewHandler(
             // and that refresh calls load() directly without passing the auction gate.
             auctionGeneration++
             retireCurrentAuction()
+            // The OTHER refresh owner. A GAM ad unit can carry a server-configured refresh rate,
+            // which the GMA banner runs entirely on its own — the SDK cannot read it, and the
+            // request it issues reuses the last auction's Prebid keywords. `BaseAdView.pause()` is
+            // the one lever the GMA API gives us over it, and it is the call Google documents for
+            // Activity.onPause; without it a backgrounded app keeps taking GAM refreshes nobody can
+            // see. (No equivalent exists on iOS — GMA exposes no refresh, pause or resume there —
+            // so the server-side setting is the only control on that platform.)
+            runCatching { adView.pause() }
+                .onFailure { Log.w(TAG, "adView.pause() failed for adUnitId=${adView.adUnitId}", it) }
         }
 
         override fun onEnterForeground() {
+            // Symmetric with the pause above. Idempotent, so an app that already calls this from
+            // its own Activity lifecycle is unaffected.
+            runCatching { adView.resume() }
+                .onFailure { Log.w(TAG, "adView.resume() failed for adUnitId=${adView.adUnitId}", it) }
             // Clears only the background reason; a publisher pause or an inactive page survives.
             refreshController.unblock(RefreshBlockReason.APP_BACKGROUND)
 
