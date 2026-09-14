@@ -22,12 +22,16 @@ class AudienzzRefreshControllerTest {
         private var dueAt: Long? = null
         private var action: (() -> Unit)? = null
 
+        /** Kept past a cancel so [fireIgnoringCancellation] can model a cancel that didn't work. */
+        private var lastScheduled: (() -> Unit)? = null
+
         val hasPending: Boolean get() = action != null
         val pendingDelay: Long? get() = dueAt?.let { it - now }
 
         override fun postDelayed(delayMillis: Long, action: () -> Unit) {
             this.dueAt = now + delayMillis
             this.action = action
+            this.lastScheduled = action
         }
 
         override fun cancel() {
@@ -36,13 +40,14 @@ class AudienzzRefreshControllerTest {
         }
 
         /**
-         * Runs the pending task as if a cancel had failed to take effect. Not hypothetical: a
+         * Runs the most recently scheduled task as if a cancel had failed to take effect —
+         * deliberately ignoring [cancel], which is the whole point. Not hypothetical: a
          * cancellation that silently did nothing (posting and removing through different Handler
          * instances) shipped once, so the controller re-checks eligibility when work executes
          * rather than trusting that cancelled work stays cancelled.
          */
         fun fireIgnoringCancellation() {
-            action?.invoke()
+            lastScheduled?.invoke()
         }
 
         override fun nowMillis(): Long = now

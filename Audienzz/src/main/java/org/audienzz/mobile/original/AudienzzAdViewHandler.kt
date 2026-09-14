@@ -694,6 +694,19 @@ class AudienzzAdViewHandler(
         fetchDemand(reason)
     }
 
+    /**
+     * Whether the auction ran to a usable conclusion, which is what decides between waiting out the
+     * normal interval and retrying with backoff.
+     *
+     * Only the two transient transport failures count as a failure. Everything else — including
+     * NO_BIDS, and including a permanent misconfiguration such as an invalid config id — is a
+     * completed auction: GAM is still loaded from the callback, so the slot is filled, and retrying
+     * would buy nothing while issuing up to three extra requests per interval against a low-fill
+     * slot. Requests without impressions are the exact problem this migration exists to reduce.
+     */
+    private fun completedAuction(resultCode: AudienzzResultCode?): Boolean =
+        resultCode != AudienzzResultCode.NETWORK_ERROR && resultCode != AudienzzResultCode.TIMEOUT
+
     private fun canStartAuction(): Boolean {
         if (refreshController.isDestroyed) return false
         if (!screenActive) {
@@ -815,7 +828,7 @@ class AudienzzAdViewHandler(
             // The controller decides what happens next. Prebid has no timer of its own to re-arm,
             // and a completion that arrives while blocked or after a page transition schedules
             // nothing.
-            refreshController.onRequestCompleted(refreshGeneration, success = resultCode == AudienzzResultCode.SUCCESS)
+            refreshController.onRequestCompleted(refreshGeneration, success = completedAuction(resultCode))
 
             // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
             // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.
