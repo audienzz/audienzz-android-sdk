@@ -1045,3 +1045,13 @@ License
 The configured interval starts at Google's terminal load callback. No-fill waits the normal interval; transient Google failures use bounded retries. A Prebid timeout does not cause a fast replacement of a successful Google creative. Page transitions serialize replacement loads on a reused Google view: a stale Google load drains before its replacement starts, and its callback is not forwarded as the new page's result. Install the publisher's `AdListener` before calling `load` so the SDK can wrap it.
 
 `adUnit.setAutoRefreshInterval(seconds)` now updates a running handler, including `0` to disable periodic refresh. Use `handler.stopAutoRefresh()` / `handler.resumeAutoRefresh()` for a durable publisher pause. Viewport resume, reattachment, page impressions and foregrounding do not clear it. First-load prefetch may run before attachment/refresh visibility, but still respects publisher, page and foreground gates. Gate-rejected first loads and page replacements remain pending until they can run. Call `handler.destroy()` when the slot is disposed.
+
+
+### Remote interstitial lifecycle
+
+`AudienzzRemoteConfigInterstitial.loadAd()` loads and immediately shows once. Call it only for an
+eligible natural transition; it is not a speculative preload API. Overlapping loads/presentations
+are rejected through `Events.onError`. Destroying a pending instance prevents later demand or
+Google callbacks from showing an ad. Destruction while presenting waits for its terminal callback.
+`Events.onLifecycleEvent` supplies a load ID, event name, response ID and failure/disposal reason
+for publisher analytics. Loading, presenting, and recording an impression are distinct events.

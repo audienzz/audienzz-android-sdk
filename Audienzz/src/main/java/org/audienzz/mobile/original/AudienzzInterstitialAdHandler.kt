@@ -177,18 +177,13 @@ class AudienzzInterstitialAdHandler(
         return object : AudienzzInterstitialAdLoadCallback() {
             override fun onAdLoaded(adManagerInterstitialAd: AdManagerInterstitialAd) {
                 super.onAdLoaded(adManagerInterstitialAd)
-                adLoadCallback?.onAdLoaded(adManagerInterstitialAd)
-                // H5: the publisher may set their own FullScreenContentCallback on the ad inside
-                // their onAdLoaded (the GAM-documented pattern). Capture whatever they set and
-                // delegate to it so our analytics wrapper does not clobber their dismiss/fail/etc.
-                // callbacks; fall back to the callback passed to load() when they didn't set one.
-                val publisherDirectCallback = adManagerInterstitialAd.fullScreenContentCallback
-                adManagerInterstitialAd.fullScreenContentCallback =
-                    object : FullScreenContentCallback() {
+                // Install before onAdLoaded: remote/native publishers may show synchronously there.
+                var publisherDirectCallback = adManagerInterstitialAd.fullScreenContentCallback
+                val wrapper = object : FullScreenContentCallback() {
                         override fun onAdClicked() {
                             super.onAdClicked()
                             if (publisherDirectCallback != null) {
-                                publisherDirectCallback.onAdClicked()
+                                publisherDirectCallback?.onAdClicked()
                             } else {
                                 fullScreenContentCallback?.onAdClicked()
                             }
@@ -205,7 +200,7 @@ class AudienzzInterstitialAdHandler(
                         override fun onAdDismissedFullScreenContent() {
                             super.onAdDismissedFullScreenContent()
                             if (publisherDirectCallback != null) {
-                                publisherDirectCallback.onAdDismissedFullScreenContent()
+                                publisherDirectCallback?.onAdDismissedFullScreenContent()
                             } else {
                                 fullScreenContentCallback?.onAdDismissedFullScreenContent()
                             }
@@ -215,7 +210,7 @@ class AudienzzInterstitialAdHandler(
                         override fun onAdFailedToShowFullScreenContent(error: AdError) {
                             super.onAdFailedToShowFullScreenContent(error)
                             if (publisherDirectCallback != null) {
-                                publisherDirectCallback.onAdFailedToShowFullScreenContent(error)
+                                publisherDirectCallback?.onAdFailedToShowFullScreenContent(error)
                             } else {
                                 fullScreenContentCallback?.onAdFailedToShowFullScreenContent(error)
                             }
@@ -225,7 +220,7 @@ class AudienzzInterstitialAdHandler(
                         override fun onAdImpression() {
                             super.onAdImpression()
                             if (publisherDirectCallback != null) {
-                                publisherDirectCallback.onAdImpression()
+                                publisherDirectCallback?.onAdImpression()
                             } else {
                                 fullScreenContentCallback?.onAdImpression()
                             }
@@ -245,7 +240,7 @@ class AudienzzInterstitialAdHandler(
                         override fun onAdShowedFullScreenContent() {
                             super.onAdShowedFullScreenContent()
                             if (publisherDirectCallback != null) {
-                                publisherDirectCallback.onAdShowedFullScreenContent()
+                                publisherDirectCallback?.onAdShowedFullScreenContent()
                             } else {
                                 fullScreenContentCallback?.onAdShowedFullScreenContent()
                             }
@@ -273,6 +268,13 @@ class AudienzzInterstitialAdHandler(
                             ).also { viewabilityTimer = it }.onShown()
                         }
                     }
+                adManagerInterstitialAd.fullScreenContentCallback = wrapper
+                adLoadCallback?.onAdLoaded(adManagerInterstitialAd)
+                // Preserve a delegate installed by the publisher inside onAdLoaded.
+                if (adManagerInterstitialAd.fullScreenContentCallback !== wrapper) {
+                    publisherDirectCallback = adManagerInterstitialAd.fullScreenContentCallback
+                    adManagerInterstitialAd.fullScreenContentCallback = wrapper
+                }
             }
 
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
