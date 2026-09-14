@@ -30,6 +30,9 @@ import org.audienzz.mobile.event.util.adSubtype
 import org.audienzz.mobile.event.viewabilityStart
 import org.audienzz.mobile.event.viewabilitySuccess
 import org.audienzz.mobile.screen.screenAdCoordinator
+import org.audienzz.mobile.refresh.AudienzzRefreshController
+import org.audienzz.mobile.refresh.RefreshBlockReason
+import org.audienzz.mobile.refresh.RefreshRequestReason
 import org.audienzz.mobile.util.AppForegroundMonitor
 import org.audienzz.mobile.util.ViewabilityTracker
 import org.audienzz.mobile.util.addContinuousVisibilityListener
@@ -50,8 +53,6 @@ class AudienzzAdViewHandler(
 ) {
     companion object {
         private const val TAG = "AudienzzAdViewHandler"
-        /** Past the automatic foreground page-impression delay, so that claims the retry first. */
-        private const val DEFERRED_RETRY_DELAY_MS = 600L
 
         /** Prebid targeting keys describing the winning bid. */
         private const val HB_BIDDER_KEY = "hb_bidder"
@@ -182,13 +183,10 @@ class AudienzzAdViewHandler(
             pageEpoch = epoch
             // A hard transition invalidates the outgoing auction even when the SAME page is
             // re-reported: an in-flight response from the previous visit must not load a creative
-            // or overwrite this visit's auction analytics. Retire it rather than only invalidating
-            // it — the replacement may be deferred (a lazy banner out of range), and an
-            // un-retired loader keeps auctioning while every callback is dropped as stale.
+            // or overwrite this visit's auction analytics.
             auctionGeneration++
-            // This transition recreates the banner, so any deferred retry is now redundant.
-            cancelDeferredRetry()
             retireCurrentAuction()
+            refreshController.unblock(RefreshBlockReason.PAGE_INACTIVE)
             if (lastRefreshTime != 0L) {
                 Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, recreating (loaded before)")
                 reloadForScreenChange()
@@ -198,6 +196,7 @@ class AudienzzAdViewHandler(
             }
         } else {
             Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — INACTIVE, releasing")
+            refreshController.block(RefreshBlockReason.PAGE_INACTIVE)
             releaseForPage()
         }
     }
@@ -224,7 +223,14 @@ class AudienzzAdViewHandler(
      * leaves the ad unit reusable: the next [fetchDemand] builds a fresh loader.
      */
     private fun retireCurrentAuction() {
-        pauseSmartRefresh()
+        // Retires the outstanding Prebid loader and any scheduled work, WITHOUT recording a block
+        // reason. It used to route through pauseSmartRefresh(), which now means "not visible" — so
+        // a page transition left the banner permanently blocked on a visibility reason that nothing
+        // would ever clear, and the replacement it was supposed to issue never ran.
+        //
+        // Whether refresh is allowed afterwards is the caller's decision: a page release blocks
+        // PAGE_INACTIVE, backgrounding blocks APP_BACKGROUND, and a page activation blocks nothing.
+        refreshController.invalidatePending()
         adUnit.destroy()
         initialRequestGeneration = null
     }
@@ -263,6 +269,7 @@ class AudienzzAdViewHandler(
         screenActive = active == null || isHostedBy(active)
         if (!screenActive) {
             Log.d(TAG, "joinCurrentPage() adUnitId=${adView.adUnitId} — built for a non-active page, released")
+            refreshController.block(RefreshBlockReason.PAGE_INACTIVE)
             releaseForPage()
         }
 
@@ -272,6 +279,7 @@ class AudienzzAdViewHandler(
         // sweep running in that window releases it. Re-check on attach.
         adView.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
+                refreshController.unblock(RefreshBlockReason.DETACHED)
                 // Any released banner is a candidate: the coordinator re-checks the host, which is
                 // the thing that just became resolvable. Requiring an older epoch here excluded the
                 // common case — created during the active epoch, before its Fragment was attached.
@@ -280,7 +288,11 @@ class AudienzzAdViewHandler(
                 }
             }
 
-            override fun onViewDetachedFromWindow(v: View) = Unit
+            override fun onViewDetachedFromWindow(v: View) {
+                // A detached view cannot render, so a refresh into it would be an impression-less
+                // request. Reattaching clears only this reason.
+                refreshController.block(RefreshBlockReason.DETACHED)
+            }
         })
     }
 
@@ -300,25 +312,32 @@ class AudienzzAdViewHandler(
     private val foregroundListener = object : AppForegroundMonitor.Listener {
         override fun onEnterBackground() {
             Log.d(TAG, "background adUnitId=${adView.adUnitId} — stopping auto refresh")
+            refreshController.block(RefreshBlockReason.APP_BACKGROUND)
             // Invalidate in-flight auctions and retire the loader behind them: a response landing
             // while backgrounded re-arms Prebid's timer from both its success and failure handlers,
             // and that refresh calls load() directly without passing the auction gate.
             auctionGeneration++
-            // A retry scheduled by the previous foreground session must not survive into the next
-            // one, where it would come due alongside that session's page impression.
-            cancelDeferredRetry()
             retireCurrentAuction()
         }
 
         override fun onEnterForeground() {
-            // An auction the gate deferred runs now, whichever way the callbacks interleaved.
-            retryDeferredAuction()
+            // Clears only the background reason; a publisher pause or an inactive page survives.
+            refreshController.unblock(RefreshBlockReason.APP_BACKGROUND)
+
             if (screenAdCoordinator?.activeScreen != null) {
-                // Page-scoped app: the foreground page impression recreates this banner.
+                // A page-scoped app gets a foreground page impression, and that impression owns the
+                // recovery for every banner on the active page. Re-arming or rescheduling here as
+                // well is how a foreground used to produce two auctions for one return.
+                Log.d(TAG, "foreground adUnitId=${adView.adUnitId} — a page impression owns the recovery")
                 return
             }
+
+            // No page impressions in use, so nothing else will recover this banner.
             Log.d(TAG, "foreground adUnitId=${adView.adUnitId} — no page impressions in use, resuming refresh")
-            resumeSmartRefresh()
+            refreshController.scheduleNext()
+            if (lastRefreshTime == 0L && !refreshController.isBlocked) {
+                rearmInitialLoad()
+            }
         }
     }
 
@@ -329,17 +348,16 @@ class AudienzzAdViewHandler(
      */
     internal fun reloadForScreenChange() {
         if (storedCallback == null || lastRefreshTime == 0L) return
-        pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
-        pendingRefreshRunnable = null
+        // This transition owns the replacement, so any pending periodic refresh or retry is retired
+        // rather than allowed to issue a second one for the same transition.
+        refreshController.invalidatePending()
         // Optionally blank the current creative (keeping the slot size — INVISIBLE reserves space)
         // so the refresh is visually obvious; restored when the fresh ad loads.
         if (AudienzzPrebidMobile.blankOnScreenReload) {
             adView.visibility = View.INVISIBLE
             blankedForReload = true
         }
-        if (fetchDemand()) {
-            resumeRefresh()
-        }
+        fetchDemand(RefreshRequestReason.PAGE_IMPRESSION)
     }
 
     /**
@@ -357,18 +375,12 @@ class AudienzzAdViewHandler(
             Log.d(TAG, "reloadAd() adUnitId=${adView.adUnitId} — page released, skipping")
             return
         }
-        pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
-        pendingRefreshRunnable = null
+        refreshController.invalidatePending()
         if (AudienzzPrebidMobile.blankOnScreenReload) {
             adView.visibility = View.INVISIBLE
             blankedForReload = true
         }
-        // Only restart Prebid's timer when the auction was actually allowed. Resuming regardless
-        // restarts the existing loader, whose refresh calls load() directly and never passes
-        // through canStartAuction() — an auction straight past the gate.
-        if (fetchDemand()) {
-            resumeRefresh()
-        }
+        fetchDemand(RefreshRequestReason.PAGE_IMPRESSION)
     }
 
     private var blankedForReload = false
@@ -403,6 +415,9 @@ class AudienzzAdViewHandler(
         this.gamRequestBuilder = gamRequestBuilder
         storedCallback = callback
         lazyLoadConfig = withLazyLoading to prefetchMarginDp
+        // The configured cadence lives in the controller. Prebid is never given an interval, so it
+        // schedules nothing on either its success or its failure path.
+        refreshController.setIntervalMillis(adUnit.audienzzRefreshIntervalMillis)
         joinCurrentPage()
 
         if (withLazyLoading) {
@@ -547,69 +562,32 @@ class AudienzzAdViewHandler(
             return
         }
         val useV2 = AudienzzPrebidMobile.isSmartRefreshV2Enabled()
-        Log.d(TAG, "enableSmartRefresh() adUnitId=${adView.adUnitId} — smart refresh enabled (v2=$useV2), refreshInterval=${adUnit.autoRefreshTime}ms")
+        Log.d(
+            TAG,
+            "enableSmartRefresh() adUnitId=${adView.adUnitId} — viewport tracking enabled (v2=$useV2), " +
+                "interval=${refreshController.intervalMillis}ms",
+        )
+        // The listener now only reports visibility. It used to compute the remaining interval and
+        // post its own delayed fetch, which is one of the two schedulers that could each issue a
+        // request for the same moment; the controller owns that decision and the stale-aware
+        // resume behaviour is unchanged, because it measures the interval the same way.
         smartRefreshListener = adView.addContinuousVisibilityListener(
             useDirectionalGate = useV2,
             onBecameVisible = {
-                // Screen-aware (v2): never auto-resume via the viewport gate while this ad's screen
-                // is inactive — the screen coordinator owns pause/reload. Always true under legacy.
-                if (!screenActive) {
-                    return@addContinuousVisibilityListener
-                }
-                if (storedCallback == null) {
-                    Log.w(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became visible but not loaded yet (no callback), skipping")
-                    return@addContinuousVisibilityListener
-                }
-                if (lastRefreshTime == 0L) {
-                    Log.d(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became visible before first load, skipping smart refresh")
-                    return@addContinuousVisibilityListener
-                }
-
-                pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
-
-                val refreshIntervalMs = adUnit.autoRefreshTime.toLong()
-                if (refreshIntervalMs <= 0) {
-                    Log.d(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became visible, no refresh interval set, resuming auto-refresh only")
-                    adUnit.resumeAutoRefresh()
-                    return@addContinuousVisibilityListener
-                }
-
-                val elapsed = System.currentTimeMillis() - lastRefreshTime
-                val remaining = maxOf(0L, refreshIntervalMs - elapsed)
-
-                if (remaining == 0L) {
-                    Log.d(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became visible, ad is STALE (elapsed=${elapsed}ms >= interval=${refreshIntervalMs}ms), force-refreshing now")
-                    fetchDemand()
-                    adUnit.resumeAutoRefresh()
-                } else {
-                    Log.d(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became visible, ad is fresh (elapsed=${elapsed}ms, remaining=${remaining}ms), scheduling refresh in ${remaining}ms")
-                    val runnable = Runnable {
-                        Log.d(TAG, "smartRefresh adUnitId=${adView.adUnitId} — scheduled refresh fired after ${remaining}ms delay")
-                        fetchDemand()
-                        adUnit.resumeAutoRefresh()
-                    }
-                    pendingRefreshRunnable = runnable
-                    refreshHandler.postDelayed(runnable, remaining)
-                }
+                refreshController.unblock(RefreshBlockReason.NOT_VISIBLE)
             },
             onBecameHidden = {
-                Log.d(TAG, "smartRefresh adUnitId=${adView.adUnitId} — became hidden, stopping auto-refresh and cancelling any pending refresh")
-                pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
-                pendingRefreshRunnable = null
-                adUnit.stopAutoRefresh()
+                refreshController.block(RefreshBlockReason.NOT_VISIBLE)
             },
         )
 
-        // C3: onBecameHidden above is edge-triggered (visible -> hidden). A view that was
-        // prefetched while off-screen and is still not on screen never produced that edge, so its
-        // auto-refresh — armed by the prefetch fetchDemand — would loop forever at 0% viewability.
-        // Do an initial *level* check here: if the view isn't refresh-eligible yet, stop refresh
-        // now; the onBecameVisible edge will resume/refresh it (stale-aware) once its top is fully
-        // on screen with >=50% visible.
+        // The hidden edge is only delivered on a visible -> hidden transition. A banner prefetched
+        // while off screen never produced that edge, so its refresh would have run at 0%
+        // viewability. Take an initial level reading instead of waiting for an edge.
         val eligibleAtEnable = if (useV2) adView.isRefreshEligible() else adView.isVisibleForSmartRefresh()
         if (!eligibleAtEnable) {
-            Log.d(TAG, "enableSmartRefresh() adUnitId=${adView.adUnitId} — view not refresh-eligible at enable time (likely prefetched off-screen or top clipped), stopping auto-refresh until it enters the viewport")
-            adUnit.stopAutoRefresh()
+            Log.d(TAG, "enableSmartRefresh() adUnitId=${adView.adUnitId} — not visible at enable time, blocking refresh until it enters the viewport")
+            refreshController.block(RefreshBlockReason.NOT_VISIBLE)
         }
 
         // Page registration happens in load(), unconditionally -- see joinCurrentPage().
@@ -624,30 +602,8 @@ class AudienzzAdViewHandler(
      * Flutter because the platform view is never physically moved when a Flutter scroll occurs.
      */
     fun pauseSmartRefresh() {
-        Log.d(TAG, "pauseSmartRefresh() adUnitId=${adView.adUnitId} — pausing, cancelling pending refresh")
-        pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
-        pendingRefreshRunnable = null
-        refreshPaused = true
-        adUnit.stopAutoRefresh()
-    }
-
-    /**
-     * Whether the SDK has deliberately stopped the refresh timer (scrolled out of the viewport, app
-     * backgrounded, page released).
-     *
-     * Stopping the timer is not durable on its own: Prebid re-arms it from its OWN response
-     * handlers, on both success and failure. An auction started while the banner was on screen
-     * therefore restarted the loop when it answered after the banner scrolled away, and the ad kept
-     * auctioning and loading GAM out of view. Page release survives that because it retires the
-     * loader outright; a viewport pause has to be able to resume, so it needs this instead.
-     */
-    @Volatile
-    private var refreshPaused: Boolean = false
-
-    /** Restart Prebid's refresh timer and record that refresh is wanted again. */
-    private fun resumeRefresh() {
-        refreshPaused = false
-        adUnit.resumeAutoRefresh()
+        Log.d(TAG, "pauseSmartRefresh() adUnitId=${adView.adUnitId} — viewport pause")
+        refreshController.block(RefreshBlockReason.NOT_VISIBLE)
     }
 
     /**
@@ -660,57 +616,20 @@ class AudienzzAdViewHandler(
      * resets Prebid's timer to 0, ignoring however long the ad has already been displayed.
      */
     fun resumeSmartRefresh() {
-        // A released banner must stay dormant: the Flutter/RN visibility layer and
-        // AudienzzRemoteBannerView.onResume() both reach this, and without the guard either would
-        // restart the timer — or immediately re-auction — for a page the user has left.
-        if (!screenActive) {
-            Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — page released, skipping")
-            return
-        }
         if (storedCallback == null) {
             Log.w(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — not loaded yet (no callback), skipping")
             return
         }
+        // Clears only the visibility reason. A page release or a publisher pause is a separate
+        // reason and stays in force, so scrolling a released banner back into view cannot revive it.
+        refreshController.unblock(RefreshBlockReason.NOT_VISIBLE)
 
-        pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
-        pendingRefreshRunnable = null
-
-        if (lastRefreshTime == 0L) {
-            // Never completed a first fetch. Resuming the timer would restart a RETIRED loader,
-            // whose callback carries a superseded generation, so its response would be dropped and
-            // the slot would stay blank. Re-arm the first load instead of fetching directly: that
-            // respects the lazy settings (an offscreen lazy banner must not auction here) and
-            // refuses when a live request is already in flight.
+        if (lastRefreshTime == 0L && !refreshController.isBlocked) {
+            // Never completed a first fetch, so there is no interval to resume — the controller
+            // only schedules once something has loaded. Re-arm the first load instead, which
+            // respects the lazy settings rather than auctioning an offscreen banner.
             Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — no prior fetch, re-arming first load")
             rearmInitialLoad()
-            return
-        }
-
-        val refreshIntervalMs = adUnit.autoRefreshTime.toLong()
-        if (refreshIntervalMs <= 0) {
-            Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — no refresh interval set, resuming")
-            resumeRefresh()
-            return
-        }
-
-        val elapsed = System.currentTimeMillis() - lastRefreshTime
-        val remaining = maxOf(0L, refreshIntervalMs - elapsed)
-
-        if (remaining == 0L) {
-            Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — ad is STALE (elapsed=${elapsed}ms >= interval=${refreshIntervalMs}ms), force-refreshing now")
-            if (fetchDemand()) {
-                resumeRefresh()
-            }
-        } else {
-            Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — ad is fresh (elapsed=${elapsed}ms, remaining=${remaining}ms), scheduling refresh in ${remaining}ms")
-            val runnable = Runnable {
-                Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — scheduled refresh fired after ${remaining}ms delay")
-                if (fetchDemand()) {
-                    resumeRefresh()
-                }
-            }
-            pendingRefreshRunnable = runnable
-            refreshHandler.postDelayed(runnable, remaining)
         }
     }
 
@@ -726,6 +645,7 @@ class AudienzzAdViewHandler(
         pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
         pendingRefreshRunnable = null
         screenAdCoordinator?.deregister(this)
+        refreshController.destroy()
         AppForegroundMonitor.removeListener(foregroundListener)
         // disableSmartRefresh() is the teardown hook called from the ad view's destroy().
         viewabilityTracker?.stop()
@@ -759,84 +679,58 @@ class AudienzzAdViewHandler(
      * the call sites individually is what let earlier revisions leak an auction through whichever
      * path was missed.
      */
+    /**
+     * The single owner of periodic refresh for this banner. Prebid is never given an interval, so
+     * nothing else schedules a request.
+     */
+    internal val refreshController = AudienzzRefreshController { reason, generation ->
+        onRefreshDue(reason, generation)
+    }
+
+    /** Issues the request the controller asked for, re-checking that it is still wanted. */
+    private fun onRefreshDue(reason: RefreshRequestReason, generation: Int) {
+        if (generation != refreshController.generation) return
+        if (storedCallback == null) return
+        fetchDemand(reason)
+    }
+
     private fun canStartAuction(): Boolean {
+        if (refreshController.isDestroyed) return false
         if (!screenActive) {
+            // Kept alongside the controller's own reasons: page ownership is decided by the
+            // coordinator and a banner can be built for an already-inactive page, before any block
+            // has been recorded.
             Log.d(TAG, "auction blocked adUnitId=${adView.adUnitId} — page released")
             return false
         }
+        if (refreshController.isBlocked) {
+            Log.d(TAG, "auction blocked adUnitId=${adView.adUnitId} — ${refreshController.blockReasons}")
+            return false
+        }
         if (!AppForegroundMonitor.isForeground) {
-            // Remember it and retry when the gate opens. Rejecting outright made correctness depend
-            // on callback ordering — a page reported from onCreate is rejected because
-            // onActivityStarted hasn't run yet, and nothing ever retried that load. With a deferral
-            // the interleaving stops mattering: the work happens once, when it legitimately can.
-            Log.d(TAG, "auction deferred adUnitId=${adView.adUnitId} — app is backgrounded")
-            auctionDeferred = true
+            // Nothing is remembered here. Coming back to the foreground clears the
+            // APP_BACKGROUND reason, which makes the controller reschedule, and a banner that never
+            // loaded re-arms its first load — one owner for the recovery instead of a second timer
+            // racing the page impression.
+            Log.d(TAG, "auction blocked adUnitId=${adView.adUnitId} — app is backgrounded")
             return false
         }
         return true
     }
 
-    /** Set when the gate rejected an auction that should run as soon as the app is foreground. */
-    @Volatile
-    private var auctionDeferred: Boolean = false
 
-    /**
-     * Retry an auction the gate deferred, once the app is foreground.
-     *
-     * Deliberately delayed past the automatic foreground page impression. That impression recreates
-     * every banner on the active page, and a deferred banner is by definition on the active page
-     * (the retry checks `screenActive`), so retrying immediately auctioned once here and again when
-     * the impression landed. [auctionDeferred] is cleared by any auction that actually starts, so if
-     * the impression got there first this is a no-op.
-     */
-    private fun retryDeferredAuction() {
-        if (!auctionDeferred) return
-        cancelDeferredRetry()
-        val retry = Runnable {
-            pendingDeferredRetry = null
-            if (!auctionDeferred || !screenActive || !AppForegroundMonitor.isForeground) return@Runnable
-            // An automatic page impression still to come owns this banner's recovery: it recreates
-            // every banner on the active page. Auctioning here as well is the duplicate, and
-            // choosing delays that "should" order these two correctly does not survive a variable
-            // gap between the lifecycle callbacks that start each clock.
-            if (AudienzzPrebidMobile.hasPendingForegroundReimpression) {
-                Log.d(TAG, "auction deferred adUnitId=${adView.adUnitId} — a page impression will recreate this, standing down")
-                return@Runnable
-            }
-            Log.d(TAG, "auction deferred adUnitId=${adView.adUnitId} — retrying, no page impression claimed it")
-            if (lastRefreshTime == 0L) {
-                rearmInitialLoad()
-            } else if (fetchDemand()) {
-                adUnit.resumeAutoRefresh()
-            }
-        }
-        pendingDeferredRetry = retry
-        refreshHandler.postDelayed(retry, DEFERRED_RETRY_DELAY_MS)
-    }
 
-    /**
-     * A scheduled retry is only valid for the foreground session that scheduled it. Leaving it
-     * pending across a background/foreground cycle let a stale retry come due alongside the new
-     * session's page impression, and both auctioned.
-     */
-    private fun cancelDeferredRetry() {
-        pendingDeferredRetry?.let { refreshHandler.removeCallbacks(it) }
-        pendingDeferredRetry = null
-    }
-
-    private var pendingDeferredRetry: Runnable? = null
-
-    private fun fetchDemand(): Boolean {
+    private fun fetchDemand(reason: RefreshRequestReason = RefreshRequestReason.PERIODIC_REFRESH): Boolean {
         val callback = storedCallback ?: run {
             Log.w(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — no stored callback, skipping")
             return false
         }
         if (!canStartAuction()) return false
         // An auction is actually starting, so nothing is owed any more.
-        auctionDeferred = false
         // Every new auction supersedes the previous one.
         auctionGeneration++
         initialRequestGeneration = auctionGeneration
+        val refreshGeneration = refreshController.onRequestStarted(reason)
         val request = buildRequest()
         val isAutorefresh = adUnit.autoRefreshTime > 0
         val autorefreshTime = adUnit.autoRefreshTime.toLong()
@@ -918,13 +812,10 @@ class AudienzzAdViewHandler(
             lastRefreshTime = System.currentTimeMillis()
             setEventsListenerToAdView()
             callback.invoke(request, resultCode)
-            // Prebid has just re-armed its refresh timer from its own response handler. If the SDK
-            // paused refresh while this auction was in flight, honour that pause rather than let the
-            // response silently restart the loop off screen.
-            if (refreshPaused) {
-                Log.d(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — refresh is paused, re-stopping after response")
-                adUnit.stopAutoRefresh()
-            }
+            // The controller decides what happens next. Prebid has no timer of its own to re-arm,
+            // and a completion that arrives while blocked or after a page transition schedules
+            // nothing.
+            refreshController.onRequestCompleted(refreshGeneration, success = resultCode == AudienzzResultCode.SUCCESS)
 
             // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
             // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.

@@ -63,6 +63,8 @@ class AudienzzAdViewHandlerTest {
             responses.add(listener.captured)
         }
         every { adUnit.autoRefreshTime } returns 30_000
+        // The configured cadence now lives in Audienzz rather than Prebid's config.
+        every { adUnit.audienzzRefreshIntervalMillis } returns 30_000L
 
         handler = AudienzzAdViewHandler(adView, adUnit)
     }
@@ -125,7 +127,10 @@ class AudienzzAdViewHandlerTest {
     }
 
     @Test
-    fun `an auction blocked by backgrounding is retried once the app returns`() {
+    fun `an auction blocked by backgrounding is recovered by the foreground page impression`() {
+        // In a page-scoped app the foreground always produces a page impression — the app's own or
+        // the SDK's automatic one — and that impression owns the recovery. The banner handler
+        // deliberately does not also re-arm, which is how one return used to produce two auctions.
         openPage("A")
         background()
 
@@ -133,9 +138,28 @@ class AudienzzAdViewHandlerTest {
         assertEquals("blocked while backgrounded", 0, responses.size)
 
         foreground()
-        idle(1_000)
+        openPage("A")
+        idle(2_000)
 
-        assertEquals("retried on foreground", 1, responses.size)
+        assertEquals("exactly one auction for the return", 1, responses.size)
+    }
+
+    @Test
+    fun `an app that never reports a page still recovers on foreground`() {
+        // Without page impressions nothing else will recover the banner, so the handler resumes it
+        // directly. This is the legacy path and must keep working.
+        screenAdCoordinatorOverride = null
+        val standalone = AudienzzAdViewHandler(adView, adUnit)
+        background()
+        standalone.load(withLazyLoading = false, prefetchMarginDp = 0) { request, _ ->
+            gamLoads.add(request)
+        }
+        assertEquals(0, responses.size)
+
+        foreground()
+        idle(2_000)
+
+        assertEquals(1, responses.size)
     }
 
     @Test
@@ -260,14 +284,15 @@ class AudienzzAdViewHandlerTest {
         loadOn("A")
 
         handler.pauseSmartRefresh()
-        // Counted after the pause: pauseSmartRefresh stops the timer itself, so asserting that
-        // stopAutoRefresh was called at all would pass even if the response undid the pause.
-        clearMocks(adUnit, answers = false, recordedCalls = true, verificationMarks = true)
 
         respondTo(0)
+        idle(10 * 30_000)
 
-        verify(exactly = 1) { adUnit.stopAutoRefresh() }
-        assertEquals("the pause must not be undone by the response", 1, responses.size)
+        assertEquals(
+            "a response must not schedule a refresh for a banner that is out of view",
+            1,
+            responses.size,
+        )
     }
 
     @Test
