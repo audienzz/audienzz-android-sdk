@@ -338,7 +338,7 @@ class AudienzzAdViewHandler(
             blankedForReload = true
         }
         if (fetchDemand()) {
-            adUnit.resumeAutoRefresh()
+            resumeRefresh()
         }
     }
 
@@ -367,7 +367,7 @@ class AudienzzAdViewHandler(
         // restarts the existing loader, whose refresh calls load() directly and never passes
         // through canStartAuction() — an auction straight past the gate.
         if (fetchDemand()) {
-            adUnit.resumeAutoRefresh()
+            resumeRefresh()
         }
     }
 
@@ -497,10 +497,41 @@ class AudienzzAdViewHandler(
      */
     private fun buildRequest(): AdManagerAdRequest {
         val builder = gamRequestBuilder ?: AdManagerAdRequest.Builder()
-        AudienzzPrebidMobile.ppidManager?.getPpid()?.let { builder.setPublisherProvidedId(it) }
+        builder.applyPublisherProvidedId(AudienzzPrebidMobile.ppidManager?.getPpid())
         return AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER
             .applyToGamRequestBuilder(builder)
             .build()
+    }
+
+    /**
+     * Sets the PPID on the retained request builder, and — importantly — clears it when there is
+     * none.
+     *
+     * The builder is deliberately reused across auctions so the publisher's own targeting survives,
+     * which also means a PPID set on an earlier auction stays on it until something overwrites it.
+     * Applying the PPID only when non-null therefore left the previous identifier on every
+     * subsequent request after consent was withdrawn or the backend turned PPID off — exactly the
+     * cases where it must stop being sent.
+     *
+     * GMA annotates the setter's parameter non-null, so clearing goes through the public method
+     * reflectively. The method name is stable public API (not obfuscated) and the implementation is
+     * a plain field assignment; if a future version rejects null we log and leave the builder as it
+     * was rather than crash a publisher's ad load.
+     */
+    private fun AdManagerAdRequest.Builder.applyPublisherProvidedId(ppid: String?) {
+        if (ppid != null) {
+            setPublisherProvidedId(ppid)
+            return
+        }
+        try {
+            AdManagerAdRequest.Builder::class.java
+                .getMethod("setPublisherProvidedId", String::class.java)
+                .invoke(this, null)
+        } catch (e: ReflectiveOperationException) {
+            Log.w(TAG, "Could not clear the PPID on the request builder: ${e.message}")
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "Could not clear the PPID on the request builder: ${e.message}")
+        }
     }
 
     /**
@@ -596,7 +627,27 @@ class AudienzzAdViewHandler(
         Log.d(TAG, "pauseSmartRefresh() adUnitId=${adView.adUnitId} — pausing, cancelling pending refresh")
         pendingRefreshRunnable?.let { refreshHandler.removeCallbacks(it) }
         pendingRefreshRunnable = null
+        refreshPaused = true
         adUnit.stopAutoRefresh()
+    }
+
+    /**
+     * Whether the SDK has deliberately stopped the refresh timer (scrolled out of the viewport, app
+     * backgrounded, page released).
+     *
+     * Stopping the timer is not durable on its own: Prebid re-arms it from its OWN response
+     * handlers, on both success and failure. An auction started while the banner was on screen
+     * therefore restarted the loop when it answered after the banner scrolled away, and the ad kept
+     * auctioning and loading GAM out of view. Page release survives that because it retires the
+     * loader outright; a viewport pause has to be able to resume, so it needs this instead.
+     */
+    @Volatile
+    private var refreshPaused: Boolean = false
+
+    /** Restart Prebid's refresh timer and record that refresh is wanted again. */
+    private fun resumeRefresh() {
+        refreshPaused = false
+        adUnit.resumeAutoRefresh()
     }
 
     /**
@@ -638,7 +689,7 @@ class AudienzzAdViewHandler(
         val refreshIntervalMs = adUnit.autoRefreshTime.toLong()
         if (refreshIntervalMs <= 0) {
             Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — no refresh interval set, resuming")
-            adUnit.resumeAutoRefresh()
+            resumeRefresh()
             return
         }
 
@@ -648,14 +699,14 @@ class AudienzzAdViewHandler(
         if (remaining == 0L) {
             Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — ad is STALE (elapsed=${elapsed}ms >= interval=${refreshIntervalMs}ms), force-refreshing now")
             if (fetchDemand()) {
-                adUnit.resumeAutoRefresh()
+                resumeRefresh()
             }
         } else {
             Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — ad is fresh (elapsed=${elapsed}ms, remaining=${remaining}ms), scheduling refresh in ${remaining}ms")
             val runnable = Runnable {
                 Log.d(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — scheduled refresh fired after ${remaining}ms delay")
                 if (fetchDemand()) {
-                    adUnit.resumeAutoRefresh()
+                    resumeRefresh()
                 }
             }
             pendingRefreshRunnable = runnable
@@ -867,6 +918,13 @@ class AudienzzAdViewHandler(
             lastRefreshTime = System.currentTimeMillis()
             setEventsListenerToAdView()
             callback.invoke(request, resultCode)
+            // Prebid has just re-armed its refresh timer from its own response handler. If the SDK
+            // paused refresh while this auction was in flight, honour that pause rather than let the
+            // response silently restart the loop off screen.
+            if (refreshPaused) {
+                Log.d(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — refresh is paused, re-stopping after response")
+                adUnit.stopAutoRefresh()
+            }
 
             // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
             // A real Prebid win always carries hb_bidder, so gate the win on it; otherwise it's a no-bid.

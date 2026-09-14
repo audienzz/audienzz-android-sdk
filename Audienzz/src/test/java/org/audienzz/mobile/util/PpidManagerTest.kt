@@ -136,6 +136,24 @@ class PpidManagerTest {
     }
 
     @Test
+    fun `the setter can clear a previously set PPID on a reused builder`() {
+        // The request builder is reused across auctions, so a PPID set on an earlier one stays
+        // until something overwrites it. GMA annotates the setter non-null, so the SDK clears it
+        // reflectively — this pins that the public method still accepts null, which is the whole
+        // basis for that approach.
+        val method = com.google.android.gms.ads.admanager.AdManagerAdRequest.Builder::class.java
+            .getMethod("setPublisherProvidedId", String::class.java)
+        val builder = com.google.android.gms.ads.admanager.AdManagerAdRequest.Builder()
+
+        builder.setPublisherProvidedId("previous-identifier")
+        method.invoke(builder, null)
+
+        // Reaching here without an exception is the assertion: a throwing setter would mean the
+        // SDK cannot clear the identifier and would keep sending it after consent is withdrawn.
+        assertNotNull(builder.build())
+    }
+
+    @Test
     fun `switches explicitly set to true behave as enabled`() {
         AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = true, automaticPpidEnabled = true)
 

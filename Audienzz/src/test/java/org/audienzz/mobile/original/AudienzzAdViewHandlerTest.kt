@@ -249,6 +249,43 @@ class AudienzzAdViewHandlerTest {
         verify(exactly = 0) { adUnit.resumeAutoRefresh() }
     }
 
+    // ── Durable pause ───────────────────────────────────────────────────────
+
+    @Test
+    fun `a viewport pause survives a response that lands after it`() {
+        // Prebid re-arms its refresh timer from its OWN response handlers, on both success and
+        // failure. An auction started while the banner was on screen therefore restarted the loop
+        // when it answered after the banner had scrolled away, and the ad kept auctioning off view.
+        openPage("A")
+        loadOn("A")
+
+        handler.pauseSmartRefresh()
+        // Counted after the pause: pauseSmartRefresh stops the timer itself, so asserting that
+        // stopAutoRefresh was called at all would pass even if the response undid the pause.
+        clearMocks(adUnit, answers = false, recordedCalls = true, verificationMarks = true)
+
+        respondTo(0)
+
+        verify(exactly = 1) { adUnit.stopAutoRefresh() }
+        assertEquals("the pause must not be undone by the response", 1, responses.size)
+    }
+
+    @Test
+    fun `resuming after a pause auctions again`() {
+        // The pause has to be reversible: this is scroll visibility, not a page release. Resume is
+        // stale-aware, so it schedules the next auction for the remainder of the refresh interval
+        // rather than firing immediately.
+        openPage("A")
+        loadOn("A")
+        respondTo(0)
+        handler.pauseSmartRefresh()
+
+        handler.resumeSmartRefresh()
+        idle(31_000)
+
+        assertEquals("the banner auctions again once back in the viewport", 2, responses.size)
+    }
+
     // ── First-load recovery ─────────────────────────────────────────────────
 
     @Test
