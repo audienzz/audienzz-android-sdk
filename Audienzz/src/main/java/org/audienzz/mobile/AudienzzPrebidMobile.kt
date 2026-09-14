@@ -93,12 +93,15 @@ object AudienzzPrebidMobile {
         lastPageImpressionAt = System.currentTimeMillis()
         cancelPendingForegroundReimpression()
         eventLogger?.onScreenResumed(screenName)
-        pageImpressionObserver?.invoke(screenName)
         // Ads are page-scoped unconditionally. This is NOT gated on isSmartRefreshV2Enabled(), which
         // now only selects the viewport gate used for scroll pause/resume: every page impression
         // releases the previous page's banners and recreates the incoming page's, so a banner can
         // never keep auctioning for a screen the user has left.
         org.audienzz.mobile.screen.screenAdCoordinator?.onScreenResumed(screen, screenName)
+        // Emitted only once the transition is complete. An observer is free to report another page
+        // — the bridges hand this to app code — and running it mid-transition let that nested
+        // report finish first, after which this call's sweep overwrote it with the older page.
+        pageImpressionObserver?.invoke(screenName)
     }
 
     /**
@@ -127,6 +130,14 @@ object AudienzzPrebidMobile {
 
     private val foregroundHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var pendingForegroundReimpression: Runnable? = null
+
+    /**
+     * True while an automatic foreground page impression is scheduled. A banner whose auction the
+     * gate deferred consults this: the impression recreates every banner on the active page, so it
+     * owns the recovery and a deferred retry must stand down rather than auction as well.
+     */
+    internal val hasPendingForegroundReimpression: Boolean
+        get() = pendingForegroundReimpression != null
 
     private fun cancelPendingForegroundReimpression() {
         pendingForegroundReimpression?.let { foregroundHandler.removeCallbacks(it) }

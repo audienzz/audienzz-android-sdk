@@ -186,6 +186,8 @@ class AudienzzAdViewHandler(
             // it — the replacement may be deferred (a lazy banner out of range), and an
             // un-retired loader keeps auctioning while every callback is dropped as stale.
             auctionGeneration++
+            // This transition recreates the banner, so any deferred retry is now redundant.
+            cancelDeferredRetry()
             retireCurrentAuction()
             if (lastRefreshTime != 0L) {
                 Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — ACTIVE, recreating (loaded before)")
@@ -302,6 +304,9 @@ class AudienzzAdViewHandler(
             // while backgrounded re-arms Prebid's timer from both its success and failure handlers,
             // and that refresh calls load() directly without passing the auction gate.
             auctionGeneration++
+            // A retry scheduled by the previous foreground session must not survive into the next
+            // one, where it would come due alongside that session's page impression.
+            cancelDeferredRetry()
             retireCurrentAuction()
         }
 
@@ -735,16 +740,40 @@ class AudienzzAdViewHandler(
      */
     private fun retryDeferredAuction() {
         if (!auctionDeferred) return
-        refreshHandler.postDelayed({
-            if (!auctionDeferred || !screenActive || !AppForegroundMonitor.isForeground) return@postDelayed
+        cancelDeferredRetry()
+        val retry = Runnable {
+            pendingDeferredRetry = null
+            if (!auctionDeferred || !screenActive || !AppForegroundMonitor.isForeground) return@Runnable
+            // An automatic page impression still to come owns this banner's recovery: it recreates
+            // every banner on the active page. Auctioning here as well is the duplicate, and
+            // choosing delays that "should" order these two correctly does not survive a variable
+            // gap between the lifecycle callbacks that start each clock.
+            if (AudienzzPrebidMobile.hasPendingForegroundReimpression) {
+                Log.d(TAG, "auction deferred adUnitId=${adView.adUnitId} — a page impression will recreate this, standing down")
+                return@Runnable
+            }
             Log.d(TAG, "auction deferred adUnitId=${adView.adUnitId} — retrying, no page impression claimed it")
             if (lastRefreshTime == 0L) {
                 rearmInitialLoad()
             } else if (fetchDemand()) {
                 adUnit.resumeAutoRefresh()
             }
-        }, DEFERRED_RETRY_DELAY_MS)
+        }
+        pendingDeferredRetry = retry
+        refreshHandler.postDelayed(retry, DEFERRED_RETRY_DELAY_MS)
     }
+
+    /**
+     * A scheduled retry is only valid for the foreground session that scheduled it. Leaving it
+     * pending across a background/foreground cycle let a stale retry come due alongside the new
+     * session's page impression, and both auctioned.
+     */
+    private fun cancelDeferredRetry() {
+        pendingDeferredRetry?.let { refreshHandler.removeCallbacks(it) }
+        pendingDeferredRetry = null
+    }
+
+    private var pendingDeferredRetry: Runnable? = null
 
     private fun fetchDemand(): Boolean {
         val callback = storedCallback ?: run {

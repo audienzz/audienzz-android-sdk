@@ -90,13 +90,16 @@ class AudienzzAdViewHandlerTest {
     private fun idle(millis: Long) =
         shadowOf(Looper.getMainLooper()).idleFor(millis, TimeUnit.MILLISECONDS)
 
-    private fun background() {
-        val activity = mockk<android.app.Activity>(relaxed = true)
-        AppForegroundMonitor.onActivityStarted(activity)
-        AppForegroundMonitor.onActivityStopped(activity)
-    }
+    /**
+     * One host activity for the whole test, started and stopped like a real one. Using a fresh
+     * mock per call does not model anything: stopping an activity while another is still started
+     * is not a background transition, so the app never actually left the foreground.
+     */
+    private val hostActivity: android.app.Activity = mockk(relaxed = true)
 
-    private fun foreground() = AppForegroundMonitor.onActivityStarted(mockk(relaxed = true))
+    private fun background() = AppForegroundMonitor.onActivityStopped(hostActivity)
+
+    private fun foreground() = AppForegroundMonitor.onActivityStarted(hostActivity)
 
     // ── The auction gate ────────────────────────────────────────────────────
 
@@ -258,6 +261,29 @@ class AudienzzAdViewHandlerTest {
         openPage("A")
 
         assertEquals("activation must re-arm the first load", 1, responses.size)
+    }
+
+    @Test
+    fun `a retry scheduled before backgrounding does not fire in the next foreground session`() {
+        // Foreground at t=0, background at t=100, foreground again at t=200. The stale retry from
+        // the first session came due at t=600, at the same moment as the second session's
+        // automatic page impression (scheduled 400ms after its foreground) -- and both auctioned.
+        // A retry belongs to the session that scheduled it.
+        openPage("A")
+        background()
+        loadOn("A")
+
+        foreground() // t=0, schedules a retry
+        idle(100)
+        background()
+        idle(100)
+        foreground() // t=200
+
+        // The automatic foreground page impression, 400ms after this foreground.
+        android.os.Handler(Looper.getMainLooper()).postDelayed({ openPage("A") }, 400)
+        idle(5_000)
+
+        assertEquals(1, responses.size)
     }
 
     @Test
