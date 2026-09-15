@@ -457,4 +457,111 @@ class AudienzzAdViewHandlerTest {
 
         assertEquals("already overdue, so it refreshes at once", 2, responses.size)
     }
+    @Test fun `missing Google callback expires without fast retry and manual reload works`() {
+        openPage("A"); loadOn("A")
+        responses[0](AudienzzResultCode.SUCCESS) // Deliberately do not deliver a Google result.
+        idle(120_000)
+        assertEquals(1, responses.size)
+        handler.reloadAd()
+        assertEquals(2, responses.size)
+        respondTo(1)
+        idle(30_000)
+        assertEquals(3, responses.size)
+    }
+
+    @Test fun `missing Google callback releases a pending same-page replacement`() {
+        openPage("A"); loadOn("A")
+        responses[0](AudienzzResultCode.SUCCESS)
+        openPage("A")
+        assertEquals(1, responses.size)
+        idle(120_000)
+        assertEquals(2, responses.size)
+        respondTo(1)
+        idle(30_000)
+        assertEquals(3, responses.size)
+    }
+
+    @Test fun `watchdog cannot resurrect a destroyed or released slot`() {
+        openPage("A"); loadOn("A")
+        responses[0](AudienzzResultCode.SUCCESS)
+        openPage("B")
+        idle(120_000)
+        assertEquals(1, responses.size)
+        openPage("A")
+        assertEquals(2, responses.size)
+        responses[1](AudienzzResultCode.SUCCESS)
+        handler.destroy()
+        idle(180_000)
+        assertEquals(2, responses.size)
+    }
+
+    @Test fun `Google terminal events outside an SDK load still reach the publisher`() {
+        val publisher = mockk<com.google.android.gms.ads.AdListener>(relaxed = true)
+        googleListener = publisher
+        openPage("A"); loadOn("A"); respondTo(0)
+        googleListener.onAdLoaded()
+        val error = com.google.android.gms.ads.LoadAdError(3, "No fill", "Google", null, null)
+        googleListener.onAdFailedToLoad(error)
+        verify(exactly = 2) { publisher.onAdLoaded() }
+        verify(exactly = 1) { publisher.onAdFailedToLoad(error) }
+        assertEquals(1, responses.size)
+    }
+
+    @Test fun `visible creative remains event-live during a replacement bid and deferred page reload`() {
+        val publisher = mockk<com.google.android.gms.ads.AdListener>(relaxed = true)
+        googleListener = publisher
+        openPage("A"); loadOn("A"); respondTo(0)
+        idle(30_000) // Second Prebid auction remains in flight.
+        assertEquals(2, responses.size)
+        googleListener.onAdClicked(); googleListener.onAdImpression()
+        handler.stopAutoRefresh()
+        openPage("A") // Replacement is now deferred by the publisher pause.
+        googleListener.onAdClicked(); googleListener.onAdImpression()
+        verify(exactly = 2) { publisher.onAdClicked() }
+        verify(exactly = 2) { publisher.onAdImpression() }
+        openPage("B")
+        googleListener.onAdClicked()
+        verify(exactly = 2) { publisher.onAdClicked() }
+    }
+
+    @Test fun `next load repairs a publisher-replaced Google listener without nesting wrappers`() {
+        openPage("A"); loadOn("A"); respondTo(0)
+        val publisher = mockk<com.google.android.gms.ads.AdListener>(relaxed = true)
+        googleListener = publisher
+        handler.reloadAd(); respondTo(1)
+        handler.reloadAd(); respondTo(2)
+        googleListener.onAdClicked()
+        verify(exactly = 2) { publisher.onAdLoaded() }
+        verify(exactly = 1) { publisher.onAdClicked() }
+    }
+
+    @Test fun `cancelled old watchdog cannot expire a later Google load`() {
+        openPage("A"); loadOn("A")
+        responses[0](AudienzzResultCode.SUCCESS)
+        val field = handler.javaClass.getDeclaredField("googleLoadTimeout").apply { isAccessible = true }
+        val oldWatchdog = field.get(handler) as Runnable
+        googleListener.onAdLoaded()
+        handler.reloadAd()
+        responses[1](AudienzzResultCode.SUCCESS)
+        oldWatchdog.run() // Deliver despite cancellation, as a queued callback could do.
+        handler.reloadAd()
+        assertEquals("replacement must still wait for its own Google result", 2, responses.size)
+        googleListener.onAdLoaded()
+        assertEquals(3, responses.size)
+    }
+
+    @Test fun `Google network error retries but no fill uses the normal cadence`() {
+        openPage("A"); loadOn("A")
+        responses[0](AudienzzResultCode.SUCCESS)
+        googleListener.onAdFailedToLoad(com.google.android.gms.ads.LoadAdError(
+            com.google.android.gms.ads.AdRequest.ERROR_CODE_NETWORK_ERROR, "network", "Google", null, null))
+        idle(1_999); assertEquals(1, responses.size)
+        idle(1); assertEquals(2, responses.size)
+        responses[1](AudienzzResultCode.SUCCESS)
+        googleListener.onAdFailedToLoad(com.google.android.gms.ads.LoadAdError(
+            com.google.android.gms.ads.AdRequest.ERROR_CODE_NO_FILL, "no fill", "Google", null, null))
+        idle(8_000); assertEquals(2, responses.size)
+        idle(22_000); assertEquals(3, responses.size)
+    }
+
 }

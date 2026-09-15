@@ -73,17 +73,24 @@ class AudienzzAdViewHandler(
         private const val AD_SERVER_BIDDER = "google"
     }
 
-    // Google does not identify requests in its callbacks. Keep one Google load outstanding even
-    // across page changes, then discard its stale terminal callback before loading the replacement.
+    // Serialize Google loads across page changes, bounded by a watchdog if completion is lost.
+    // Google callbacks have no request ID: after expiry, an extremely late result cannot be
+    // distinguished from a newer load's result on this publisher-owned view.
     private data class GoogleLoad(val auction: Int, val refresh: Int)
+    private var googleLoadTimeout: Runnable? = null
+    private var creativePageGeneration = 0
+    private var renderAuctionId: String? = null
     private var googleLoad: GoogleLoad? = null
-    private var googleEventGeneration: Int? = null
+    private var googleEventPageGeneration: Int? = null
     private val acceptsGoogleEvents: Boolean
-        get() = googleEventGeneration == auctionGeneration && screenActive && !refreshController.isDestroyed
+        get() = googleEventPageGeneration == creativePageGeneration && screenActive && !refreshController.isDestroyed
     private var pendingLoadReason: RefreshRequestReason? = null
 
     private var isFirstDemandFetch = true
-    private var eventListenerInstalled = false
+    private var installedAdListener: AdListener? = null
+    private var installedAppEventListener: AppEventListener? = null
+    private var publisherAdListener: AdListener? = null
+    private var publisherAppEventListener: AppEventListener? = null
 
     // Smart refresh state
     private var smartRefreshListener: ViewTreeObserver.OnPreDrawListener? = null
@@ -218,6 +225,7 @@ class AudienzzAdViewHandler(
      * auto-refresh, so the handler issues no further auctions or GAM loads until its page returns.
      */
     private fun releaseForPage() {
+        creativePageGeneration++
         // Bump the generation FIRST so a response already in flight is recognised as stale.
         auctionGeneration++
         retireCurrentAuction()
@@ -709,6 +717,8 @@ class AudienzzAdViewHandler(
     fun destroy() {
         Log.d(TAG, "destroy() adUnitId=${adView.adUnitId}")
         disableSmartRefresh()
+        cancelGoogleLoadTimeout()
+        googleLoad = null
         adUnit.stopAutoRefresh()
         adUnit.destroy()
         gamRequestBuilder = null
@@ -762,7 +772,8 @@ class AudienzzAdViewHandler(
 
     /** Returns false for a Google result from a page that has already been superseded. */
     private fun completeGoogleLoad(retryableFailure: Boolean): Boolean {
-        val load = googleLoad ?: return false
+        val load = googleLoad ?: return acceptsGoogleEvents
+        cancelGoogleLoadTimeout()
         googleLoad = null
         val current = load.auction == auctionGeneration && screenActive && !refreshController.isDestroyed
         if (current) {
@@ -773,6 +784,32 @@ class AudienzzAdViewHandler(
             resumeEligibleWork()
         }
         return current
+    }
+
+    private fun cancelGoogleLoadTimeout() {
+        googleLoadTimeout?.let { refreshHandler.removeCallbacks(it) }
+        googleLoadTimeout = null
+    }
+
+    private fun watchGoogleLoad(load: GoogleLoad) {
+        cancelGoogleLoadTimeout()
+        val timeout = Runnable {
+            if (googleLoad !== load || refreshController.isDestroyed) return@Runnable
+            googleLoad = null
+            googleLoadTimeout = null
+            Log.w(TAG, "Google banner load timed out after 120s; releasing the wait for ${adView.adUnitId}")
+            // A missing callback is not a proven transport failure. Resume the configured cadence,
+            // never the fast network-error retry loop. Explicit pending page work may run now.
+            if (load.auction == auctionGeneration) {
+                lastRefreshTime = System.currentTimeMillis()
+                refreshController.onRequestCompleted(load.refresh, success = true)
+                restoreFromBlankIfNeeded()
+            } else {
+                resumeEligibleWork()
+            }
+        }
+        googleLoadTimeout = timeout
+        refreshHandler.postDelayed(timeout, 120_000L)
     }
 
     private fun fetchDemand(reason: RefreshRequestReason = RefreshRequestReason.PERIODIC_REFRESH): Boolean {
@@ -939,8 +976,11 @@ class AudienzzAdViewHandler(
                 )
             }
             slotReloadCount++
-            googleLoad = GoogleLoad(generationAtRequest, refreshGeneration)
-            googleEventGeneration = generationAtRequest
+            val load = GoogleLoad(generationAtRequest, refreshGeneration)
+            googleLoad = load
+            googleEventPageGeneration = creativePageGeneration
+            renderAuctionId = currentAuctionId
+            watchGoogleLoad(load)
             setEventsListenerToAdView()
             callback.invoke(request, resultCode)
         }
@@ -948,19 +988,19 @@ class AudienzzAdViewHandler(
     }
 
     private fun setEventsListenerToAdView() {
-        // H2: install the analytics wrapper exactly once. This method runs in every auction's
-        // completion (initial + each Prebid auto-refresh); re-wrapping each time nested the prior
-        // wrapper, so after N refreshes a single real click fired adClick N+1 times (and re-invoked
-        // the publisher's callbacks N+1 times). GAM reuses the same adView listener across
-        // refreshes, so wrapping the publisher's listener once is sufficient.
-        if (eventListenerInstalled) return
-        eventListenerInstalled = true
+        // Install or repair observation without wrapping our own listener. Repeated wrapping
+        // multiplies publisher callbacks and analytics; listener replacement must still recover.
+        if (installedAdListener != null && adView.adListener === installedAdListener && adView.appEventListener === installedAppEventListener) return
+        // A publisher can replace either listener after setup. Capture that replacement rather
+        // than nesting our previous wrapper; the next load repairs observation after a timeout.
+        if (adView.adListener !== installedAdListener) publisherAdListener = adView.adListener
+        if (adView.appEventListener !== installedAppEventListener) publisherAppEventListener = adView.appEventListener
 
         // GAM fires an app event when the Prebid line item wins the ad-server auction; absence of
         // it by impression time means a non-Prebid (Google/ad-server) creative rendered. Chain any
         // listener the publisher already set.
-        val actualAppEventListener = adView.appEventListener
-        adView.appEventListener = AppEventListener { name, info ->
+        val actualAppEventListener = publisherAppEventListener
+        installedAppEventListener = AppEventListener { name, info ->
             if (!acceptsGoogleEvents) return@AppEventListener
             actualAppEventListener?.onAppEvent(name, info)
             if (name.equals(PREBID_APP_EVENT, ignoreCase = true)) {
@@ -969,8 +1009,9 @@ class AudienzzAdViewHandler(
             }
         }
 
-        val actualListener: AdListener? = adView.adListener
-        adView.adListener = object : AdListener() {
+        adView.appEventListener = installedAppEventListener
+        val actualListener: AdListener? = publisherAdListener
+        installedAdListener = object : AdListener() {
 
             override fun onAdClicked() {
                 if (!acceptsGoogleEvents) return
@@ -1028,6 +1069,7 @@ class AudienzzAdViewHandler(
                 actualListener?.onAdSwipeGestureClicked()
             }
         }
+        adView.adListener = requireNotNull(installedAdListener)
     }
 
     /**
@@ -1098,7 +1140,7 @@ class AudienzzAdViewHandler(
             // stub (GMA exposes no served-creative id → "0").
             creativeId = if (bidder == AD_SERVER_BIDDER) "0" else base.creativeId,
             // Always carry the SDK-minted auction id, even on a direct fill with no Prebid economics.
-            auctionId = base.auctionId ?: currentAuctionId,
+            auctionId = base.auctionId ?: renderAuctionId,
         )
     }
 }
