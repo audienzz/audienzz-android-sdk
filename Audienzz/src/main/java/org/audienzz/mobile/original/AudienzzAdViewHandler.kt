@@ -748,6 +748,12 @@ class AudienzzAdViewHandler(
     }
 
     private fun canStartAuction(reason: RefreshRequestReason): Boolean {
+        // The first two checks are belt-and-braces: APP_BACKGROUND and PAGE_INACTIVE block reasons
+        // already cover them below, and the first-load exemption is deliberately narrow enough not
+        // to let either through. Mutating these two away leaves the suite green for exactly that
+        // reason — the block reasons are what carry the guarantee. They are kept because they are
+        // cheap and because a future exemption widened by accident would otherwise go unnoticed
+        // here rather than at the one place the decision is made.
         if (refreshController.isDestroyed || !screenActive || !AppForegroundMonitor.isForeground) return false
         if (AudienzzPrebidMobile.hasPendingForegroundReimpression) return false
         // A first load may prefetch before attachment / refresh visibility. Publisher, page and

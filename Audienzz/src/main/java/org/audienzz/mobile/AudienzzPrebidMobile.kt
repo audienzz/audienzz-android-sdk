@@ -129,7 +129,11 @@ object AudienzzPrebidMobile {
         // Emitted only once the transition is complete. An observer is free to report another page
         // — the bridges hand this to app code — and running it mid-transition let that nested
         // report finish first, after which this call's sweep overwrote it with the older page.
-        pageImpressionObserver?.invoke(screenName)
+        // The ROUTING key, not the display name. A bridge matches its banners against the token the
+        // coordinator is now holding, so emitting the name would leave every bridge banner unable to
+        // recognise its own page impression whenever the two differ. They are identical for a
+        // name-only report, so nothing changes for an app that never supplies an id.
+        pageImpressionObserver?.invoke(screen as? String ?: screenName)
     }
 
     /**
