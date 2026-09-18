@@ -142,7 +142,13 @@ The correct prefetch mechanism depends on the scroll container your ad lives in:
 
 In a `RecyclerView` views are created and bound on-demand — only just before an item scrolls into view (typically 1 item ahead). By the time `onBindViewHolder` runs and `load()` is called, the view is already within ~40 dp of the viewport.
 
-**More precisely, the margin saturates rather than stops working.** Raising it above the bind distance changes nothing — the lead time is capped by when `RecyclerView` binds the holder, so 200, 600 and 2000 dp behave identically. Lowering it still works: `prefetchMarginDp = 0` inside a `RecyclerView` does exactly what it says, and suppresses auctions for items the reader binds but never scrolls to. One consequence worth knowing: at a saturated margin, `withLazyLoading = true` and `withLazyLoading = false` fetch at effectively the same moment.
+**More precisely, the margin saturates rather than stops working.** Raising it above the bind distance changes nothing — the lead time is capped by when `RecyclerView` binds the holder, so 200, 600 and 2000 dp behave identically. Lowering it still works: `prefetchMarginDp = 0` inside a `RecyclerView` does exactly what it says, and suppresses auctions for items the reader binds but never scrolls to.
+
+Lazy and eager loading **converge** in a `RecyclerView`, but they are not equivalent. They coincide only when the holder is bound inside the margin *and* the ad is eligible at that moment. They diverge when:
+
+- the margin is `0` or smaller than the bind distance — lazy then waits and eager does not;
+- `setInitialPrefetchItemCount` is raised, which can bind an item outside the margin;
+- the slot is not yet eligible when the item appears — lazy re-evaluates, eager has already requested.
 
 #### ScrollView / NestedScrollView
 
@@ -164,7 +170,7 @@ AudienzzAdViewHandler(adView = gamAdView, adUnit = audienzzAdUnit)
 
 #### RecyclerView
 
-To start the auction earlier in a `RecyclerView`, the only real lever is making the holder bind earlier — `setInitialPrefetchItemCount`. Setting `withLazyLoading = false` is equivalent in timing to leaving lazy loading on with the default margin; use it when you want the intent to be explicit:
+To start the auction earlier in a `RecyclerView`, the main lever is making the holder bind earlier — `setInitialPrefetchItemCount`. `withLazyLoading = false` additionally removes the viewport condition entirely, which matters when the item is bound outside the margin or is not yet eligible:
 
 ```kotlin
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -192,7 +198,7 @@ If raising it does not move the auction earlier, the ad component is not mountin
 
 | Setting | Publisher override | Ad config field | Default |
 |---|---|---|---|
-| Lazy loading | `lazyLoadOverride` | `lazyLoad` | `false` — auction starts at `loadAd()` |
+| Lazy loading | `lazyLoadOverride` | `lazyLoad` | `true` — the auction waits for the viewport |
 | Prefetch margin | `prefetchMarginDpOverride` | `prefetchDistanceDp` | `200` dp |
 
 ```kotlin
@@ -204,7 +210,7 @@ banner.loadAd()
 
 Set them **before** `loadAd()`; the values are read when the ad handler is built. `null` (the default) hands control back to the ad config.
 
-> **Default is eager.** A remote-config banner auctions as soon as `loadAd()` runs, wherever the slot sits. Set `lazyLoad: true` on the ad config to defer a placement to the viewport without an app release.
+> **Default is lazy.** A remote-config banner waits until the slot comes within the prefetch margin. This is deliberate: a publisher who builds several below-fold placements on entering an article would otherwise buy fills the reader may never approach, and an unrendered fill cannot become an impression. Set `lazyLoad: false` on the ad config, or `lazyLoadOverride = false`, for slots that are always on screen.
 
 Smart Refresh
 -------

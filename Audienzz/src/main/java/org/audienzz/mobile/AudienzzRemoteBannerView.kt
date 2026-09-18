@@ -345,10 +345,16 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         private const val DEFAULT_PREFETCH_DISTANCE_DP = 200
 
         /**
-         * Remote-config banners auction as soon as [loadAd] runs unless the ad config or the
-         * publisher asks for lazy loading. Set `lazyLoad: true` on an ad config to defer that
-         * placement's auction to the viewport without an app release.
+         * Remote-config banners defer their auction until the slot approaches the viewport unless
+         * the ad config or the publisher asks otherwise.
+         *
+         * This was briefly flipped to eager. That made every mounted placement auction on [loadAd]
+         * regardless of position, so a publisher opening an article bought fills for below-fold
+         * slots the reader might never approach — responses that can never become impressions,
+         * which is the delivery pattern we are trying to reduce, not create. Eager remains
+         * available per placement (`lazyLoad: false` on the ad config, or
+         * `lazyLoadOverride = false`) for slots that are always on screen.
          */
-        internal const val DEFAULT_LAZY_LOAD = false
+        internal const val DEFAULT_LAZY_LOAD = true
     }
 }

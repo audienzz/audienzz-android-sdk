@@ -83,8 +83,8 @@ class RemoteBannerDeliverySettingsTest {
 
     @Test fun `an ad config that says nothing gets the sdk defaults`() {
         val v = view()
-        assertFalse(
-            "remote-config banners auction at loadAd() unless something asks otherwise",
+        assertTrue(
+            "remote-config banners wait for the viewport unless something asks otherwise",
             v.resolveLazyLoad(config()),
         )
         assertEquals(200, v.resolvePrefetchMarginDp(config()))
@@ -92,7 +92,7 @@ class RemoteBannerDeliverySettingsTest {
 
     @Test fun `the ad config overrides the sdk defaults`() {
         val v = view()
-        assertTrue(v.resolveLazyLoad(config(lazyLoad = true)))
+        assertFalse(v.resolveLazyLoad(config(lazyLoad = false)))
         assertEquals(600, v.resolvePrefetchMarginDp(config(prefetchDp = 600)))
     }
 
@@ -102,6 +102,14 @@ class RemoteBannerDeliverySettingsTest {
         v.prefetchMarginDpOverride = 900
         assertFalse(v.resolveLazyLoad(config(lazyLoad = true)))
         assertEquals(900, v.resolvePrefetchMarginDp(config(prefetchDp = 600)))
+    }
+
+    @Test fun `eager loading stays reachable as an explicit choice`() {
+        val v = view()
+        v.lazyLoadOverride = false
+        assertFalse("publisher override", v.resolveLazyLoad(config()))
+        v.lazyLoadOverride = null
+        assertFalse("backend alone", v.resolveLazyLoad(config(lazyLoad = false)))
     }
 
     @Test fun `clearing an override restores the ad config value`() {
@@ -118,16 +126,23 @@ class RemoteBannerDeliverySettingsTest {
 
     // region The resolved values reach the handler
 
-    @Test fun `an unconfigured placement loads eagerly`() {
+    @Test fun `an unconfigured placement waits for the viewport`() {
         seed(config())
         view().loadAd()
         pump()
-        assertEquals(false, loadedLazy)
+        assertEquals(true, loadedLazy)
         assertEquals(200, loadedMargin)
     }
 
+    @Test fun `an explicitly eager placement reaches the handler eagerly`() {
+        seed(config(lazyLoad = false))
+        view().loadAd()
+        pump()
+        assertEquals(false, loadedLazy)
+    }
+
     @Test fun `the publisher override reaches the handler`() {
-        seed(config())
+        seed(config(lazyLoad = false))
         val v = view()
         v.lazyLoadOverride = true
         v.prefetchMarginDpOverride = 750
