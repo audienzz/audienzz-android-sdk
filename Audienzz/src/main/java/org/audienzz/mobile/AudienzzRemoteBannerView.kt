@@ -44,6 +44,17 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     private var externalAdListener: AdListener? = null
     private var pendingScreenKey: Any? = null
 
+    /**
+     * Publisher state requested before the ad handler existed.
+     *
+     * Remote config is fetched asynchronously, so a host can legitimately stop or cover this banner
+     * while [adViewHandler] is still null. Forwarding through a nullable handler silently dropped
+     * those calls, and the handler that arrived afterwards held neither — so a banner the publisher
+     * had stopped went on refreshing, and a reported cover was never applied.
+     */
+    private var pendingPublisherStop = false
+    private var pendingHostCover = false
+
     // Delivery overrides. Both resolve publisher override -> ad config -> SDK default, the same
     // precedence used by AudienzzPrebidMobile.smartRefreshV2Override. They are read when the ad
     // handler is built, so set them before loadAd(); changing one afterwards takes effect on the
@@ -127,6 +138,21 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         adViewHandler?.resumeSmartRefresh()
     }
 
+    /**
+     * Applies whatever the host asked for while the handler was still being built.
+     *
+     * The stop goes on FIRST, before [AudienzzAdViewHandler.load] can request: installing it after
+     * the load call would let an eager banner issue one request the publisher had already stopped.
+     */
+    private fun applyPendingPublisherState(handler: AudienzzAdViewHandler) {
+        if (pendingPublisherStop) {
+            handler.stopAutoRefresh()
+        }
+        if (pendingHostCover) {
+            handler.pauseForHostCover()
+        }
+    }
+
     /** Visibility pause: the banner is off screen, so a refresh into it would go unseen. */
     fun onPause() {
         adViewHandler?.pauseSmartRefresh()
@@ -139,6 +165,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
      * clearing a cover must not clear an offscreen hold.
      */
     fun setHostCover(covered: Boolean) {
+        pendingHostCover = covered
         if (covered) {
             adViewHandler?.pauseForHostCover()
         } else {
@@ -152,6 +179,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
      * [resumeAutoRefresh] does.
      */
     fun stopAutoRefresh() {
+        pendingPublisherStop = true
         adViewHandler?.stopAutoRefresh()
     }
 
@@ -159,6 +187,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
      * Clears the publisher pause. Refresh actually resumes only once nothing else is holding it.
      */
     fun resumeAutoRefresh() {
+        pendingPublisherStop = false
         adViewHandler?.resumeAutoRefresh()
     }
 
@@ -303,6 +332,9 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         )
         adViewHandler = handler
         pendingScreenKey?.let { handler.hostScreenOverride = it }
+        // Before load(): a stop requested while config was resolving must be in place before the
+        // handler can issue its first request.
+        applyPendingPublisherState(handler)
         handler.load(
             withLazyLoading = resolveLazyLoad(config),
             prefetchMarginDp = resolvePrefetchMarginDp(config),
