@@ -133,6 +133,20 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     }
 
     /**
+     * A cover the SDK cannot infer, reported by a host that tracks it itself.
+     *
+     * Its own hold, independent of [onPause]/[onResume]: a scroll must not clear a cover, and
+     * clearing a cover must not clear an offscreen hold.
+     */
+    fun setHostCover(covered: Boolean) {
+        if (covered) {
+            adViewHandler?.pauseForHostCover()
+        } else {
+            adViewHandler?.resumeFromHostCover()
+        }
+    }
+
+    /**
      * Publisher pause. Durable and independent of [onPause]: nothing else clears it — not a scroll
      * back into view, not a page impression, not a return to the foreground. Only
      * [resumeAutoRefresh] does.

@@ -22,6 +22,17 @@ enum class RefreshBlockReason {
 
     /** The banner is not sufficiently visible in the viewport. */
     NOT_VISIBLE,
+
+    /**
+     * A host that does its own visibility detection says the banner cannot be seen — a React
+     * Native or Flutter cover the native geometry listener has no way to observe.
+     *
+     * Kept separate from [NOT_VISIBLE] because the two answer different questions and have
+     * different owners. Sharing one reason meant a scroll that brought the banner back into the
+     * viewport cleared a cover the host had reported, and removing a cover cleared a genuine
+     * offscreen hold — each writer silently undoing the other.
+     */
+    HOST_REPORTED_HIDDEN,
 }
 
 /**

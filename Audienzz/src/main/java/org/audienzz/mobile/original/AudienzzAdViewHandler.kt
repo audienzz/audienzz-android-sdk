@@ -684,6 +684,30 @@ class AudienzzAdViewHandler(
         resumeEligibleWork()
     }
 
+    /**
+     * A cover reported by the host, which native geometry cannot see: a pointer-transparent veil,
+     * a painted overlay, a platform-view occlusion only the framework knows about.
+     *
+     * Deliberately its own block. A viewport resume must never clear a cover, and clearing a cover
+     * must never clear a viewport hold — on a RemoteBanner both writers are live at once, so
+     * sharing one reason let each undo the other.
+     */
+    fun pauseForHostCover() {
+        Log.d(TAG, "pauseForHostCover() adUnitId=${adView.adUnitId} — host reported a cover")
+        refreshController.block(RefreshBlockReason.HOST_REPORTED_HIDDEN)
+    }
+
+    /** Clears only the host cover. A geometry hold, a publisher stop and a page release survive. */
+    fun resumeFromHostCover() {
+        if (storedCallback == null) {
+            Log.w(TAG, "resumeFromHostCover() adUnitId=${adView.adUnitId} — not loaded yet, skipping")
+            return
+        }
+        Log.d(TAG, "resumeFromHostCover() adUnitId=${adView.adUnitId} — host cleared the cover")
+        refreshController.unblock(RefreshBlockReason.HOST_REPORTED_HIDDEN, schedule = false)
+        resumeEligibleWork()
+    }
+
     /** Stops smart refresh tracking started by [enableSmartRefresh]. */
     fun disableSmartRefresh() {
         Log.d(TAG, "disableSmartRefresh() adUnitId=${adView.adUnitId}")
@@ -760,7 +784,13 @@ class AudienzzAdViewHandler(
         // foreground blocks still apply. Later requests must satisfy all eligibility conditions.
         return refreshController.blockReasons.none {
             reason != RefreshRequestReason.FIRST_LOAD ||
-                (it != RefreshBlockReason.DETACHED && it != RefreshBlockReason.NOT_VISIBLE)
+                (
+                    it != RefreshBlockReason.DETACHED &&
+                        it != RefreshBlockReason.NOT_VISIBLE &&
+                        // Two ways of saying the same thing; splitting them must not quietly
+                        // change when a bridge banner takes its first load.
+                        it != RefreshBlockReason.HOST_REPORTED_HIDDEN
+                    )
         }
     }
 
