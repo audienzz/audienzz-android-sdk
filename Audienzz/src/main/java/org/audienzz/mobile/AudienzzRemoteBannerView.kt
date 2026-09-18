@@ -44,6 +44,35 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     private var externalAdListener: AdListener? = null
     private var pendingScreenKey: Any? = null
 
+    // Delivery overrides. Both resolve publisher override -> ad config -> SDK default, the same
+    // precedence used by AudienzzPrebidMobile.smartRefreshV2Override. They are read when the ad
+    // handler is built, so set them before loadAd(); changing one afterwards takes effect on the
+    // next load.
+
+    /**
+     * Publisher override for lazy loading. null (default) defers to the ad config's `lazyLoad`,
+     * which itself falls back to [DEFAULT_LAZY_LOAD].
+     *
+     * false auctions as soon as [loadAd] runs, wherever the slot sits. true defers the auction
+     * until the slot comes within [prefetchMarginDpOverride] dp of the viewport.
+     */
+    var lazyLoadOverride: Boolean? = null
+
+    /**
+     * Publisher override for the prefetch margin, in dp. null (default) defers to the ad config's
+     * `prefetchDistanceDp`, which itself falls back to 200 dp. Only has an effect while lazy
+     * loading is on.
+     */
+    var prefetchMarginDpOverride: Int? = null
+
+    /** Resolved lazy-load setting: publisher override, then the ad config, then the SDK default. */
+    internal fun resolveLazyLoad(config: RemoteAdUnitConfig): Boolean =
+        lazyLoadOverride ?: config.config.lazyLoad ?: DEFAULT_LAZY_LOAD
+
+    /** Resolved prefetch margin in dp: publisher override, then the ad config, then 200 dp. */
+    internal fun resolvePrefetchMarginDp(config: RemoteAdUnitConfig): Int =
+        prefetchMarginDpOverride ?: config.config.prefetchDistanceDp ?: DEFAULT_PREFETCH_DISTANCE_DP
+
     /**
      * Associate this banner with a screen the SDK can't infer from the view tree — a Jetpack Compose
      * destination, or a custom navigation model. Pass the same token you report to
@@ -261,8 +290,8 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         adViewHandler = handler
         pendingScreenKey?.let { handler.hostScreenOverride = it }
         handler.load(
-            withLazyLoading = true,
-            prefetchMarginDp = config.config.prefetchDistanceDp ?: DEFAULT_PREFETCH_DISTANCE_DP,
+            withLazyLoading = resolveLazyLoad(config),
+            prefetchMarginDp = resolvePrefetchMarginDp(config),
         ) { request, resultCode ->
             Log.d(TAG, "Ad request prepared, resultCode=${resultCode ?: "unknown"}")
             adViewLocal.loadAd(request)
@@ -314,5 +343,12 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         private const val TAG = "AudienzzRemoteConfigBannerView"
         private const val DEFAULT_REFRESH_SECONDS = 30
         private const val DEFAULT_PREFETCH_DISTANCE_DP = 200
+
+        /**
+         * Remote-config banners auction as soon as [loadAd] runs unless the ad config or the
+         * publisher asks for lazy loading. Set `lazyLoad: true` on an ad config to defer that
+         * placement's auction to the viewport without an app release.
+         */
+        internal const val DEFAULT_LAZY_LOAD = false
     }
 }

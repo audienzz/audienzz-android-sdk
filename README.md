@@ -140,7 +140,9 @@ The correct prefetch mechanism depends on the scroll container your ad lives in:
 
 **Why they differ:** In a `ScrollView` all views are laid out and attached to the view hierarchy upfront. The SDK's `ViewTreeObserver.OnPreDrawListener` can therefore detect "this view is now within Ndp of the visible area" at exactly the right scroll position and fire `fetchDemand` precisely N dp ahead.
 
-In a `RecyclerView` views are created and bound on-demand — only just before an item scrolls into view (typically 1 item ahead). By the time `onBindViewHolder` runs and `load()` is called, the view is already within ~40 dp of the viewport regardless of the `prefetchMarginDp` value, so the margin fires immediately and has no practical effect.
+In a `RecyclerView` views are created and bound on-demand — only just before an item scrolls into view (typically 1 item ahead). By the time `onBindViewHolder` runs and `load()` is called, the view is already within ~40 dp of the viewport.
+
+**More precisely, the margin saturates rather than stops working.** Raising it above the bind distance changes nothing — the lead time is capped by when `RecyclerView` binds the holder, so 200, 600 and 2000 dp behave identically. Lowering it still works: `prefetchMarginDp = 0` inside a `RecyclerView` does exactly what it says, and suppresses auctions for items the reader binds but never scrolls to. One consequence worth knowing: at a saturated margin, `withLazyLoading = true` and `withLazyLoading = false` fetch at effectively the same moment.
 
 #### ScrollView / NestedScrollView
 
@@ -162,7 +164,7 @@ AudienzzAdViewHandler(adView = gamAdView, adUnit = audienzzAdUnit)
 
 #### RecyclerView
 
-Use `withLazyLoading = false` to load immediately on bind, and control how many items ahead RecyclerView pre-binds with `setInitialPrefetchItemCount`:
+To start the auction earlier in a `RecyclerView`, the only real lever is making the holder bind earlier — `setInitialPrefetchItemCount`. Setting `withLazyLoading = false` is equivalent in timing to leaving lazy loading on with the default margin; use it when you want the intent to be explicit:
 
 ```kotlin
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -177,6 +179,32 @@ override fun onBindViewHolder(holder: AdViewHolder, position: Int) {
 // Increase how many items RecyclerView pre-binds ahead of the viewport (default is 2)
 (recyclerView.layoutManager as? LinearLayoutManager)?.setInitialPrefetchItemCount(4)
 ```
+
+#### React Native and other cross-platform hosts
+
+The saturation above applies to **native** `RecyclerView` only. React Native's `FlatList` is JS-level windowing over a `ReactScrollView` — not a `RecyclerView` — so the ad view is attached well ahead of the viewport and the distance-based margin applies normally. There, the margin is the effective lever, and the 200 dp default is usually what binds.
+
+If raising it does not move the auction earlier, the ad component is not mounting early enough: raise the list's `windowSize` / `initialNumToRender` rather than the margin. Saturation does return if the list recycles native views (e.g. FlashList) or if `removeClippedSubviews` is enabled, which it is by default on Android.
+
+#### Remote-config banners
+
+`AudienzzRemoteBannerView` resolves both delivery settings **publisher override → ad config → SDK default**:
+
+| Setting | Publisher override | Ad config field | Default |
+|---|---|---|---|
+| Lazy loading | `lazyLoadOverride` | `lazyLoad` | `false` — auction starts at `loadAd()` |
+| Prefetch margin | `prefetchMarginDpOverride` | `prefetchDistanceDp` | `200` dp |
+
+```kotlin
+val banner = AudienzzRemoteBannerView(context, adConfigId = "118")
+banner.lazyLoadOverride = true          // defer the auction to the viewport
+banner.prefetchMarginDpOverride = 600   // …starting 600 dp ahead
+banner.loadAd()
+```
+
+Set them **before** `loadAd()`; the values are read when the ad handler is built. `null` (the default) hands control back to the ad config.
+
+> **Default is eager.** A remote-config banner auctions as soon as `loadAd()` runs, wherever the slot sits. Set `lazyLoad: true` on the ad config to defer a placement to the viewport without an app release.
 
 Smart Refresh
 -------
@@ -446,7 +474,7 @@ This class handles the loading of ads for a given `AdManagerAdView`.
 
 | Name                  | Parameters                                                                                                                                                                    | Description                                                                                                                                 |
 |-----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| `load`                | `withLazyLoading: Boolean`, `prefetchMarginDp: Int = 200`, `gamRequestBuilder: AdManagerAdRequest.Builder`, `callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit`     | Loads an ad. When `withLazyLoading` is true, loading starts `prefetchMarginDp` dp before the view enters the viewport (default 200 dp; pass 0 for exact-visibility behaviour). |
+| `load`                | `withLazyLoading: Boolean`, `prefetchMarginDp: Int = 200`, `gamRequestBuilder: AdManagerAdRequest.Builder`, `callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit`     | Loads an ad. When `withLazyLoading` is true, loading starts `prefetchMarginDp` dp before the view enters the viewport (default 200 dp; pass 0 for exact-visibility behaviour). Inside a `RecyclerView` the margin saturates — raising it has no effect, lowering it still does. See [Prefetch Margin](#prefetch-margin). |
 | `enableSmartRefresh`  |                                                                                                                                                                               | Enables viewport-aware smart refresh: pauses auto-refresh while off-screen and force-refreshes when the ad returns if the interval elapsed. |
 | `disableSmartRefresh` |                                                                                                                                                                               | Disables smart refresh and removes the visibility listener.                                                                                 |
 
