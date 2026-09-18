@@ -70,6 +70,16 @@ class AudienzzRemoteConfigInterstitial(
     private var disposeAfterPresentation = false
     private var loadId = ""
     private var loadedAt: Long? = null
+    private var recordedImpression = false
+
+    /**
+     * Backstop for "at most one discard per load". The primary guarantee is that every discard
+     * site nulls [loadedInterstitialAd] immediately after reporting, so the null check below
+     * already rejects a second report; this flag keeps that true if a future release path forgets
+     * to null. It is deliberately not independently covered by a test — no reachable sequence
+     * currently exercises it alone.
+     */
+    private var discardReported = false
     internal var now: () -> Long = { SystemClock.elapsedRealtime() }
 
     val isReady: Boolean
@@ -110,7 +120,7 @@ class AudienzzRemoteConfigInterstitial(
             true
         } catch (error: RuntimeException) {
             emit("showFailed", error.toString())
-            finishPresentation()
+            finishPresentation(discardReason = "presentationFailed")
             events?.onError(error.message ?: "Interstitial presentation failed")
             false
         }
@@ -131,8 +141,14 @@ class AudienzzRemoteConfigInterstitial(
             events?.onError("Interstitial is destroyed or already loading/presenting")
             return
         }
+        // Reaching here with inventory in hand means it aged out: the guard above already
+        // established that nothing is presenting, so isReady can only be false because the
+        // hour-long GAM lifetime elapsed. That response was filled and never seen.
+        reportDiscardIfUnused("expired")
         loadedInterstitialAd = null
         loadedAt = null
+        recordedImpression = false
+        discardReported = false
         loading = true
         val token = ++generation
         loadId = UUID.randomUUID().toString()
@@ -192,6 +208,7 @@ class AudienzzRemoteConfigInterstitial(
                     loading = false
                     loadedInterstitialAd = interstitialAd
                     loadedAt = now()
+                    discardReported = false
                     emit("loaded")
                     events?.onLoaded()
                     // The ready ad reserves inventory across reentrant publisher callbacks.
@@ -203,6 +220,7 @@ class AudienzzRemoteConfigInterstitial(
                             }
                         } else {
                             emit("showFailed", "No foreground Activity")
+                            reportDiscardIfUnused("presentationFailed")
                             loadedInterstitialAd = null
                             loadedAt = null
                             events?.onError("No Activity context available to show interstitial for ConfigId $configId")
@@ -221,7 +239,10 @@ class AudienzzRemoteConfigInterstitial(
                 override fun onAdDismissedFullScreenContent() {
                     if (destroyed || token != generation || !presenting) return
                     emit("dismissed")
-                    finishPresentation()
+                    // Presented and dismissed with no impression callback in between: the
+                    // creative was on screen but Google never counted it. Distinct from a
+                    // presentation that failed outright.
+                    finishPresentation(discardReason = "dismissedWithoutImpression")
                     events?.onClosed()
                     super.onAdDismissedFullScreenContent()
                 }
@@ -229,13 +250,14 @@ class AudienzzRemoteConfigInterstitial(
                 override fun onAdFailedToShowFullScreenContent(p0: AdError) {
                     if (destroyed || token != generation || !presenting) return
                     emit("showFailed", p0.toString())
-                    finishPresentation()
+                    finishPresentation(discardReason = "presentationFailed")
                     events?.onFailedToShow(p0)
                     super.onAdFailedToShowFullScreenContent(p0)
                 }
 
                 override fun onAdImpression() {
                     if (destroyed || token != generation || !presenting) return
+                    recordedImpression = true
                     emit("impression")
                     super.onAdImpression()
                 }
@@ -258,7 +280,8 @@ class AudienzzRemoteConfigInterstitial(
         )
     }
 
-    private fun finishPresentation() {
+    private fun finishPresentation(discardReason: String? = null) {
+        if (discardReason != null) reportDiscardIfUnused(discardReason)
         presenting = false
         if (activePresentation?.get() === this) activePresentation = null
         loadedAt = null
@@ -266,7 +289,16 @@ class AudienzzRemoteConfigInterstitial(
         if (disposeAfterPresentation) destroy()
     }
 
-    fun destroy() {
+    fun destroy() = destroy("disposed")
+
+    /**
+     * As [destroy], but records *why* held inventory is being released.
+     *
+     * A bridge that tears an owner down in order to build its successor knows that is a
+     * replacement; from inside this class it is indistinguishable from an ordinary disposal.
+     * Only the discard reason changes — teardown is identical.
+     */
+    fun destroy(reason: String) {
         if (presenting) {
             disposeAfterPresentation = true
             emit("disposeDeferred")
@@ -276,10 +308,37 @@ class AudienzzRemoteConfigInterstitial(
         loading = false
         generation++
         emit("disposed")
+        reportDiscardIfUnused(reason)
         // M6: drop the loaded ad and handler so a destroyed instance can't retain/show a stale ad.
         loadedInterstitialAd = null
         interstitialAdHandler = null
         scope.cancel()
+    }
+
+    /**
+     * Reports, at most once per load, that inventory which loaded successfully was released
+     * without ever recording an impression.
+     *
+     * This is the event that makes the load-to-impression gap visible from inside the SDK:
+     * `loaded` without a matching `impression` is otherwise silent, and expiry in particular was
+     * only ever evaluated lazily inside [isReady], so an ad could age out with nothing recorded
+     * anywhere.
+     *
+     * It deliberately does not fire for a load that failed (there was no inventory) or for
+     * inventory that already recorded an impression (it was used).
+     *
+     * It is a diagnostic, not a billing record. It counts what this SDK handed to, and took back
+     * from, the ad server — not Ad Manager's responses-served or render rate, which are measured
+     * server-side across demand sources this SDK cannot see. Use it to find *which* placements and
+     * *which* reasons dominate, then confirm magnitude in Ad Manager reporting.
+     *
+     * A terminal event is not guaranteed: if the process is killed while inventory is held,
+     * nothing is emitted for it, so these counts are a lower bound.
+     */
+    private fun reportDiscardIfUnused(reason: String) {
+        if (loadedInterstitialAd == null || recordedImpression || discardReported) return
+        discardReported = true
+        emit("discardedWithoutImpression", reason)
     }
 
     companion object {
