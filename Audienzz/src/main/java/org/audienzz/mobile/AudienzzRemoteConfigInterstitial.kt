@@ -27,6 +27,27 @@ import java.util.UUID
 import java.lang.ref.WeakReference
 import org.audienzz.mobile.util.AppForegroundMonitor
 
+/**
+ * Remote fullscreen inventory.
+ *
+ * Three verbs, and each says exactly what it does:
+ *
+ *  * [prefetch] obtains and retains one ad. It never presents.
+ *  * [show] presents ready inventory at the publisher's current opportunity. If nothing is ready,
+ *    the app is not in the foreground, or the publisher rules this opportunity out, that outcome is
+ *    reported and NOTHING is scheduled — the reader will not be interrupted later, out of context.
+ *  * [prefetchAndShow] asks for presentation when the load completes, or presents inventory already
+ *    in hand. This is the only entry point that presents something the publisher did not explicitly
+ *    time, and it is opted into by name.
+ *
+ * Repeated prefetches for the same owner coalesce onto the load in flight and reuse valid ready
+ * inventory; repeated presentation calls cannot show twice or start a parallel request.
+ *
+ * **Migration.** `loadAd()` is gone: it loaded *and* presented, which a method named "load" should
+ * not decide. Use [prefetchAndShow] where you relied on that, [prefetch] where you only wanted the
+ * inventory. `preload()` is [prefetch]; `showAtOpportunity(activity, eligible)` is
+ * [show].
+ */
 class AudienzzRemoteConfigInterstitial(
     private val context: Context,
     private val configId: String,
@@ -68,6 +89,12 @@ class AudienzzRemoteConfigInterstitial(
     private var presenting = false
     private var destroyed = false
     private var disposeAfterPresentation = false
+
+    /**
+     * Set by [prefetchAndShow] only. An ordinary [prefetch] can never set it, which is what
+     * guarantees a prefetch cannot surprise the reader with a presentation.
+     */
+    private var showWhenLoaded = false
     private var loadId = ""
     private var loadedAt: Long? = null
     private var recordedImpression = false
@@ -86,27 +113,92 @@ class AudienzzRemoteConfigInterstitial(
         get() = !destroyed && !presenting && loadedInterstitialAd != null &&
             loadedAt?.let { now() - it < 3_600_000L } == true
 
-    /** Retain one ad for a later opportunity. Repeated preloads never replace ready inventory. */
-    fun preload() {
-        if (destroyed || loading || presenting || isReady) return
-        startLoad(automaticallyShow = false)
-    }
+    /**
+     * Obtain and retain one ad, without displaying it.
+     *
+     * A call made while a load is in flight joins it; a call made while valid inventory is already
+     * in hand does nothing. Neither spends another request, and neither can lead to a presentation.
+     */
+    fun prefetch() = requestLoad(showWhenLoaded = false)
+
+    /**
+     * Ask for presentation as soon as the load completes, or present inventory already in hand.
+     *
+     * Subject to the same guards as [show]: a backgrounded app, expired inventory or another
+     * interstitial already on screen still cancel the presentation, reported through
+     * [Events.onError]. Like [prefetch], repeated calls coalesce rather than starting a second
+     * request.
+     */
+    fun prefetchAndShow() = requestLoad(showWhenLoaded = true)
 
     /**
      * Call on the main thread at a publisher-approved transition, after checking frequency caps.
-     * False means this opportunity was skipped; it is never queued for a later load completion.
+     * False means this opportunity was skipped; it is never queued for a later load completion —
+     * that is what [prefetchAndShow] is for, and it has to be asked for.
      * True means presentation was submitted; onOpened/onFailedToShow report Google's outcome.
      */
-    fun showAtOpportunity(activity: Activity, eligible: Boolean): Boolean {
-        val reason = when {
-            !eligible -> "ineligible"
-            !isReady -> "notReady"
-            !AppForegroundMonitor.isForeground || activity.isFinishing || activity.isDestroyed -> "inactive"
-            activePresentation?.get() != null -> "anotherInterstitialPresenting"
-            else -> null
-        }
+    @JvmOverloads
+    fun show(activity: Activity, eligible: Boolean = true): Boolean {
+        val reason = skipReason(activity, eligible)
         if (reason != null) { emit("opportunitySkipped", reason); return false }
         return present(activity)
+    }
+
+    /** Why this opportunity cannot be taken, or null when it can. */
+    private fun skipReason(activity: Activity?, eligible: Boolean): String? = when {
+        !eligible -> "ineligible"
+        !isReady -> "notReady"
+        activity == null || !AppForegroundMonitor.isForeground ||
+            activity.isFinishing || activity.isDestroyed -> "inactive"
+        activePresentation?.get() != null -> "anotherInterstitialPresenting"
+        else -> null
+    }
+
+    /**
+     * The single loading path behind both [prefetch] and [prefetchAndShow]. Whether a presentation
+     * follows is a property of the request, not a second loading system.
+     */
+    private fun requestLoad(showWhenLoaded: Boolean) {
+        if (destroyed) {
+            events?.onError("Interstitial is destroyed")
+            return
+        }
+        if (showWhenLoaded) this.showWhenLoaded = true
+        if (isReady) {
+            // Already in hand: this is the same request, answered instantly. Presenting here is
+            // what makes a second prefetchAndShow reuse inventory instead of buying more.
+            if (showWhenLoaded) presentWhenLoaded()
+            return
+        }
+        // Coalesce onto the request in flight rather than reporting an error: asking twice for the
+        // same thing is exactly what a publisher does across a screen's lifecycle.
+        if (loading || presenting) return
+        startLoad()
+    }
+
+    /**
+     * Present what was just loaded, under the same guards an explicit [show] would apply.
+     *
+     * Unlike [show] there is no return value for the caller to inspect, so a guard that cancels the
+     * presentation is also reported on [Events.onError] — this is the presentation the publisher
+     * asked for when they called [prefetchAndShow].
+     */
+    private fun presentWhenLoaded() {
+        showWhenLoaded = false
+        val activity = context.getActivity()
+        val reason = skipReason(activity, eligible = true)
+        if (reason != null) {
+            emit("opportunitySkipped", reason)
+            emit("showFailed", reason)
+            reportDiscardIfUnused("presentationFailed")
+            loadedInterstitialAd = null
+            loadedAt = null
+            events?.onError("Interstitial could not be presented for ConfigId $configId: $reason")
+            return
+        }
+        if (!present(activity!!)) {
+            events?.onError("Another interstitial is already presenting")
+        }
     }
 
     private fun present(activity: Activity): Boolean {
@@ -133,14 +225,7 @@ class AudienzzRemoteConfigInterstitial(
             "reason" to reason))
     }
 
-    /** Legacy immediate-display API. Prefer preload() and showAtOpportunity() for new integrations. */
-    fun loadAd() = startLoad(automaticallyShow = true)
-
-    private fun startLoad(automaticallyShow: Boolean) {
-        if (destroyed || loading || presenting || isReady) {
-            events?.onError("Interstitial is destroyed or already loading/presenting")
-            return
-        }
+    private fun startLoad() {
         // Reaching here with inventory in hand means it aged out: the guard above already
         // established that nothing is presenting, so isReady can only be false because the
         // hour-long GAM lifetime elapsed. That response was filled and never seen.
@@ -175,11 +260,11 @@ class AudienzzRemoteConfigInterstitial(
                 return@launch
             }
 
-            if (!destroyed && token == generation) setupInterstitial(config, token, automaticallyShow)
+            if (!destroyed && token == generation) setupInterstitial(config, token)
         }
     }
 
-    private fun setupInterstitial(config: RemoteAdUnitConfig, token: Int, automaticallyShow: Boolean) {
+    private fun setupInterstitial(config: RemoteAdUnitConfig, token: Int) {
         val interstitial = AudienzzInterstitialAdUnit(
             configId = config.prebidConfig.placementId,
             adUnitFormats = EnumSet.of(AudienzzAdUnitFormat.BANNER),
@@ -197,6 +282,9 @@ class AudienzzRemoteConfigInterstitial(
                 override fun onAdFailedToLoad(loadError: LoadAdError) {
                     if (destroyed || token != generation || !loading) return
                     loading = false
+                    // Nothing to present, and the request is over: a later prefetch must not
+                    // inherit a presentation asked for on behalf of a load that failed.
+                    showWhenLoaded = false
                     emit("loadFailed", loadError.toString())
                     Log.d(TAG, "onAdFailed, exception $loadError ConfigId $configId")
                     events?.onFailed(loadError)
@@ -210,21 +298,17 @@ class AudienzzRemoteConfigInterstitial(
                     loadedAt = now()
                     discardReported = false
                     emit("loaded")
+                    // Consumed here rather than inside the presentation, so a callback that
+                    // presents or destroys cannot leave the request standing and have an unrelated
+                    // later prefetch inherit it.
+                    val presentOnCompletion = showWhenLoaded
+                    showWhenLoaded = false
                     events?.onLoaded()
                     // The ready ad reserves inventory across reentrant publisher callbacks.
-                    if (automaticallyShow && !destroyed && token == generation && isReady) {
-                        val activity = context.getActivity()
-                        if (activity != null && !activity.isFinishing && !activity.isDestroyed && AppForegroundMonitor.isForeground) {
-                            if (!present(activity)) {
-                                events?.onError("Another interstitial is already presenting")
-                            }
-                        } else {
-                            emit("showFailed", "No foreground Activity")
-                            reportDiscardIfUnused("presentationFailed")
-                            loadedInterstitialAd = null
-                            loadedAt = null
-                            events?.onError("No Activity context available to show interstitial for ConfigId $configId")
-                        }
+                    if (presentOnCompletion && !destroyed && token == generation && isReady &&
+                        !presenting
+                    ) {
+                        presentWhenLoaded()
                     }
                     super.onAdLoaded(interstitialAd)
                 }
@@ -306,6 +390,7 @@ class AudienzzRemoteConfigInterstitial(
         }
         destroyed = true
         loading = false
+        showWhenLoaded = false
         generation++
         emit("disposed")
         reportDiscardIfUnused(reason)

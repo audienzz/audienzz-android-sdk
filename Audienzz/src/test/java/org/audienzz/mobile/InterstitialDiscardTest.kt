@@ -68,13 +68,13 @@ class InterstitialDiscardTest {
     }
 
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
-    private fun preload() { owner.preload(); idle() }
+    private fun prefetch() { owner.prefetch(); idle() }
     private fun deliver() { loaded.onAdLoaded(mockk(relaxed = true)); idle() }
     private fun discards() = emitted.filter { it["event"] == "discardedWithoutImpression" }
     private fun names() = emitted.map { it["event"] }
 
     private fun hold() {
-        preload(); deliver()
+        prefetch(); deliver()
         assertTrue("fixture must actually hold inventory", owner.isReady)
     }
 
@@ -83,7 +83,7 @@ class InterstitialDiscardTest {
         assertTrue("control: held inventory is not a discard", discards().isEmpty())
 
         clock += 3_600_001L
-        preload() // observing the expiry is what releases it
+        prefetch() // observing the expiry is what releases it
 
         assertEquals(1, discards().size)
         assertEquals("expired", discards().single()["reason"])
@@ -106,7 +106,7 @@ class InterstitialDiscardTest {
 
     @Test fun `a presentation failure reports a discard`() {
         hold()
-        owner.showAtOpportunity(activity, eligible = true)
+        owner.show(activity, eligible = true)
         fullscreen.onAdFailedToShowFullScreenContent(mockk(relaxed = true))
         idle()
 
@@ -117,7 +117,7 @@ class InterstitialDiscardTest {
 
     @Test fun `presented and dismissed with no impression reports a discard`() {
         hold()
-        owner.showAtOpportunity(activity, eligible = true)
+        owner.show(activity, eligible = true)
         fullscreen.onAdShowedFullScreenContent()
         fullscreen.onAdDismissedFullScreenContent()
         idle()
@@ -128,7 +128,7 @@ class InterstitialDiscardTest {
 
     @Test fun `inventory that recorded an impression is never a discard`() {
         hold()
-        owner.showAtOpportunity(activity, eligible = true)
+        owner.show(activity, eligible = true)
         fullscreen.onAdShowedFullScreenContent()
         fullscreen.onAdImpression()
         fullscreen.onAdDismissedFullScreenContent()
@@ -139,7 +139,7 @@ class InterstitialDiscardTest {
     }
 
     @Test fun `a load failure is not an unused successful load`() {
-        preload()
+        prefetch()
         loaded.onAdFailedToLoad(mockk(relaxed = true))
         idle()
         owner.destroy()

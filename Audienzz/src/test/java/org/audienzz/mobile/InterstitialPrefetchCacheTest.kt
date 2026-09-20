@@ -53,36 +53,36 @@ class InterstitialPrefetchCacheTest {
     }
 
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
-    private fun preload() { owner.preload(); idle() }
+    private fun prefetch() { owner.prefetch(); idle() }
     private fun deliver() { loaded.onAdLoaded(mockk<AdManagerInterstitialAd>(relaxed = true)); idle() }
 
     @Test fun `four prefetches in a row buy one ad`() {
-        preload(); preload(); preload(); preload()
+        prefetch(); prefetch(); prefetch(); prefetch()
         assertEquals("only the first may reach the ad server", 1, loads)
         deliver()
         assertTrue(owner.isReady)
 
         // And again once one is already cached.
-        preload(); preload()
+        prefetch(); prefetch()
         assertEquals("a cached ad is not replaced by another prefetch", 1, loads)
     }
 
     @Test fun `only one ad is held at a time`() {
-        preload(); deliver()
+        prefetch(); deliver()
         val first = owner.isReady
-        preload(); idle()
+        prefetch(); idle()
         assertTrue(first)
         assertEquals("no second ad is fetched while one is held", 1, loads)
     }
 
     @Test fun `an expired ad is replaced but only once`() {
-        preload(); deliver()
+        prefetch(); deliver()
         assertTrue(owner.isReady)
 
         clock += 3_600_001L                       // past the one-hour expiry
         assertFalse("an expired ad must not count as inventory", owner.isReady)
 
-        preload(); preload(); preload()
+        prefetch(); prefetch(); prefetch()
         assertEquals("expiry allows exactly one replacement fetch", 2, loads)
     }
 }

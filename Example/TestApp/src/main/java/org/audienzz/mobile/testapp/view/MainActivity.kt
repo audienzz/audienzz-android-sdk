@@ -7,7 +7,9 @@ import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
+import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayoutMediator
+import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.testapp.DemoFeatureFlags
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.databinding.ActivityMainBinding
@@ -46,18 +48,29 @@ class MainActivity : AppCompatActivity() {
         binding.viewPager.adapter = adapter
 
         TabLayoutMediator(binding.tabLayout, binding.viewPager) { tab, position ->
-            tab.text = when (position) {
-                0 -> "Ads page"
-                1 -> "Targeting page"
-                2 -> "Remote Config"
-                3 -> "Legacy (v0.0.13)"
-                4 -> "Non-Remote"
-                else -> "Tab ${position + 1}"
-            }
+            tab.text = tabTitle(position)
         }.attach()
-        // Screen tracking is automatic (AudienzzPrebidMobile.autoScreenTracking, on by default):
-        // the SDK observes Fragment lifecycle, so each tab fires its own page impression and
-        // drives screen-aware smart refresh with no code here.
+        // Every screen is reported by the app: there is no automatic tracking. Each tab is a
+        // screen, so switching tabs fires that tab's page impression, which is what releases the
+        // outgoing tab's banners and reloads the incoming tab's.
+        binding.viewPager.registerOnPageChangeCallback(
+            object : ViewPager2.OnPageChangeCallback() {
+                override fun onPageSelected(position: Int) {
+                    AudienzzPrebidMobile.pageImpression(tabTitle(position))
+                }
+            },
+        )
+        // …including the tab the app opens on, which no change callback will announce.
+        AudienzzPrebidMobile.pageImpression(tabTitle(binding.viewPager.currentItem))
+    }
+
+    private fun tabTitle(position: Int) = when (position) {
+        0 -> "Ads page"
+        1 -> "Targeting page"
+        2 -> "Remote Config"
+        3 -> "Legacy (v0.0.13)"
+        4 -> "Non-Remote"
+        else -> "Tab ${position + 1}"
     }
 }
 

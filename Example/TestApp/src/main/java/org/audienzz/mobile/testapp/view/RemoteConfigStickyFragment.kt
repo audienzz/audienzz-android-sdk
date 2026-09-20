@@ -136,12 +136,12 @@ class RemoteConfigStickyFragment : Fragment() {
     private fun loadInterstitial() {
         val existing = interstitial
         if (existing?.isReady == true) {
-            existing.showAtOpportunity(requireActivity(), eligible = true)
+            existing.show(requireActivity(), eligible = true)
         } else {
             if (interstitial == null) {
                 interstitial = AudienzzRemoteConfigInterstitial(requireContext(), INTERSTITIAL_CONFIG_ID)
             }
-            interstitial?.preload()
+            interstitial?.prefetch()
         }
     }
 

@@ -55,23 +55,23 @@ class RemoteInterstitialLifecycleTest {
         AppForegroundMonitor.resetForTesting()
         unmockkAll()
     }
-    private fun load() { owner.loadAd(); shadowOf(Looper.getMainLooper()).idle() }
+    private fun prefetchAndShow() { owner.prefetchAndShow(); shadowOf(Looper.getMainLooper()).idle() }
 
     @Test fun `duplicate load coalesces inventory and auto shows once`() {
-        load(); load()
+        prefetchAndShow(); prefetchAndShow()
         assertEquals(1, loads)
         val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
         loaded.onAdLoaded(ad)
         verify(exactly = 1) { ad.show(activity) }
-        load()
+        prefetchAndShow()
         assertEquals(1, loads)
         fullscreen.onAdDismissedFullScreenContent()
-        load()
+        prefetchAndShow()
         assertEquals(2, loads)
     }
 
     @Test fun `destroy before Google completion cannot auto show`() {
-        load()
+        prefetchAndShow()
         owner.destroy()
         val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
         loaded.onAdLoaded(ad)
@@ -80,7 +80,7 @@ class RemoteInterstitialLifecycleTest {
     }
 
     @Test fun `destroy before demand handoff prevents Google request`() {
-        load()
+        prefetchAndShow()
         owner.destroy()
         mockkStatic(AdManagerInterstitialAd::class)
         handoff(AudienzzResultCode.NO_BIDS, AdManagerAdRequest.Builder().build(), loaded)
@@ -88,7 +88,7 @@ class RemoteInterstitialLifecycleTest {
     }
 
     @Test fun `destroy from loaded callback cancels pending automatic presentation`() {
-        load()
+        prefetchAndShow()
         every { events.onLoaded() } answers { owner.destroy() }
         val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
         loaded.onAdLoaded(ad)
@@ -96,99 +96,135 @@ class RemoteInterstitialLifecycleTest {
     }
 
     @Test fun `background at completion reports failure without delayed automatic show`() {
-        load()
+        prefetchAndShow()
         AppForegroundMonitor.onActivityStarted(activity)
         AppForegroundMonitor.onActivityStopped(activity)
         val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
         loaded.onAdLoaded(ad)
         verify(exactly = 0) { ad.show(any()) }
-        verify { events.onError(match { it.contains("Activity") }) }
+        // The publisher is told WHY, not merely that something went wrong: `inactive` is the same
+        // skip reason an explicit show() would report for the same state.
+        verify { events.onError(match { it.contains("inactive") }) }
+        verify { events.onLifecycleEvent(match { it["event"] == "opportunitySkipped" && it["reason"] == "inactive" }) }
         AppForegroundMonitor.onActivityStarted(activity)
         verify(exactly = 0) { ad.show(any()) }
     }
 
     @Test fun `destroy while presenting preserves terminal callback`() {
-        load()
+        prefetchAndShow()
         loaded.onAdLoaded(mockk(relaxed = true))
         owner.destroy()
         fullscreen.onAdFailedToShowFullScreenContent(AdError(1, "error", "google"))
         verify(exactly = 1) { events.onFailedToShow(any()) }
-        load()
+        prefetchAndShow()
         assertEquals(1, loads)
     }
-    private fun preload() { owner.preload(); shadowOf(Looper.getMainLooper()).idle() }
+    private fun prefetch() { owner.prefetch(); shadowOf(Looper.getMainLooper()).idle() }
 
-    @Test fun `preload retains inventory and never remembers a missed opportunity`() {
-        preload(); preload()
-        assertFalse(owner.showAtOpportunity(activity, eligible = true))
+    @Test fun `prefetch retains inventory and never remembers a missed opportunity`() {
+        prefetch(); prefetch()
+        assertFalse(owner.show(activity, eligible = true))
         val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
         loaded.onAdLoaded(ad)
-        preload()
+        prefetch()
         assertEquals(1, loads)
         assertTrue(owner.isReady)
         verify(exactly = 0) { ad.show(any()) }
-        assertFalse(owner.showAtOpportunity(activity, eligible = false))
+        assertFalse(owner.show(activity, eligible = false))
         assertTrue(owner.isReady)
-        assertTrue(owner.showAtOpportunity(activity, eligible = true))
-        assertFalse(owner.showAtOpportunity(activity, eligible = true))
+        assertTrue(owner.show(activity, eligible = true))
+        assertFalse(owner.show(activity, eligible = true))
         verify(exactly = 1) { ad.show(activity) }
     }
 
     @Test fun `background skips opportunity without discarding ready inventory`() {
-        preload()
+        prefetch()
         val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
         loaded.onAdLoaded(ad)
         AppForegroundMonitor.onActivityStarted(activity)
         AppForegroundMonitor.onActivityStopped(activity)
-        assertFalse(owner.showAtOpportunity(activity, true))
+        assertFalse(owner.show(activity, true))
         assertTrue(owner.isReady)
         AppForegroundMonitor.onActivityStarted(activity)
         verify(exactly = 0) { ad.show(any()) }
-        assertTrue(owner.showAtOpportunity(activity, true))
+        assertTrue(owner.show(activity, true))
     }
 
-    @Test fun `expired preload is replaced only on explicit preload`() {
+    @Test fun `expired prefetch is replaced only on explicit prefetch`() {
         var clock = 0L
         owner.now = { clock }
-        preload()
+        prefetch()
         val old = mockk<AdManagerInterstitialAd>(relaxed = true)
         loaded.onAdLoaded(old)
         clock = 3_600_000
         assertFalse(owner.isReady)
-        assertFalse(owner.showAtOpportunity(activity, true))
+        assertFalse(owner.show(activity, true))
         assertEquals(1, loads)
-        preload()
+        prefetch()
         assertEquals(2, loads)
         verify(exactly = 0) { old.show(any()) }
     }
 
     @Test fun `two owners cannot present concurrently and the second stays ready`() {
-        preload()
+        prefetch()
         loaded.onAdLoaded(mockk(relaxed = true))
         val firstFullscreen = fullscreen
         val second = AudienzzRemoteConfigInterstitial(activity, "second", events)
         second.configDispatcher = Dispatchers.Main
-        second.preload(); shadowOf(Looper.getMainLooper()).idle()
+        second.prefetch(); shadowOf(Looper.getMainLooper()).idle()
         val secondAd = mockk<AdManagerInterstitialAd>(relaxed = true)
         loaded.onAdLoaded(secondAd)
         val secondFullscreen = fullscreen
-        assertTrue(owner.showAtOpportunity(activity, true))
-        assertFalse(second.showAtOpportunity(activity, true))
+        assertTrue(owner.show(activity, true))
+        assertFalse(second.show(activity, true))
         assertTrue(second.isReady)
         firstFullscreen.onAdDismissedFullScreenContent()
-        assertTrue(second.showAtOpportunity(activity, true))
+        assertTrue(second.show(activity, true))
         secondFullscreen.onAdDismissedFullScreenContent()
         second.destroy()
     }
 
-    @Test fun `preload presentation keeps ownership when destroy is requested`() {
-        preload()
+    /// The contract this API exists for: the verb decides whether anything is presented.
+    @Test fun `prefetch never presents and prefetchAndShow reuses what it holds`() {
+        prefetch()
+        val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
+        loaded.onAdLoaded(ad)
+        verify(exactly = 0) { ad.show(any()) }
+        assertTrue(owner.isReady)
+
+        owner.prefetchAndShow(); shadowOf(Looper.getMainLooper()).idle()
+        verify(exactly = 1) { ad.show(activity) }
+        assertEquals(1, loads)
+    }
+
+    @Test fun `repeated prefetchAndShow coalesces onto one request and shows once`() {
+        owner.prefetchAndShow(); owner.prefetchAndShow()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, loads)
+        val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
+        loaded.onAdLoaded(ad)
+        verify(exactly = 1) { ad.show(activity) }
+    }
+
+    @Test fun `a presentation asked for by a failed load does not leak to the next prefetch`() {
+        owner.prefetchAndShow(); shadowOf(Looper.getMainLooper()).idle()
+        loaded.onAdFailedToLoad(mockk(relaxed = true))
+
+        prefetch()
+        val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
+        loaded.onAdLoaded(ad)
+        verify(exactly = 0) { ad.show(any()) }
+        assertTrue(owner.isReady)
+    }
+
+    @Test fun `prefetch presentation keeps ownership when destroy is requested`() {
+        prefetch()
         loaded.onAdLoaded(mockk(relaxed = true))
-        assertTrue(owner.showAtOpportunity(activity, true))
+        assertTrue(owner.show(activity, true))
         owner.destroy()
         fullscreen.onAdDismissedFullScreenContent()
         verify(exactly = 1) { events.onClosed() }
-        preload()
+        prefetch()
         assertEquals(1, loads)
     }
 
