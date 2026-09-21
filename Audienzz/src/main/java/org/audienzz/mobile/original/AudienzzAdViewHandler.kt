@@ -257,6 +257,10 @@ class AudienzzAdViewHandler(
         pendingLoadReason = null
         adUnit.destroy()
         initialRequestGeneration = null
+        // A cancelled replacement will never reach the Google callback that restores its blank.
+        // Leaving our INVISIBLE flag behind prevents the viewport listener from admitting the
+        // next replacement when the slot returns to screen.
+        restoreFromBlankIfNeeded()
     }
 
     /**
@@ -381,12 +385,6 @@ class AudienzzAdViewHandler(
         // This transition owns the replacement, so any pending periodic refresh or retry is retired
         // rather than allowed to issue a second one for the same transition.
         refreshController.invalidatePending()
-        // Optionally blank the current creative (keeping the slot size — INVISIBLE reserves space)
-        // so the refresh is visually obvious; restored when the fresh ad loads.
-        if (AudienzzPrebidMobile.blankOnScreenReload) {
-            adView.visibility = View.INVISIBLE
-            blankedForReload = true
-        }
         fetchDemand(RefreshRequestReason.PAGE_IMPRESSION)
     }
 
@@ -407,10 +405,6 @@ class AudienzzAdViewHandler(
         }
         auctionGeneration++
         retireCurrentAuction()
-        if (AudienzzPrebidMobile.blankOnScreenReload) {
-            adView.visibility = View.INVISIBLE
-            blankedForReload = true
-        }
         fetchDemand(RefreshRequestReason.PAGE_IMPRESSION)
     }
 
@@ -863,6 +857,15 @@ class AudienzzAdViewHandler(
             return false
         }
         if (refreshController.hasRequestInFlight) return false
+        // Blanking is a visual aid for a replacement that is actually starting. Blanking a
+        // deferred/off-screen slot earlier makes its own visibility gate permanently reject it.
+        // Do not take ownership of visibility that the publisher already set to hidden.
+        if (reason == RefreshRequestReason.PAGE_IMPRESSION &&
+            AudienzzPrebidMobile.blankOnScreenReload && adView.visibility == View.VISIBLE
+        ) {
+            adView.visibility = View.INVISIBLE
+            blankedForReload = true
+        }
         pendingLoadReason = null
         // An auction is actually starting, so nothing is owed any more.
         // Every new auction supersedes the previous one.
