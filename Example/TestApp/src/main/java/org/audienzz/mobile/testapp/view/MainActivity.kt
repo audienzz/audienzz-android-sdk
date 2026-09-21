@@ -7,9 +7,7 @@ import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
-import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayoutMediator
-import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.testapp.DemoFeatureFlags
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.databinding.ActivityMainBinding
@@ -50,18 +48,15 @@ class MainActivity : AppCompatActivity() {
         TabLayoutMediator(binding.tabLayout, binding.viewPager) { tab, position ->
             tab.text = tabTitle(position)
         }.attach()
-        // Every screen is reported by the app: there is no automatic tracking. Each tab is a
-        // screen, so switching tabs fires that tab's page impression, which is what releases the
-        // outgoing tab's banners and reloads the incoming tab's.
-        binding.viewPager.registerOnPageChangeCallback(
-            object : ViewPager2.OnPageChangeCallback() {
-                override fun onPageSelected(position: Int) {
-                    AudienzzPrebidMobile.pageImpression(tabTitle(position))
-                }
-            },
-        )
-        // …including the tab the app opens on, which no change callback will announce.
-        AudienzzPrebidMobile.pageImpression(tabTitle(binding.viewPager.currentItem))
+        // No page impression here. Every screen is reported by the app — there is no automatic
+        // tracking — but the reporter for a tab is the TAB ITSELF: each fragment calls
+        // `pageImpression(this)` from its own onResume, which ViewPager2 fires for the incoming
+        // tab and for the one the app opens with.
+        //
+        // Reporting from here as well would be a second reporter for one transition, and a worse
+        // one: it names the screen by title, while a banner inside the fragment resolves its host
+        // to the Fragment object. The title report would release the very banners the tab had
+        // just loaded.
     }
 
     private fun tabTitle(position: Int) = when (position) {

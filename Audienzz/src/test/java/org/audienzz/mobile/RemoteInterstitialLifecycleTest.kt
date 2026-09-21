@@ -206,6 +206,28 @@ class RemoteInterstitialLifecycleTest {
         verify(exactly = 1) { ad.show(activity) }
     }
 
+    /// A call that is REJECTED must leave nothing behind. Remembering the presentation on the way
+    /// out let an unrelated later prefetch present on its back, which is the one thing a prefetch
+    /// promises never to do.
+    @Test fun `a rejected prefetchAndShow leaves no presentation intent`() {
+        prefetchAndShow()
+        val first = mockk<AdManagerInterstitialAd>(relaxed = true)
+        loaded.onAdLoaded(first)
+        verify(exactly = 1) { first.show(activity) }
+
+        // Asked for again while that ad is on screen: rejected.
+        owner.prefetchAndShow(); shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, loads)
+
+        fullscreen.onAdDismissedFullScreenContent()
+
+        prefetch()
+        val second = mockk<AdManagerInterstitialAd>(relaxed = true)
+        loaded.onAdLoaded(second)
+        verify(exactly = 0) { second.show(any()) }
+        assertTrue(owner.isReady)
+    }
+
     @Test fun `a presentation asked for by a failed load does not leak to the next prefetch`() {
         owner.prefetchAndShow(); shadowOf(Looper.getMainLooper()).idle()
         loaded.onAdFailedToLoad(mockk(relaxed = true))

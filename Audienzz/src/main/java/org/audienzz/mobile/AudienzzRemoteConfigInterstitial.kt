@@ -163,16 +163,30 @@ class AudienzzRemoteConfigInterstitial(
             events?.onError("Interstitial is destroyed")
             return
         }
-        if (showWhenLoaded) this.showWhenLoaded = true
+        // The presentation intent is recorded ONLY on a path that accepts the request. Recording
+        // it up front meant a call rejected because something was already on screen left the
+        // intent behind, and the next ordinary prefetch presented on its back — the one thing a
+        // prefetch promises never to do.
         if (isReady) {
             // Already in hand: this is the same request, answered instantly. Presenting here is
             // what makes a second prefetchAndShow reuse inventory instead of buying more.
             if (showWhenLoaded) presentWhenLoaded()
             return
         }
+        if (presenting) {
+            // Rejected: another presentation owns the screen, and this request is over.
+            if (showWhenLoaded) {
+                events?.onError("Another interstitial is already presenting")
+            }
+            return
+        }
         // Coalesce onto the request in flight rather than reporting an error: asking twice for the
         // same thing is exactly what a publisher does across a screen's lifecycle.
-        if (loading || presenting) return
+        if (loading) {
+            if (showWhenLoaded) this.showWhenLoaded = true
+            return
+        }
+        if (showWhenLoaded) this.showWhenLoaded = true
         startLoad()
     }
 
@@ -185,6 +199,11 @@ class AudienzzRemoteConfigInterstitial(
      */
     private fun presentWhenLoaded() {
         showWhenLoaded = false
+        // Nothing to do if an ad is already on screen — and emphatically not a failed
+        // presentation: the branch below discards held inventory, which must never happen to an
+        // ad the reader is looking at. Parity with the iOS owner, where the same shape also broke
+        // callback matching.
+        if (presenting) return
         val activity = context.getActivity()
         val reason = skipReason(activity, eligible = true)
         if (reason != null) {
