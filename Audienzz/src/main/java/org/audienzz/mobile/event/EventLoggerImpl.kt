@@ -30,7 +30,15 @@ internal class EventLoggerImpl @Inject constructor(
 ) : EventLogger, CoroutineScope {
 
     private val sessionId = generateUuidString()
-    private val sessionStartTimestamp = System.currentTimeMillis()
+    /**
+     * Unix time in **seconds**, fixed for the life of the session.
+     *
+     * It was milliseconds until this release, which is why historical rows are ~1e12 and new ones
+     * are ~1e9. A consumer can tell them apart by magnitude — see `docs/analytics-contract.md` for
+     * the migration rule. Durations (`time_to_respond`, `autorefresh_time`) are unchanged and
+     * remain milliseconds; only this absolute timestamp moved.
+     */
+    private val sessionStartTimestamp = System.currentTimeMillis() / 1000
 
     // Monotonic per-session counter so the backend can order events regardless of the
     // order in which the async POSTs actually arrive. Starts at 0, +1 per logged event.

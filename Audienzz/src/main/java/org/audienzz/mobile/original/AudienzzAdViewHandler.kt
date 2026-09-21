@@ -117,8 +117,27 @@ class AudienzzAdViewHandler(
     // auction (bidRequest → bidResponse/bidWon/noBid → adImpression/adClick/viewability). Prebid
     // only assigns its own id after the request, so we pre-generate one for full-funnel counting.
     private var currentAuctionId: String? = null
-    // Times this slot has (re)loaded — reported as slot_reload. First load = 0.
+    // How many times this slot has (re)loaded. Internal only.
+    //
+    // What is REPORTED is [emittedSlotReload], a binary flag. The counter itself used to be the
+    // reported value, so a slot that refreshed four times emitted slot_reload 0,1,2,3 — the
+    // collector's contract is "first load or not".
     private var slotReloadCount: Int = 0
+
+    // Economics of the creative CURRENTLY ON SCREEN, snapshotted when Google confirmed it rendered.
+    //
+    // Render events must describe the creative the reader is actually looking at. Reading the most
+    // recent auction instead meant that as soon as a replacement's Prebid response arrived — or as
+    // soon as it failed and cleared these fields — a late impression, click or viewability callback
+    // belonging to the creative still on screen was reported under the replacement's auction id,
+    // cpm, creative and bidder.
+    private var displayedEconomics: RenderEconomics? = null
+
+    // The Prebid seat behind the DISPLAYED creative, and whether that seat's GAM line item is what
+    // actually rendered. Snapshotted rather than read live, because starting the next auction
+    // resets the live values — which would silently re-attribute a creative still on screen.
+    private var displayedPrebidBidder: String? = null
+    private var displayedPrebidLineItemWon: Boolean = false
 
     // Screen-aware smart refresh (v2). screenActive defaults true so legacy, and screens that never
     // call pageImpression, behave exactly as before; the coordinator flips it on screen changes.
@@ -893,6 +912,7 @@ class AudienzzAdViewHandler(
             autorefreshTime = autorefreshTime,
             isAutorefresh = isAutorefresh,
             isRefresh = isRefresh,
+            slotReload = emittedSlotReload,
             adUnitCode = adUnit.configId,
             mediaTypes = mediaTypesJson(adUnit.adFormats.adSubtype),
         )
@@ -960,7 +980,7 @@ class AudienzzAdViewHandler(
                     auctionId = currentAuctionId,
                     adId = win?.adId,
                     timeToRespond = timeToRespond,
-                    slotReload = slotReloadCount,
+                    slotReload = emittedSlotReload,
                 )
                 lastRenderEconomics = economics
             } else {
@@ -1013,6 +1033,7 @@ class AudienzzAdViewHandler(
                     // Prebid returns SUCCESS with empty targeting on a no-bid; report NO_BIDS so the
                     // funnel doesn't show a "successful" no-bid. Real failures keep their result code.
                     resultCode = noBidResultCode(resultCode),
+                    slotReload = emittedSlotReload,
                     adUnitCode = adUnit.configId,
                     mediaTypes = mediaTypesJson(adUnit.adFormats.adSubtype),
                 )
@@ -1048,6 +1069,13 @@ class AudienzzAdViewHandler(
             if (name.equals(PREBID_APP_EVENT, ignoreCase = true)) {
                 Log.d(TAG, "onAppEvent($name) — Prebid line item won for ${adView.adUnitId}")
                 prebidLineItemWon = true
+                // The app event can arrive either side of onAdLoaded. When it lands after, correct
+                // the displayed snapshot in place — this is the creative on screen, so the
+                // attribution belongs to it and not to whatever auction is running by then.
+                if (displayedEconomics != null) {
+                    displayedPrebidLineItemWon = true
+                    if (displayedPrebidBidder == null) displayedPrebidBidder = prebidWinningBidder
+                }
             }
         }
 
@@ -1070,6 +1098,9 @@ class AudienzzAdViewHandler(
 
             override fun onAdLoaded() {
                 if (!completeGoogleLoad(retryableFailure = false)) return
+                // This is the moment the replacement becomes what the reader sees, so it is the
+                // moment its economics become the ones render events describe.
+                commitDisplayedCreative()
                 restoreFromBlankIfNeeded()
                 actualListener?.onAdLoaded()
             }
@@ -1147,6 +1178,31 @@ class AudienzzAdViewHandler(
     }
 
     /**
+     * `slot_reload` as the collector defines it: `0` for a slot's first load, `1` for every load
+     * after it. Serialized as a string, like the other `attributes` values.
+     */
+    private val emittedSlotReload: Int get() = if (slotReloadCount > 0) 1 else 0
+
+    /**
+     * Promote the pending auction's economics to "what is on screen".
+     *
+     * Called when Google confirms the creative was received, which is the moment the replacement
+     * actually becomes the thing the reader sees. Until then the previous creative keeps its own
+     * identity, so a late impression or viewability callback for it is reported under its own
+     * auction — and a replacement that never arrives changes nothing at all.
+     */
+    private fun commitDisplayedCreative() {
+        val base = lastRenderEconomics ?: RenderEconomics()
+        displayedEconomics = base.copy(
+            auctionId = base.auctionId ?: currentAuctionId,
+            // The reported flag is binary and belongs to the creative, not the slot's current count.
+            slotReload = base.slotReload ?: emittedSlotReload,
+        )
+        displayedPrebidBidder = prebidWinningBidder
+        displayedPrebidLineItemWon = prebidLineItemWon
+    }
+
+    /**
      * Resolves which demand actually rendered in GAM, for `bidder_code` / `winner_bidder_code`:
      * - Prebid line item won (the GAM app event fired) → the Prebid winning bidder (`hb_bidder`)
      * - otherwise → the ad server ([AD_SERVER_BIDDER], i.e. Google/AdX/direct)
@@ -1156,8 +1212,8 @@ class AudienzzAdViewHandler(
      * [AD_SERVER_BIDDER]. `ResponseInfo` is read only for diagnostic logging.
      */
     private fun resolveBidderCode(): String =
-        if (prebidLineItemWon) {
-            prebidWinningBidder ?: PREBID_BIDDER
+        if (displayedPrebidLineItemWon) {
+            displayedPrebidBidder ?: PREBID_BIDDER
         } else {
             adView.responseInfo?.loadedAdapterResponseInfo?.adSourceName?.let { adSource ->
                 Log.d(TAG, "adImpression — ad server rendered for ${adView.adUnitId}, adSource=$adSource")
@@ -1173,7 +1229,8 @@ class AudienzzAdViewHandler(
     private fun renderEconomics(): RenderEconomics {
         // Always carry the winning-bid economics that were in play; bidder_code reflects the actual
         // render winner (Prebid line item when its GAM app event fired, else the ad server).
-        val base = lastRenderEconomics ?: RenderEconomics()
+        // The DISPLAYED creative's snapshot, not the newest auction's. See [displayedEconomics].
+        val base = displayedEconomics ?: RenderEconomics()
         val bidder = resolveBidderCode()
         return base.copy(
             bidderCode = bidder,
