@@ -76,9 +76,7 @@ class AudienzzRemoteConfigInterstitial(
         Dispatchers.Main + SupervisorJob() + CoroutineExceptionHandler { _, throwable ->
             Log.e(TAG, "CoroutineScope exception", throwable)
             if (!destroyed) {
-                loading = false
-                emit("loadFailed", throwable.toString())
-                events?.onError(throwable.message ?: "Interstitial load failed")
+                failLoad(throwable.toString(), throwable.message ?: "Interstitial load failed")
             }
         },
     )
@@ -261,9 +259,10 @@ class AudienzzRemoteConfigInterstitial(
             val manager = MainComponent.Companion.remoteConfigManager
             if (manager == null) {
                 Log.e(TAG, "RemoteConfigManager is not initialized")
-                loading = false
-                emit("loadFailed", "RemoteConfigManager is not initialized")
-                events?.onError("RemoteConfigManager is not initialized — call initializeRemoteSdk first")
+                failLoad(
+                    "RemoteConfigManager is not initialized",
+                    "RemoteConfigManager is not initialized — call initializeRemoteSdk first",
+                )
                 return@launch
             }
 
@@ -273,14 +272,27 @@ class AudienzzRemoteConfigInterstitial(
 
             if (config == null) {
                 Log.e(TAG, "Config not found for ID: $configId")
-                loading = false
-                emit("loadFailed", "Remote config not found")
-                events?.onError("Remote config not found for ID: $configId")
+                failLoad("Remote config not found", "Remote config not found for ID: $configId")
                 return@launch
             }
 
             if (!destroyed && token == generation) setupInterstitial(config, token)
         }
+    }
+
+    /**
+     * Every way a load can end without inventory.
+     *
+     * The presentation intent is cleared HERE rather than at each exit, because that is what kept
+     * being missed: a load that failed on a missing remote config took an early return, and once
+     * the configuration arrived the next ordinary [prefetch] presented on the back of that dead
+     * request. A request that produced no ad is over, however it ended.
+     */
+    private fun failLoad(reason: String, message: String) {
+        loading = false
+        showWhenLoaded = false
+        emit("loadFailed", reason)
+        events?.onError(message)
     }
 
     private fun setupInterstitial(config: RemoteAdUnitConfig, token: Int) {
@@ -301,8 +313,9 @@ class AudienzzRemoteConfigInterstitial(
                 override fun onAdFailedToLoad(loadError: LoadAdError) {
                     if (destroyed || token != generation || !loading) return
                     loading = false
-                    // Nothing to present, and the request is over: a later prefetch must not
-                    // inherit a presentation asked for on behalf of a load that failed.
+                    // Same invariant as [failLoad] — a request that produced no ad is over, so a
+                    // later prefetch must not inherit its presentation. Reported separately
+                    // because this failure has a real [LoadAdError] to hand to [Events.onFailed].
                     showWhenLoaded = false
                     emit("loadFailed", loadError.toString())
                     Log.d(TAG, "onAdFailed, exception $loadError ConfigId $configId")

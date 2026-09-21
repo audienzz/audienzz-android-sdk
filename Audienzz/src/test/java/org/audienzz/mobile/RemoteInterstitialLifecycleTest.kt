@@ -27,15 +27,17 @@ class RemoteInterstitialLifecycleTest {
     private lateinit var fullscreen: AudienzzFullScreenContentCallback
     private lateinit var handoff: (AudienzzResultCode?, AdManagerAdRequest, AudienzzInterstitialAdLoadCallback) -> Unit
     private val events = mockk<AudienzzRemoteConfigInterstitial.Events>(relaxed = true)
+    private lateinit var manager: RemoteConfigManager
+    private lateinit var config: RemoteAdUnitConfig
     private var loads = 0
 
     @Before fun setup() {
         AppForegroundMonitor.resetForTesting()
         loads = 0
         activity = mockk(relaxed = true)
-        val config = RemoteAdUnitConfig(1, RemoteConfig("interstitial"),
+        config = RemoteAdUnitConfig(1, RemoteConfig("interstitial"),
             RemoteGamConfig("/probe", emptyList()), RemotePrebidConfig("probe", emptyList()))
-        val manager = mockk<RemoteConfigManager>()
+        manager = mockk<RemoteConfigManager>()
         coEvery { manager.getAdUnitConfig(any()) } returns config
         mockkObject(MainComponent.Companion)
         every { MainComponent.remoteConfigManager } returns manager
@@ -225,6 +227,38 @@ class RemoteInterstitialLifecycleTest {
         val second = mockk<AdManagerInterstitialAd>(relaxed = true)
         loaded.onAdLoaded(second)
         verify(exactly = 0) { second.show(any()) }
+        assertTrue(owner.isReady)
+    }
+
+    /// A load that ends WITHOUT inventory ends the request, however it ended. A missing remote
+    /// config took an early exit that never cleared the presentation, so once the configuration
+    /// arrived the next ordinary prefetch presented on the back of that dead request.
+    @Test fun `a load that fails on missing configuration leaves no presentation intent`() {
+        coEvery { manager.getAdUnitConfig(any()) } returns null
+        owner.prefetchAndShow(); shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, loads)
+        verify { events.onError(match { it.contains("Remote config not found") }) }
+
+        // Configuration recovers.
+        coEvery { manager.getAdUnitConfig(any()) } returns config
+        prefetch()
+        assertEquals(1, loads)
+        val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
+        loaded.onAdLoaded(ad)
+        verify(exactly = 0) { ad.show(any()) }
+        assertTrue(owner.isReady)
+    }
+
+    @Test fun `an uninitialized remote config manager leaves no presentation intent`() {
+        every { MainComponent.remoteConfigManager } returns null
+        owner.prefetchAndShow(); shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(0, loads)
+
+        every { MainComponent.remoteConfigManager } returns manager
+        prefetch()
+        val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
+        loaded.onAdLoaded(ad)
+        verify(exactly = 0) { ad.show(any()) }
         assertTrue(owner.isReady)
     }
 
