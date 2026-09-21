@@ -1,5 +1,6 @@
 package org.audienzz.mobile.screen
 
+import org.audienzz.mobile.util.AudienzzDiagnostics
 import android.os.Handler
 import android.os.Looper
 import org.audienzz.mobile.di.MainComponent
@@ -84,8 +85,20 @@ class ScreenAdCoordinator @Inject constructor() {
                 TAG,
                 "pageImpression \"$name\" epoch=$epoch screen=${screen.javaClass.simpleName}@${System.identityHashCode(screen)} — ${registry.size} banner(s) registered",
             )
+            AudienzzDiagnostics.log(
+                "page", "transition",
+                "name" to name, "epoch" to epoch, "slots" to registry.size,
+            )
             for (handler in registry) {
-                handler.onPageActiveChanged(handler.isHostedBy(screen), epoch)
+                val active = handler.isHostedBy(screen)
+                AudienzzDiagnostics.log(
+                    "slot", if (active) "recreate" else "release",
+                    "unit" to handler.diagnosticLabel(),
+                    "page" to name,
+                    "epoch" to epoch,
+                    "reason" to if (active) null else "otherPage",
+                )
+                handler.onPageActiveChanged(active, epoch)
             }
         }
     }

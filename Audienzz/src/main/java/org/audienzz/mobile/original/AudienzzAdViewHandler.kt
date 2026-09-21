@@ -169,6 +169,9 @@ class AudienzzAdViewHandler(
         return adView.context.unwrapActivity()
     }
 
+    /** How this slot is named in an `AUDZ` diagnostics line. */
+    internal fun diagnosticLabel(): String = adView.adUnitId ?: "unknown"
+
     /**
      * True when this ad lives on [screen]. Activities and Fragments match by object identity (no
      * `equals` override, so `==` collapses to `===`); an explicit [hostScreenOverride] such as a

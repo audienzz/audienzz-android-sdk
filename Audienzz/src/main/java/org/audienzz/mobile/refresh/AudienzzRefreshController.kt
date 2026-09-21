@@ -1,5 +1,6 @@
 package org.audienzz.mobile.refresh
 
+import org.audienzz.mobile.util.AudienzzDiagnostics
 import android.util.Log
 
 /**
@@ -108,6 +109,11 @@ internal class AudienzzRefreshController(
         if (destroyed) return
         if (blocks.add(reason)) {
             Log.d(logTag, "refresh blocked by $reason (now $blocks)")
+            AudienzzDiagnostics.log(
+                "refresh", "block",
+                "slot" to logTag, "reason" to reason,
+                "held" to blocks.joinToString("+"),
+            )
         }
         scheduler.cancel()
         // Deliberately NOT a generation bump. A request in flight when the banner scrolls out of
@@ -126,6 +132,11 @@ internal class AudienzzRefreshController(
         if (destroyed) return
         if (!blocks.remove(reason)) return
         Log.d(logTag, "refresh unblocked from $reason (remaining $blocks)")
+        AudienzzDiagnostics.log(
+            "refresh", "unblock",
+            "slot" to logTag, "reason" to reason,
+            "held" to if (blocks.isEmpty()) "none" else blocks.joinToString("+"),
+        )
         if (schedule && blocks.isEmpty()) {
             scheduleNext()
         }
@@ -137,6 +148,7 @@ internal class AudienzzRefreshController(
         if (blocks.isEmpty()) return
         blocks.clear()
         Log.d(logTag, "refresh unblocked from all reasons")
+        AudienzzDiagnostics.log("refresh", "unblock", "slot" to logTag, "reason" to "all", "held" to "none")
         scheduleNext()
     }
 
@@ -154,6 +166,9 @@ internal class AudienzzRefreshController(
             consecutiveFailures = 0
         }
         Log.d(logTag, "request started: $reason (generation $generation)")
+        AudienzzDiagnostics.log(
+            "auction", "start", "slot" to logTag, "reason" to reason, "gen" to generation,
+        )
         return generation
     }
 
@@ -164,9 +179,22 @@ internal class AudienzzRefreshController(
      * or schedule anything, since its page or eligibility no longer applies.
      */
     fun onRequestCompleted(generationAtRequest: Int, success: Boolean) {
-        if (destroyed || generationAtRequest != generation || inFlightGeneration != generationAtRequest) return
+        if (destroyed || generationAtRequest != generation || inFlightGeneration != generationAtRequest) {
+            // Worth a line: a response landing for a superseded generation is normal after a page
+            // transition, but if you are reading a log wondering where a creative went, this is it.
+            AudienzzDiagnostics.log(
+                "auction", "discarded",
+                "slot" to logTag, "gen" to generationAtRequest, "current" to generation,
+            )
+            return
+        }
         inFlightGeneration = null
         lastCompletionAt = scheduler.nowMillis()
+        AudienzzDiagnostics.log(
+            "auction", "end",
+            "slot" to logTag, "gen" to generationAtRequest,
+            "result" to if (success) "filled" else "failed",
+        )
 
         if (success) {
             consecutiveFailures = 0

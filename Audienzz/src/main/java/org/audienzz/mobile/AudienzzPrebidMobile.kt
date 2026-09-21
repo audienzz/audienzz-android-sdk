@@ -31,6 +31,7 @@ import org.audienzz.mobile.rendering.bidding.interfaces.AudienzzInterstitialCont
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzDisplayVideoListener
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzDisplayViewListener
 import org.audienzz.mobile.rendering.listeners.AudienzzSdkInitializationListener
+import org.audienzz.mobile.util.AudienzzDiagnostics
 import org.audienzz.mobile.util.CurrentActivityTracker
 import org.audienzz.mobile.util.PpidManager
 import org.json.JSONObject
@@ -113,9 +114,30 @@ object AudienzzPrebidMobile {
     @JvmStatic
     var blankOnScreenReload: Boolean = false
 
+    /**
+     * Emit one greppable `AUDZ …` line per decision the SDK makes about a slot: which page became
+     * current, which page a slot belongs to, when an auction started, and why one did not.
+     *
+     * Off by default. Turn it on **before** initializing when you need a log you can capture on a
+     * device (`adb logcat -s AUDZ`) and hand to someone else. Route it elsewhere with
+     * [AudienzzDiagnostics.sink].
+     *
+     * The iOS, Flutter and React Native SDKs emit the same line format, so one flow can be
+     * compared across platforms.
+     */
+    @JvmStatic
+    var diagnosticsEnabled: Boolean
+        get() = AudienzzDiagnostics.isEnabled
+        set(value) { AudienzzDiagnostics.isEnabled = value }
+
     /** Single sink for both the auto tracker and the manual API: page impression + v2 coordinator. */
     private fun notifyScreenResumed(screen: Any, screenName: String) {
         android.util.Log.d(TAG, "pageImpression: firing → \"$screenName\"")
+        AudienzzDiagnostics.log(
+            "page", "impression",
+            "id" to diagnosticToken(screen),
+            "name" to screenName,
+        )
         // An explicit report always wins over a pending automatic foreground one, and claims this
         // foreground visit so an activation arriving afterwards doesn't schedule a duplicate.
         reportedInThisForegroundVisit = true
@@ -717,6 +739,17 @@ object AudienzzPrebidMobile {
         )
         notifyScreenResumed(screen, screenName)
     }
+
+    /**
+     * How a screen token is named in an `AUDZ` line.
+     *
+     * A route key is its own string; an Activity or Fragment has none, so its object identity
+     * stands in. The point is only that two visits to the same screen, and two instances of the
+     * same class, are distinguishable when reading a captured log back.
+     */
+    private fun diagnosticToken(screen: Any): String =
+        if (screen is String) screen
+        else "${screen.javaClass.simpleName}#${System.identityHashCode(screen) % 100000}"
 
     /** Derive a stable screen name from a screen entity (Activity/Fragment/Dialog/Context/other). */
     private fun deriveScreenName(screen: Any): String = when (screen) {

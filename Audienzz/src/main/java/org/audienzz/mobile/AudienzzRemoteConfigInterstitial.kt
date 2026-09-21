@@ -26,6 +26,7 @@ import java.util.EnumSet
 import java.util.UUID
 import java.lang.ref.WeakReference
 import org.audienzz.mobile.util.AppForegroundMonitor
+import org.audienzz.mobile.util.AudienzzDiagnostics
 
 /**
  * Remote fullscreen inventory.
@@ -236,6 +237,11 @@ class AudienzzRemoteConfigInterstitial(
     }
 
     private fun emit(event: String, reason: String? = null) {
+        // The interstitial funnel already names every step; diagnostics just mirrors it into the
+        // same greppable stream as banners, so one capture shows both.
+        AudienzzDiagnostics.log(
+            "interstitial", event, "config" to configId, "loadId" to loadId, "reason" to reason,
+        )
         events?.onLifecycleEvent(mapOf("event" to event, "loadId" to loadId, "timestampMillis" to System.currentTimeMillis(),
             "loadAgeMillis" to loadedAt?.let { now() - it },
             "configId" to configId, "responseId" to loadedInterstitialAd?.responseInfo?.responseId,
