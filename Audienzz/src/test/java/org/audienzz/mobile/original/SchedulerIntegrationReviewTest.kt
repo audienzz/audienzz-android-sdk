@@ -52,6 +52,26 @@ class SchedulerIntegrationReviewTest {
     private fun load(lazy: Boolean = false) { handler.load(withLazyLoading = lazy) { _, _ -> gamLoads++ } }
     private fun idle(ms: Long) { shadowOf(Looper.getMainLooper()).idleFor(ms, TimeUnit.MILLISECONDS) }
 
+    @Test fun `capped banner stays quiet in background and foreground page grants one fresh request`() {
+        AppForegroundMonitor.onActivityStarted(host)
+        load()
+        repeat(11) { index ->
+            assertEquals(index + 1, responses.size)
+            responses.last()(AudienzzResultCode.NO_BIDS)
+            gamListener.onAdLoaded()
+            if (index < 10) handler.reloadAd()
+        }
+        assertTrue(handler.refreshController.blockReasons.contains(org.audienzz.mobile.refresh.RefreshBlockReason.REFRESH_LIMIT))
+        AppForegroundMonitor.onActivityStopped(host)
+        assertFalse(AppForegroundMonitor.isForeground)
+        idle(24 * 60 * 60 * 1000L)
+        assertEquals(11, responses.size)
+        AppForegroundMonitor.onActivityStarted(host)
+        idle(1000)
+        assertEquals(12, responses.size)
+        assertFalse(handler.refreshController.blockReasons.contains(org.audienzz.mobile.refresh.RefreshBlockReason.REFRESH_LIMIT))
+    }
+
     @Test fun `foreground overdue banner gets only page replacement`() {
         load(); responses[0](AudienzzResultCode.SUCCESS); gamListener.onAdLoaded()
         AppForegroundMonitor.onActivityStopped(host)

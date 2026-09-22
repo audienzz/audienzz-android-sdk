@@ -11,6 +11,9 @@ enum class RefreshBlockReason {
     /** The app called a public pause API. Only a public resume clears it. */
     PUBLISHER,
 
+    /** This slot spent its initial request plus ten refreshes; only a new page resets its budget. */
+    REFRESH_LIMIT,
+
     /** The banner's page is not the active one (see the page coordinator). */
     PAGE_INACTIVE,
 

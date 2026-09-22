@@ -109,6 +109,8 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     }
 
     fun loadAd() {
+        // A repeated load must not remove the last allowed creative (or its in-flight request).
+        if (adViewHandler != null && !requestContext.hasBannerRequestBudget) return
         // Reserve before remote config resolves, so network completion cannot reorder slots.
         val active = org.audienzz.mobile.screen.screenAdCoordinator?.activeScreen
         if (pendingScreenKey == null || active == null || pendingScreenKey == active) requestContext.register()
@@ -236,6 +238,8 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
 
     @Suppress("SpreadOperator")
     private fun createAdFromConfig(config: RemoteAdUnitConfig) {
+        // Config can return after the existing banner used its last request.
+        if (adViewHandler != null && !requestContext.hasBannerRequestBudget) return
         // M11: a second loadAd()/createAdFromConfig would otherwise orphan the previous ad unit and
         // ad view with their refresh loop still armed (a zombie loop loading a detached view, feeding
         // C1). Tear the predecessor down before building the replacement.

@@ -15,8 +15,16 @@ class AudienzzAdRequestContext {
 
     internal fun register() = ledger.reserve(this)
 
-    internal fun buildRequest(builder: AdManagerAdRequest.Builder): AdManagerAdRequest {
-        val snapshot = ledger.nextRequest(this)
+    /** Banner-only budget for this logical slot and page; replacing a native view does not reset it. */
+    val hasBannerRequestBudget: Boolean get() = ledger.hasBannerRequestBudget(this)
+
+    internal fun buildBannerRequest(builder: AdManagerAdRequest.Builder): AdManagerAdRequest? =
+        ledger.nextBannerRequest(this)?.let { buildRequest(builder, it) }
+
+    internal fun buildRequest(builder: AdManagerAdRequest.Builder): AdManagerAdRequest =
+        buildRequest(builder, ledger.nextRequest(this))
+
+    private fun buildRequest(builder: AdManagerAdRequest.Builder, snapshot: AdRequestSnapshot): AdManagerAdRequest {
         val request = builder.build()
         GamTargetingSnapshot.detach(request)
         snapshot.targeting.forEach { (key, value) -> request.customTargeting.putString(key, value) }
@@ -73,6 +81,13 @@ internal class AdRequestLedger {
             it.bridgeIdentifier = identifier
             bridgeSlots[identifier] = it
         }
+
+    // One initial request (au_refresh=0), then at most ten additional attempts, including retries.
+    @Synchronized fun hasBannerRequestBudget(context: AudienzzAdRequestContext): Boolean =
+        (entries[context]?.requests ?: 0) < 11
+
+    @Synchronized fun nextBannerRequest(context: AudienzzAdRequestContext): AdRequestSnapshot? =
+        if (hasBannerRequestBudget(context)) nextRequest(context) else null
 
     @Synchronized fun nextRequest(context: AudienzzAdRequestContext): AdRequestSnapshot {
         reserve(context)

@@ -79,6 +79,28 @@ class RemoteBannerDeliverySettingsTest {
         shadowOf(Looper.getMainLooper()).idle()
     }
 
+    @Test fun `exhausted slot keeps its current banner on repeat load and late config callback`() {
+        seed(config())
+        val view = view()
+        view.loadAd()
+        pump()
+        assertNotNull("fixture must have built and loaded a real child", loadedLazy)
+        assertEquals(1, view.childCount)
+        val current = view.getChildAt(0)
+        while (view.requestContext.hasBannerRequestBudget) {
+            view.requestContext.buildBannerRequest(com.google.android.gms.ads.admanager.AdManagerAdRequest.Builder())
+        }
+        view.loadAd()
+        assertSame(current, view.getChildAt(0))
+        // A config lookup begun before the cap may return afterwards. Drive its actual handoff.
+        val callback = AudienzzRemoteBannerView::class.java.getDeclaredMethod("createAdFromConfig", RemoteAdUnitConfig::class.java)
+        callback.isAccessible = true
+        callback.invoke(view, config())
+        assertSame(current, view.getChildAt(0))
+        verify(exactly = 0) { anyConstructed<AudienzzAdViewHandler>().destroy() }
+        view.destroy()
+    }
+
     // region Resolution precedence
 
     @Test fun `an ad config that says nothing gets the sdk defaults`() {

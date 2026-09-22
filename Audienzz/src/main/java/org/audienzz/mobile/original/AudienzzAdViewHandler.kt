@@ -219,6 +219,9 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             // (pageEpoch < epoch) could then never fire — which is exactly the case adoption exists
             // to repair: a banner released because its host wasn't resolvable yet.
             pageEpoch = epoch
+            if (requestContext.hasBannerRequestBudget) {
+                refreshController.unblock(RefreshBlockReason.REFRESH_LIMIT, schedule = false)
+            }
             // A hard transition invalidates the outgoing auction even when the SAME page is
             // re-reported: an in-flight response from the previous visit must not load a creative
             // or overwrite this visit's auction analytics.
@@ -423,7 +426,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * on demand. No-op before the handler has been set up (the initial load hasn't started yet).
      */
     fun reloadAd() {
-        if (storedCallback == null) return
+        if (storedCallback == null || !requestContext.hasBannerRequestBudget) return
+        // Check before retiring demand: the final permitted request may still be in flight.
         // Never re-auction a banner the page sweep has released — the bridges broadcast reloads, and
         // without this a released banner on a kept-mounted route would come back to life.
         if (!screenActive) {
@@ -601,11 +605,11 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * addCustomTargeting/setPublisherProvidedId overwrite per key, so reusing the builder does not
      * duplicate values.
      */
-    private fun buildRequest(): AdManagerAdRequest {
+    private fun buildRequest(): AdManagerAdRequest? {
         val builder = gamRequestBuilder ?: AdManagerAdRequest.Builder()
         builder.applyPublisherProvidedId(AudienzzPrebidMobile.ppidManager?.getPpid())
         AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(builder)
-        return requestContext.buildRequest(builder)
+        return requestContext.buildBannerRequest(builder)
     }
 
     /**
@@ -919,6 +923,14 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             restoreFromBlankIfNeeded()
             return false
         }
+        // Reserve before blanking or invalidating anything. This shared ledger also guards fresh
+        // native handlers created for a slot that has already exhausted its page budget.
+        val request = buildRequest() ?: run {
+            pendingLoadReason = null
+            refreshController.block(RefreshBlockReason.REFRESH_LIMIT)
+            restoreFromBlankIfNeeded()
+            return false
+        }
         // Usually already blank from releaseForPage(); this covers a page re-reported without an
         // intervening release.
         if (reason == RefreshRequestReason.PAGE_IMPRESSION) blankForReloadIfNeeded()
@@ -928,7 +940,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         auctionGeneration++
         initialRequestGeneration = auctionGeneration
         val refreshGeneration = refreshController.onRequestStarted(reason)
-        val request = buildRequest()
+        // Blocking cancels successors without invalidating the last permitted auction/creative.
+        if (!requestContext.hasBannerRequestBudget) refreshController.block(RefreshBlockReason.REFRESH_LIMIT)
         val isAutorefresh = adUnit.autoRefreshTime > 0
         val autorefreshTime = adUnit.autoRefreshTime.toLong()
         val isRefresh = !isFirstDemandFetch
