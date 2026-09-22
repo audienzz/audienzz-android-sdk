@@ -317,3 +317,39 @@ build carrying these fixes is indistinguishable by version alone, so use the **d
 
 For the release itself, bump the version constant **in the same commit** as the release tag, so the
 two can never disagree again.
+
+## Delivery: batching and the durable outbox
+
+Identical on iOS (`AUEventQueue` + `AUEventStore`) and Android (`EventBatcher` + `EventStore`).
+
+| Setting | Value | Was |
+|---|---|---|
+| Max events per POST | 50 | 20 |
+| Flush interval (partial batch) | 30s | 5s |
+| Max buffered / stored events | 500 | 500 (memory only) |
+| Retries per batch | 3, backing off 2s / 4s / 8s | unchanged |
+| Extra flush triggers | app background, app foreground, connectivity regained (iOS) | unchanged |
+
+**What this means for a consumer.** An event can now arrive up to ~30s after it occurred, plus
+retry backoff — `event_timestamp` is when it *happened* and is unaffected, but "rows seen in the
+last minute" is no longer a good proxy for "events that just occurred". Order within a session is
+carried by `session_seq`, not arrival, so batching and retries cannot reorder anything.
+
+**Duplicates are possible and expected to be deduped on `event_id`.** A batch that is in flight when
+the process dies is still on disk, so the next launch resends it. That is deliberate: a duplicate is
+recoverable, a dropped event is not. `event_id` is a UUID minted per event, so deduping on it is
+exact.
+
+**Events now survive process death.** They are written to a JSON-Lines file the moment they are
+enqueued — not at flush time — and removed only once the batch settles, so a foreground crash or a
+force-quit no longer loses the buffer. Two consequences worth knowing:
+
+* Events can arrive in a *later session* than the one that produced them. They keep their original
+  `session_id`, `session_start_timestamp` and `session_seq`, and on Android the whole payload is
+  frozen at creation time, so `app_version` and device context are the ones the event was produced
+  under — not the ones it was eventually delivered from.
+* A batch that exhausts its retries is dropped from disk rather than kept, otherwise every future
+  launch would replay a permanently failing batch forever.
+
+The store is capped at 500 events (drop oldest). A device that is offline for a long session will
+lose the oldest events beyond that, exactly as the in-memory buffer did before.

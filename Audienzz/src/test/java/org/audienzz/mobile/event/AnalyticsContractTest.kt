@@ -20,6 +20,7 @@ import org.audienzz.mobile.event.id.AdIdProvider
 import org.audienzz.mobile.event.id.AdIdProviderImpl
 import org.audienzz.mobile.event.id.CompanyIdProvider
 import org.audienzz.mobile.event.preferences.EventPreferences
+import org.audienzz.mobile.event.network.entity.EventNetwork
 import org.audienzz.mobile.event.network.mapper.EventNetworkMapper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -45,10 +46,7 @@ class AnalyticsContractTest {
     private fun serialize(event: EventDomain): JsonObject {
         val context: Context = RuntimeEnvironment.getApplication()
         val network = EventNetworkMapper(context).toNetwork(event)
-        return json.encodeToJsonElement(
-            org.audienzz.mobile.event.network.entity.EventNetwork.serializer(),
-            network,
-        ) as JsonObject
+        return json.encodeToJsonElement(EventNetwork.serializer(), network) as JsonObject
     }
 
     private fun attributes(payload: JsonObject): Map<String, JsonPrimitive> =
@@ -102,18 +100,24 @@ class AnalyticsContractTest {
         val dispatcher = StandardTestDispatcher()
         val logger = EventLoggerImpl(
             batcher = batcher,
+            mapper = EventNetworkMapper(RuntimeEnvironment.getApplication()),
             preferences = preferences,
             adIdProvider = adIdProvider,
             dispatcher = dispatcher,
             companyIdProvider = companyIdProvider,
         )
-        val captured = slot<EventDomain>()
+        // The logger now hands the batcher the finished wire payload, so this captures exactly what
+        // would be POSTed rather than a domain object still awaiting mapping.
+        val captured = slot<EventNetwork>()
         every { batcher.enqueue(capture(captured)) } returns Unit
 
         logger.logEvent(EventDomain(eventType = EventType.AD_CLICK, adUnitId = "/1234/unit"))
         dispatcher.scheduler.runCurrent()
 
-        val emitted = serialize(captured.captured)
+        val emitted = json.encodeToJsonElement(
+            EventNetwork.serializer(),
+            captured.captured,
+        ) as JsonObject
         val value = (emitted["session_start_timestamp"] as JsonPrimitive).content.toLong()
         // A seconds value for any plausible date is ~1.7e9; the millisecond form is ~1.7e12.
         assertTrue("expected Unix seconds, got $value", value in 1_000_000_000L..9_999_999_999L)

@@ -14,6 +14,7 @@ import org.audienzz.mobile.event.entity.EventDomain
 import org.audienzz.mobile.event.entity.EventType
 import org.audienzz.mobile.event.id.AdIdProvider
 import org.audienzz.mobile.event.id.CompanyIdProvider
+import org.audienzz.mobile.event.network.mapper.EventNetworkMapper
 import org.audienzz.mobile.event.preferences.EventPreferences
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -23,6 +24,7 @@ import javax.inject.Singleton
 @Singleton
 internal class EventLoggerImpl @Inject constructor(
     private val batcher: EventBatcher,
+    private val mapper: EventNetworkMapper,
     private val preferences: EventPreferences,
     private val adIdProvider: AdIdProvider,
     private val companyIdProvider: CompanyIdProvider,
@@ -88,10 +90,15 @@ internal class EventLoggerImpl @Inject constructor(
         }
         // Assign the sequence synchronously, in call order, before the coroutine launches.
         val sequencedEvent = event.copy(sessionSequence = sessionSequence.getAndIncrement())
-        // Inject ids off the main thread (adId lookup can block), then hand to the batcher, which
-        // coalesces events and POSTs them to /submit/batch on size/time/background triggers.
+        // Inject ids off the main thread (adId lookup can block), then map to the wire payload and
+        // hand it to the batcher, which coalesces events and POSTs them to /submit/batch on
+        // size/time/background triggers.
+        //
+        // Mapping here rather than at send time freezes the device/app context at event creation,
+        // which matters once the batcher persists across process death: a restored event must carry
+        // the app version it was produced under, not the one it was eventually delivered from.
         launch {
-            batcher.enqueue(sequencedEvent.injectIds())
+            batcher.enqueue(mapper.toNetwork(sequencedEvent.injectIds()))
         }
     }
 

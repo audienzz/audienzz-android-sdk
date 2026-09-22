@@ -4,7 +4,9 @@ import android.util.Log
 import io.mockk.MockKAnnotations
 import io.mockk.every
 import io.mockk.impl.annotations.RelaxedMockK
+import io.mockk.mockk
 import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.verify
 import io.mockk.verifySequence
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -13,7 +15,10 @@ import org.audienzz.mobile.event.entity.EventDomain
 import org.audienzz.mobile.event.entity.EventType
 import org.audienzz.mobile.event.id.AdIdProvider
 import org.audienzz.mobile.event.id.CompanyIdProvider
+import org.audienzz.mobile.event.network.mapper.EventNetworkMapper
 import org.audienzz.mobile.event.preferences.EventPreferences
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 import java.util.UUID
@@ -24,6 +29,9 @@ internal class EventLoggerImplTest {
 
     @RelaxedMockK
     lateinit var batcher: EventBatcher
+
+    private val mapper: EventNetworkMapper = mockk(relaxed = true)
+    private val mapped = slot<EventDomain>()
 
     @RelaxedMockK
     lateinit var preferences: EventPreferences
@@ -61,8 +69,14 @@ internal class EventLoggerImplTest {
 
         dispatcher = StandardTestDispatcher()
 
+        // Enrichment is a property of the DOMAIN event, so these assertions capture what the
+        // logger hands the mapper. What the mapper then produces is EventNetworkMapper's contract,
+        // covered by AnalyticsContractTest.
+        every { mapper.toNetwork(capture(mapped)) } returns mockk(relaxed = true)
+
         logger = EventLoggerImpl(
             batcher = batcher,
+            mapper = mapper,
             preferences = preferences,
             adIdProvider = adIdProvider,
             dispatcher = dispatcher,
@@ -78,16 +92,14 @@ internal class EventLoggerImplTest {
         logger.logEvent(mockEvent)
         dispatcher.scheduler.runCurrent()
 
-        verify(exactly = 1) {
-            batcher.enqueue(match {
-                it.uuid == mockUUID.toString() &&
-                    it.visitorId == mockUUID.toString() &&
-                    it.sessionId == mockUUID.toString() &&
-                    it.companyId == mockCompanyId &&
-                    it.deviceId == mockAdId &&
-                    it.sessionStartTimestamp != null
-            })
-        }
+        verify(exactly = 1) { mapper.toNetwork(any()) }
+        val enriched = mapped.captured
+        assertEquals(mockUUID.toString(), enriched.uuid)
+        assertEquals(mockUUID.toString(), enriched.visitorId)
+        assertEquals(mockUUID.toString(), enriched.sessionId)
+        assertEquals(mockCompanyId, enriched.companyId)
+        assertEquals(mockAdId, enriched.deviceId)
+        assertNotNull(enriched.sessionStartTimestamp)
     }
 
     @Test
@@ -95,15 +107,11 @@ internal class EventLoggerImplTest {
         logger.onScreenResumed("com.example.MainActivity")
         dispatcher.scheduler.runCurrent()
 
-        verify(exactly = 1) {
-            batcher.enqueue(
-                match {
-                    it.eventType == EventType.PAGE_IMPRESSION &&
-                        it.screenName == "com.example.MainActivity" &&
-                        it.pageImpressionId != null
-                },
-            )
-        }
+        verify(exactly = 1) { mapper.toNetwork(any()) }
+        val impression = mapped.captured
+        assertEquals(EventType.PAGE_IMPRESSION, impression.eventType)
+        assertEquals("com.example.MainActivity", impression.screenName)
+        assertNotNull(impression.pageImpressionId)
     }
 
     @Test
@@ -119,9 +127,7 @@ internal class EventLoggerImplTest {
         logger.onScreenResumed("com.example.ScreenB")
         dispatcher.scheduler.runCurrent()
 
-        verify(exactly = 2) {
-            batcher.enqueue(match { it.eventType == EventType.PAGE_IMPRESSION })
-        }
+        verify(exactly = 2) { mapper.toNetwork(match { it.eventType == EventType.PAGE_IMPRESSION }) }
     }
 
     @Test
