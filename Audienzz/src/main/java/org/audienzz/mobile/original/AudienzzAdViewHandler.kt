@@ -11,6 +11,7 @@ import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import com.google.android.gms.ads.admanager.AdManagerAdView
 import com.google.android.gms.ads.admanager.AppEventListener
 import org.audienzz.mobile.AudienzzAdUnit
+import org.audienzz.mobile.util.AudienzzDiagnostics
 import org.audienzz.mobile.AudienzzWinningBid
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
@@ -461,6 +462,11 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             adView.getChildAt(i).visibility = View.INVISIBLE
         }
         blankedForReload = true
+        AudienzzDiagnostics.log(
+            "slot", "blank",
+            "adUnit" to adView.adUnitId,
+            "children" to adView.childCount,
+        )
     }
 
     /** Reveal a creative hidden by [blankForReloadIfNeeded]. No-op unless this slot blanked itself. */
@@ -472,6 +478,11 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         for (i in 0 until adView.childCount) {
             adView.getChildAt(i).visibility = View.VISIBLE
         }
+        AudienzzDiagnostics.log(
+            "slot", "reveal",
+            "adUnit" to adView.adUnitId,
+            "children" to adView.childCount,
+        )
     }
 
     /**

@@ -57,32 +57,10 @@ class NonRemoteBannersFragment : Fragment() {
             initialPrefetchItemCount = 3
         }
 
-        if (AudienzzPrebidMobile.isSdkInitialized) {
-            onSdkReady()
-        } else {
-            progressBar.isVisible = true
-            initSdk()
-        }
-    }
-
-    private fun initSdk() {
-        RemoteConfigManager.initialize(
-            publisherId = PUBLISHER_ID,
-            remoteUrl = "https://api.adnz.co/api/ws-sdk-config/public/v1",
-        )
-        AudienzzPrebidMobile.isPbsDebug = true
-        AudienzzPrebidMobile.initializeRemoteSdk(
-            requireContext().applicationContext,
-            PUBLISHER_ID,
-        ) { status ->
-            if (status == AudienzzInitializationStatus.SUCCEEDED) {
-                AudienzzTargetingParams.bundleName = requireContext().packageName
-                AudienzzTargetingParams.storeUrl =
-                    "https://play.google.com/store/apps/details?id=${requireContext().packageName}"
-                Log.d(App.TAG, "NonRemoteBannersFragment: SDK initialized")
-            } else {
-                Log.e(App.TAG, "NonRemoteBannersFragment: SDK init error: $status")
-            }
+        // The App initializes the SDK — a screen must never be the thing that decides whether the
+        // SDK exists, or the app shows no ads at all when you open a different tab first.
+        progressBar.isVisible = !AudienzzPrebidMobile.isSdkInitialized
+        App.whenSdkReady {
             progressBar.isVisible = false
             onSdkReady()
         }
