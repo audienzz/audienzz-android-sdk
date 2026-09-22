@@ -22,6 +22,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.TextView
+import com.google.android.gms.ads.AdError
+import com.google.android.gms.ads.LoadAdError
 import androidx.core.widget.NestedScrollView
 import androidx.fragment.app.Fragment
 import org.audienzz.mobile.AudienzzPrebidMobile
@@ -51,6 +54,7 @@ class RemoteConfigStickyFragment : Fragment() {
     private val remoteBannerViews = mutableListOf<AudienzzRemoteBannerView>()
     private val stickyWrappers = mutableListOf<AudienzzStickyAdWrapperView>()
     private var interstitial: AudienzzRemoteConfigInterstitial? = null
+    private var interstitialStatus: TextView? = null
     private var scrollView: NestedScrollView? = null
 
     override fun onCreateView(
@@ -92,9 +96,27 @@ class RemoteConfigStickyFragment : Fragment() {
         // Section 4 — sticky banner
         loadStickyBannerInto(view.findViewById(R.id.stickyContainer2), BANNER_CONFIG_ID)
 
-        view.findViewById<Button>(R.id.btnLoadInterstitial).text = "Show interstitial"
-        view.findViewById<Button>(R.id.btnLoadInterstitial).setOnClickListener {
-            showInterstitial()
+        interstitialStatus = view.findViewById(R.id.interstitialStatus)
+        setInterstitialStatus("not loaded")
+        // One button per verb. `prefetch` must never present on its own and `show` must never
+        // fetch — behaviour a single combined button cannot demonstrate, and which the status line
+        // makes visible: prefetch alone should move it to "ready to show" and nothing more.
+        view.findViewById<Button>(R.id.btnPrefetchInterstitial).setOnClickListener {
+            setInterstitialStatus("loading…")
+            ensureInterstitial().prefetch()
+        }
+        view.findViewById<Button>(R.id.btnShowInterstitial).setOnClickListener {
+            val ad = ensureInterstitial()
+            if (!ad.isReady) {
+                // Reported rather than silently queued: `show` takes an opportunity or skips it.
+                setInterstitialStatus("not ready — nothing to show (prefetch first)")
+                return@setOnClickListener
+            }
+            if (!ad.show(requireActivity())) setInterstitialStatus("opportunity skipped")
+        }
+        view.findViewById<Button>(R.id.btnPrefetchAndShowInterstitial).setOnClickListener {
+            setInterstitialStatus("loading… (will show when ready)")
+            ensureInterstitial().prefetchAndShow()
         }
 
         // One under every ad slot. They all open the same screen; which one you tapped is recorded
@@ -173,11 +195,34 @@ class RemoteConfigStickyFragment : Fragment() {
      * the one to use in a real app, where you decide when an interstitial is appropriate. It is
      * exercised in the managed test screens.
      */
-    private fun showInterstitial() {
-        if (interstitial == null) {
-            interstitial = AudienzzRemoteConfigInterstitial(requireContext(), INTERSTITIAL_CONFIG_ID)
-        }
-        interstitial?.prefetchAndShow()
+    private fun setInterstitialStatus(text: String) {
+        interstitialStatus?.text = text
+        AudienzzDiagnostics.log("app", "interstitialStatus", "state" to text)
+    }
+
+    /**
+     * Built once and kept, so `prefetch` then `show` act on the same ad — rebuilding between the
+     * two would throw away the inventory the prefetch just paid for.
+     */
+    private fun ensureInterstitial(): AudienzzRemoteConfigInterstitial {
+        interstitial?.let { return it }
+        val ad = AudienzzRemoteConfigInterstitial(
+            requireContext(),
+            INTERSTITIAL_CONFIG_ID,
+            object : AudienzzRemoteConfigInterstitial.Events {
+                override fun onLoaded() = setInterstitialStatus("ready to show")
+                override fun onFailed(loadError: LoadAdError) =
+                    setInterstitialStatus("load failed: ${loadError.message}")
+                override fun onOpened() = setInterstitialStatus("showing")
+                override fun onClosed() = setInterstitialStatus("closed — not loaded")
+                override fun onClicked() = setInterstitialStatus("clicked")
+                override fun onFailedToShow(adError: AdError) =
+                    setInterstitialStatus("failed to show: ${adError.message}")
+                override fun onError(reason: String) = setInterstitialStatus("error: $reason")
+            },
+        )
+        interstitial = ad
+        return ad
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────────────────────

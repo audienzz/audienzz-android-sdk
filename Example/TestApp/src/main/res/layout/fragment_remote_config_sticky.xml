@@ -148,12 +148,51 @@
 
         <!-- ═══════════════════════════════ Interstitial ════════════════════════════════════ -->
 
-        <Button
-            android:id="@+id/btnLoadInterstitial"
-            android:layout_width="wrap_content"
+        <!-- One button per verb, so each can be exercised on its own. A single button that both
+             fetched and showed could not tell you which half misbehaved, and hid the fact that
+             `prefetch` must never present by itself. -->
+
+        <TextView
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Show interstitial" />
+            android:layout_marginBottom="6dp"
+            android:text="Interstitial"
+            android:textColor="#212121"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.04" />
+
+        <TextView
+            android:id="@+id/interstitialStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:padding="8dp"
+            android:background="@drawable/bg_ad_slot"
+            android:text="not loaded"
+            android:textColor="#616161"
+            android:textSize="14sp"
+            android:fontFamily="monospace" />
+
+        <Button
+            android:id="@+id/btnPrefetchInterstitial"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Prefetch" />
+
+        <Button
+            android:id="@+id/btnShowInterstitial"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Show" />
+
+        <Button
+            android:id="@+id/btnPrefetchAndShowInterstitial"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:text="Prefetch and show" />
 
     </LinearLayout>
 
