@@ -69,6 +69,21 @@ class ScreenAdCoordinator @Inject constructor() {
     }
 
     /**
+     * Prebid finished initializing — let every live banner take the load it deferred.
+     *
+     * Resuming through the registry rather than by queueing a closure per banner means a banner
+     * destroyed while waiting is simply no longer here.
+     */
+    internal fun resumeAllAfterSdkInit() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            Handler(Looper.getMainLooper()).post { resumeAllAfterSdkInit() }
+            return
+        }
+        val handlers = synchronized(registry) { registry.toList() }
+        handlers.forEach { it.onSdkInitialized() }
+    }
+
+    /**
      * Hard page transition. Every call releases every banner that is not on the incoming page and
      * recreates the ones that are — including when the same screen resumes again (back navigation,
      * app foreground) or another instance of the same class appears. Runs on the main thread.

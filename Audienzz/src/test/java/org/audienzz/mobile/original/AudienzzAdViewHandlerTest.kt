@@ -1,5 +1,6 @@
 package org.audienzz.mobile.original
 
+import org.audienzz.mobile.AudienzzPrebidMobile
 import android.os.Looper
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import com.google.android.gms.ads.admanager.AdManagerAdView
@@ -49,6 +50,9 @@ class AudienzzAdViewHandlerTest {
 
     @Before
     fun setUp() {
+        // Robolectric never really initializes Prebid, and an uninitialized Prebid now
+        // defers every auction — see AudienzzPrebidMobile.sdkInitializedOverride.
+        AudienzzPrebidMobile.sdkInitializedOverride = true
         AppForegroundMonitor.resetForTesting()
         coordinator = ScreenAdCoordinator()
         screenAdCoordinatorOverride = coordinator
@@ -77,6 +81,7 @@ class AudienzzAdViewHandlerTest {
 
     @After
     fun tearDown() {
+        AudienzzPrebidMobile.sdkInitializedOverride = null
         handler.destroy()
         org.audienzz.mobile.AudienzzPrebidMobile.pageImpression("cleanup")
         screenAdCoordinatorOverride = null

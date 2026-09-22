@@ -63,6 +63,10 @@ class RemoteConfigStickyFragment : Fragment() {
         super.onResume()
         if (AudienzzPrebidMobile.isSdkInitialized) {
             AudienzzPrebidMobile.pageImpression(this)
+        } else {
+            // Cold start: onResume runs before initialization finishes, so this screen would
+            // otherwise never report its FIRST page impression — only later ones, after navigating.
+            App.whenSdkReady { if (isResumed) AudienzzPrebidMobile.pageImpression(this) }
         }
     }
 
@@ -71,32 +75,22 @@ class RemoteConfigStickyFragment : Fragment() {
 
         scrollView = view.findViewById(R.id.remoteConfigScrollView)
 
-        // Create the ads only once initialization has finished.
-        //
-        // A slot that is already on screen fires its lazy trigger immediately, so building it
-        // before Prebid is ready raced initialization and lost: Prebid answered "SDK wasn't
-        // initialized. Context is null.", the auction died, and nothing re-armed the trigger — so
-        // the FIRST banner stayed empty for the whole session while the ones further down the page
-        // (which only fire when you scroll to them) loaded normally.
-        App.whenSdkReady {
-            // The view can be gone by the time init lands.
-            val root = this.view ?: return@whenSdkReady
+        // Built immediately, deliberately — a publisher should not have to wait for initialization
+        // before creating ads, and since the SDK defers an auction until Prebid is ready this is
+        // exactly the case that used to leave the first (above-the-fold) banner empty for the whole
+        // session. Leaving it un-gated here keeps that regression visible in the demo app.
 
-            // Section 1 — plain banner (non-sticky)
-            loadBannerInto(root.findViewById(R.id.bannerContainer1), BANNER_CONFIG_ID)
+        // Section 1 — plain banner (non-sticky)
+        loadBannerInto(view.findViewById(R.id.bannerContainer1), BANNER_CONFIG_ID)
 
-            // Section 2 — sticky banner
-            loadStickyBannerInto(root.findViewById(R.id.stickyContainer1), BANNER_CONFIG_ID)
+        // Section 2 — sticky banner
+        loadStickyBannerInto(view.findViewById(R.id.stickyContainer1), BANNER_CONFIG_ID)
 
-            // Section 3 — adaptive banner (non-sticky)
-            loadBannerInto(root.findViewById(R.id.bannerContainer2), ADAPTIVE_CONFIG_ID)
+        // Section 3 — adaptive banner (non-sticky)
+        loadBannerInto(view.findViewById(R.id.bannerContainer2), ADAPTIVE_CONFIG_ID)
 
-            // Section 4 — sticky banner
-            loadStickyBannerInto(root.findViewById(R.id.stickyContainer2), BANNER_CONFIG_ID)
-
-            // The first page impression has to follow the ads, not precede them.
-            AudienzzPrebidMobile.pageImpression(this)
-        }
+        // Section 4 — sticky banner
+        loadStickyBannerInto(view.findViewById(R.id.stickyContainer2), BANNER_CONFIG_ID)
 
         view.findViewById<Button>(R.id.btnLoadInterstitial).text = "Show interstitial"
         view.findViewById<Button>(R.id.btnLoadInterstitial).setOnClickListener {

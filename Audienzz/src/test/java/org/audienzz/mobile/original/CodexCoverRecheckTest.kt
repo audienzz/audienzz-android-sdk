@@ -1,5 +1,6 @@
 package org.audienzz.mobile.original
 
+import org.audienzz.mobile.AudienzzPrebidMobile
 import android.app.Activity
 import android.os.Looper
 import android.view.ViewTreeObserver
@@ -26,6 +27,9 @@ class CodexCoverRecheckTest {
     private var gamLoads = 0
     private var gamListener: AdListener = object : AdListener() {}
     @Before fun setup() {
+        // Robolectric never really initializes Prebid, and an uninitialized Prebid now
+        // defers every auction — see AudienzzPrebidMobile.sdkInitializedOverride.
+        AudienzzPrebidMobile.sdkInitializedOverride = true
         AppForegroundMonitor.resetForTesting()
         screenAdCoordinatorOverride = ScreenAdCoordinator()
         AudienzzPrebidMobile.observeForegroundReimpression()
@@ -43,6 +47,7 @@ class CodexCoverRecheckTest {
         handler.setScreen("A")
     }
     @After fun cleanup() {
+        AudienzzPrebidMobile.sdkInitializedOverride = null
         handler.destroy()
         AudienzzPrebidMobile.pageImpression("cleanup")
         screenAdCoordinatorOverride = null

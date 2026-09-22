@@ -844,6 +844,16 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         // here rather than at the one place the decision is made.
         if (refreshController.isDestroyed || !screenActive || !AppForegroundMonitor.isForeground) return false
         if (AudienzzPrebidMobile.hasPendingForegroundReimpression) return false
+        // Prebid is initialized asynchronously, and a slot that is already on screen fires its
+        // first load immediately — so an above-the-fold banner routinely races it. Prebid does not
+        // fail politely when it loses that race: it logs "SDK wasn't initialized. Context is null."
+        // and never calls back, so the request stays forever in flight, rearmInitialLoad() refuses
+        // to re-arm ("request in flight") and the slot is empty for the rest of the session.
+        // Refusing here instead records the pending reason, and initialization resumes it.
+        if (!AudienzzPrebidMobile.isSdkInitialized) {
+            Log.d(TAG, "canStartAuction() adUnitId=${adView.adUnitId} — Prebid not initialized yet, deferring $reason")
+            return false
+        }
         // A first load may prefetch before attachment / refresh visibility. Publisher, page and
         // foreground blocks still apply. Later requests must satisfy all eligibility conditions.
         return refreshController.blockReasons.none {
@@ -856,6 +866,16 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                         it != RefreshBlockReason.HOST_REPORTED_HIDDEN
                     )
         }
+    }
+
+    /**
+     * Prebid finished initializing: take the load that was deferred waiting for it.
+     *
+     * Goes through the same path as any other deferred resume, so a banner that has since been
+     * destroyed, detached or released simply does nothing.
+     */
+    internal fun onSdkInitialized() {
+        resumeEligibleWork()
     }
 
     private fun resumeEligibleWork() {

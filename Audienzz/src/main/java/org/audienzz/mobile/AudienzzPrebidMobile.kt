@@ -401,11 +401,53 @@ object AudienzzPrebidMobile {
         }
 
     /**
+     * Test seam for [isSdkInitialized]. Robolectric never really initializes Prebid, so without
+     * this every banner test would sit behind the not-initialized gate.
+     */
+    internal var sdkInitializedOverride: Boolean? = null
+
+    /**
+     * Work that needs Prebid and arrived before it was ready. Drained once, on initialization.
+     *
+     * Banners do not use this — they defer through [canStartAuction] and the pending-load machinery
+     * like every other reason they cannot auction yet. It is for the paths that have no such gate.
+     */
+    private val pendingPrebidWork = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    /**
+     * Run [action] once Prebid is initialized, or immediately if it already is.
+     *
+     * Calling Prebid's `fetchDemand` before initialization does not fail politely: Prebid logs
+     * "SDK wasn't initialized. Context is null." and never calls back, so the caller waits on a
+     * response that will never arrive and its slot stays empty for the rest of the session.
+     */
+    internal fun whenPrebidInitialized(action: () -> Unit) {
+        if (isSdkInitialized) {
+            action()
+            return
+        }
+        pendingPrebidWork.add(action)
+    }
+
+    /**
+     * Prebid is ready: release everything that was waiting on it.
+     *
+     * Banner handlers are resumed through the coordinator's registry rather than by queueing a
+     * closure each, so a banner destroyed while waiting is simply no longer in the registry.
+     */
+    private fun onPrebidInitialized() {
+        val work = pendingPrebidWork.toList()
+        pendingPrebidWork.clear()
+        work.forEach { it() }
+        org.audienzz.mobile.screen.screenAdCoordinator?.resumeAllAfterSdkInit()
+    }
+
+    /**
      * Return 'true' if Prebid Rendering SDK is initialized completely
      */
     @JvmStatic
     val isSdkInitialized: Boolean
-        get() = PrebidMobile.isSdkInitialized()
+        get() = sdkInitializedOverride ?: PrebidMobile.isSdkInitialized()
 
     @JvmStatic
     var logLevel: AudienzzLogLevel
@@ -544,6 +586,7 @@ object AudienzzPrebidMobile {
         val listener = SdkInitializationListener { status ->
             // M5: flush any consent/COPPA values the publisher set before init reached Prebid.
             AudienzzTargetingParams.onPrebidInitialized()
+            onPrebidInitialized()
             sdkInitializationListener?.onInitializationComplete(
                 AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
             )
@@ -614,6 +657,7 @@ object AudienzzPrebidMobile {
                 val listener = SdkInitializationListener { status ->
                     // M5: flush any consent/COPPA values the publisher set before init reached Prebid.
                     AudienzzTargetingParams.onPrebidInitialized()
+            onPrebidInitialized()
                     sdkInitializationListener?.onInitializationComplete(
                         AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
                     )

@@ -40,6 +40,9 @@ class ScreenReloadVisibilityTest {
     private var oldV2: Boolean? = null
 
     @Before fun setup() {
+        // Robolectric never really initializes Prebid, and an uninitialized Prebid now
+        // defers every auction — see AudienzzPrebidMobile.sdkInitializedOverride.
+        AudienzzPrebidMobile.sdkInitializedOverride = true
         oldBlank = AudienzzPrebidMobile.blankOnScreenReload
         oldV2 = AudienzzPrebidMobile.smartRefreshV2Override
         AppForegroundMonitor.resetForTesting()
@@ -77,6 +80,7 @@ class ScreenReloadVisibilityTest {
     }
 
     @After fun cleanup() {
+        AudienzzPrebidMobile.sdkInitializedOverride = null
         handler.destroy()
         AudienzzPrebidMobile.pageImpression("cleanup")
         screenAdCoordinatorOverride = null
@@ -170,6 +174,64 @@ class ScreenReloadVisibilityTest {
         assertEquals(2, googleLoads)
         assertEquals(View.VISIBLE, viewVisibility)
         assertEquals("the fresh creative is revealed", View.VISIBLE, creativeVisibility)
+    }
+
+    // ── Prebid initialization race ──────────────────────────────────────────
+
+    /**
+     * A banner created before Prebid has initialized must wait for it, not burn its one auction.
+     *
+     * Prebid does not fail politely when it is not ready: it logs "SDK wasn't initialized. Context
+     * is null." and never calls back. The request therefore stayed in flight forever, and
+     * `rearmInitialLoad()` refused to re-arm because a request was in flight — so an above-the-fold
+     * banner, which fires its first load immediately on launch, stayed empty for the whole session
+     * while slots further down the page (which only fire when scrolled to) loaded normally.
+     */
+    @Test
+    fun `an auction is deferred while Prebid is still initializing`() {
+        AudienzzPrebidMobile.sdkInitializedOverride = false
+
+        handler.load(withLazyLoading = false) { _, _ -> googleLoads++ }
+
+        assertEquals("nothing may reach Prebid before it is ready", 0, responses.size)
+    }
+
+    @Test
+    fun `the deferred auction runs once Prebid finishes initializing`() {
+        AudienzzPrebidMobile.sdkInitializedOverride = false
+        handler.load(withLazyLoading = false) { _, _ -> googleLoads++ }
+        assertEquals(0, responses.size)
+
+        AudienzzPrebidMobile.sdkInitializedOverride = true
+        screenAdCoordinatorOverride!!.resumeAllAfterSdkInit()
+
+        assertEquals("the deferred first load must be taken, not dropped", 1, responses.size)
+        responses[0](AudienzzResultCode.NO_BIDS)
+        listener.onAdLoaded()
+        assertEquals(1, googleLoads)
+    }
+
+    @Test
+    fun `initializing does not start a second auction for a banner that already loaded`() {
+        // The broadcast reaches every live banner, including ones that never waited on it.
+        loadVisibleBanner(blank = false, v2 = true)
+
+        screenAdCoordinatorOverride!!.resumeAllAfterSdkInit()
+
+        assertEquals(1, responses.size)
+        assertEquals(1, googleLoads)
+    }
+
+    @Test
+    fun `a destroyed banner is not resumed by initialization`() {
+        AudienzzPrebidMobile.sdkInitializedOverride = false
+        handler.load(withLazyLoading = false) { _, _ -> googleLoads++ }
+        handler.destroy()
+
+        AudienzzPrebidMobile.sdkInitializedOverride = true
+        screenAdCoordinatorOverride!!.resumeAllAfterSdkInit()
+
+        assertEquals("a banner torn down while waiting must stay torn down", 0, responses.size)
     }
 
     /**

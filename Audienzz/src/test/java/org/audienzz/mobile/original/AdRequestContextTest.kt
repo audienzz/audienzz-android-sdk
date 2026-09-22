@@ -28,6 +28,9 @@ class AdRequestContextTest {
     private lateinit var coordinator: ScreenAdCoordinator
 
     @Before fun setup() {
+        // Robolectric never really initializes Prebid, and an uninitialized Prebid now
+        // defers every auction — see AudienzzPrebidMobile.sdkInitializedOverride.
+        AudienzzPrebidMobile.sdkInitializedOverride = true
         AppForegroundMonitor.resetForTesting()
         coordinator = ScreenAdCoordinator()
         screenAdCoordinatorOverride = coordinator
@@ -35,6 +38,7 @@ class AdRequestContextTest {
     }
 
     @After fun cleanup() {
+        AudienzzPrebidMobile.sdkInitializedOverride = null
         handlers.forEach { it.destroy() }
         screenAdCoordinatorOverride = null
         AppForegroundMonitor.resetForTesting()
