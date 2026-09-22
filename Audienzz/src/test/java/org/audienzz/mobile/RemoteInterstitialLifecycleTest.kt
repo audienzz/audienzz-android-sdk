@@ -8,6 +8,7 @@ import com.google.android.gms.ads.admanager.AdManagerInterstitialAd
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import org.audienzz.mobile.api.config.*
+import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
 import org.audienzz.mobile.di.MainComponent
 import org.audienzz.mobile.manager.RemoteConfigManager
 import org.audienzz.mobile.original.AudienzzInterstitialAdHandler
@@ -18,6 +19,7 @@ import org.junit.Assert.*
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import java.util.EnumSet
 
 @RunWith(RobolectricTestRunner::class)
 class RemoteInterstitialLifecycleTest {
@@ -184,6 +186,40 @@ class RemoteInterstitialLifecycleTest {
         assertTrue(second.show(activity, true))
         secondFullscreen.onAdDismissedFullScreenContent()
         second.destroy()
+    }
+
+    /**
+     * The interstitial has to tell the exchange what size it is.
+     *
+     * The ad unit used to hardcode 1x1, so a 320x480 placement asked for a size it was never going
+     * to fill — and bidders size their response to the format they are given.
+     */
+    @Test fun `the configured size reaches the prebid ad unit`() {
+        val unit = AudienzzInterstitialAdUnit(
+            configId = "probe",
+            adUnitFormats = EnumSet.of(AudienzzAdUnitFormat.BANNER),
+            adSizes = setOf(AudienzzAdSize(320, 480)),
+        )
+        assertEquals(setOf(AudienzzAdSize(320, 480)), unit.bannerParameters?.adSizes)
+    }
+
+    @Test fun `several configured sizes all travel`() {
+        val unit = AudienzzInterstitialAdUnit(
+            configId = "probe",
+            adUnitFormats = EnumSet.of(AudienzzAdUnitFormat.BANNER),
+            adSizes = setOf(AudienzzAdSize(320, 480), AudienzzAdSize(320, 460)),
+        )
+        assertEquals(2, unit.bannerParameters?.adSizes?.size)
+    }
+
+    /** A caller that supplies nothing keeps the long-standing 1x1 placeholder. */
+    @Test fun `no configured sizes falls back to the placeholder`() {
+        val unit = AudienzzInterstitialAdUnit(
+            configId = "probe",
+            adUnitFormats = EnumSet.of(AudienzzAdUnitFormat.BANNER),
+            adSizes = emptySet(),
+        )
+        assertEquals(setOf(AudienzzAdSize(1, 1)), unit.bannerParameters?.adSizes)
     }
 
     /// The contract this API exists for: the verb decides whether anything is presented.

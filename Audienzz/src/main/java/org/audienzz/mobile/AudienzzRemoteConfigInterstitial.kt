@@ -302,9 +302,21 @@ class AudienzzRemoteConfigInterstitial(
     }
 
     private fun setupInterstitial(config: RemoteAdUnitConfig, token: Int) {
+        // The sizes the backend configured for this placement, largest first — the same source
+        // the remote banner uses for its Prebid ad unit. Without them the ad unit fell back to a
+        // hardcoded 1x1, so a 320x480 interstitial asked the exchange for a 1x1 slot.
+        val prebidSizes = config.prebidConfig.adSizes
+            .sortedByDescending { it.width * it.height }
+            .map { AudienzzAdSize(it.width, it.height) }
+            .toSet()
+        if (prebidSizes.isEmpty()) {
+            Log.w(TAG, "No prebid adSizes in remote config for id=$configId — requesting 1x1")
+        }
+
         val interstitial = AudienzzInterstitialAdUnit(
             configId = config.prebidConfig.placementId,
             adUnitFormats = EnumSet.of(AudienzzAdUnitFormat.BANNER),
+            adSizes = prebidSizes,
         )
 
         val interstitialHandler = AudienzzInterstitialAdHandler(
