@@ -3,7 +3,6 @@ package org.audienzz.mobile.util
 import android.content.SharedPreferences
 import android.util.Log
 import org.audienzz.mobile.AudienzzPrebidMobile
-import org.prebid.mobile.TargetingParams
 import java.util.Calendar
 import java.util.UUID
 import javax.inject.Inject
@@ -22,36 +21,35 @@ class PpidManager @Inject constructor(private val preferences: SharedPreferences
 
     /**
      * Returns the active PPID:
-     *   1. `null` when consent is missing, or the backend has switched PPIDs off entirely.
+     *   1. `null` when the backend has switched PPIDs off for this publisher.
      *   2. Publisher-supplied PPID (if set via [setPublisherPpid]).
-     *   3. SDK-generated UUID (persisted, rotated every 12 months), unless the backend has switched
-     *      automatic PPID off.
+     *   3. SDK-generated UUID, persisted and rotated every 12 months.
      *
-     * There is no app-facing opt-out: a PPID is sent unless the backend disables it for this
-     * publisher. A missing PPID costs frequency capping and cross-session targeting, so the SDK
-     * generates and persists one rather than leaving the field empty.
+     * **`ppidEnabled` in the publisher config is the only thing that suppresses a PPID.** It is a
+     * top-level boolean on `GET /publishers/{id}`, and absent means enabled. A missing PPID costs
+     * frequency capping and cross-session targeting, so the SDK generates and persists one rather
+     * than leaving the field empty.
+     *
+     * Two gates were removed to make that true:
+     *
+     *  * An empty TCF `purposeConsents` string used to suppress the PPID. That check fired on
+     *    *unknown* consent (no CMP yet) but not on an explicit denial such as `0000000000`, which
+     *    is a nonempty string — so it suppressed the ambiguous case and allowed the clear one.
+     *    Consent is not gated here at all now; if it should be, it needs a real purpose check
+     *    rather than a test for emptiness, and that is a policy decision.
+     *  * `automaticPpidEnabled` used to suppress the generated UUID. The backend sends no such
+     *    field on any endpoint the SDK calls, so it never did anything; it has been deleted from
+     *    the model, the public API and the bridges.
      */
     fun getPpid(): String? {
-        if (TargetingParams.getPurposeConsents()?.isEmpty() ?: false) {
-            Log.d(TAG, "Consent missing, cannot get PPID")
-            return null
-        }
-
-        // Master switch: suppresses the publisher's own identifier too. It is a per-publisher
-        // privacy setting, so honouring it only for the generated UUID would miss the point.
+        // The only switch. Per-publisher, backend-owned, and it suppresses the publisher's own
+        // identifier too — honouring it only for the generated UUID would miss the point.
         if (!AudienzzPrebidMobile.isPpidEnabled()) {
-            Log.d(TAG, "PPID disabled by the publisher config")
+            Log.d(TAG, "PPID disabled by the publisher config (ppidEnabled = false)")
             return null
         }
 
         publisherPpid?.let { return it }
-
-        // The publisher's own identifier is theirs to send; this switch governs only the one the
-        // SDK would invent.
-        if (!AudienzzPrebidMobile.isAutomaticPpidEnabled()) {
-            Log.d(TAG, "Automatic PPID disabled by the publisher config")
-            return null
-        }
 
         var ppid = getPpidFromSharedPreferences()
         val ppidTimestamp = getPpidTimestamp()

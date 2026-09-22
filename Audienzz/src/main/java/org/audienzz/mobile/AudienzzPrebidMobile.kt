@@ -60,9 +60,8 @@ object AudienzzPrebidMobile {
     /** Cached backend smart-refresh-v2 flag from the publisher config (set during init). */
     private var backendSmartRefreshV2: Boolean? = null
 
-    /** Cached backend PPID switches from the publisher config (set during init). */
+    /** Cached backend PPID switch from the publisher config (set during init). */
     private var backendPpidEnabled: Boolean? = null
-    private var backendAutomaticPpidEnabled: Boolean? = null
 
     /**
      * Whether any PPID may be sent. Backend-controlled; absent → enabled.
@@ -73,19 +72,15 @@ object AudienzzPrebidMobile {
      */
     internal fun isPpidEnabled(): Boolean = backendPpidEnabled ?: true
 
-    /** Whether the SDK may mint its own PPID. Backend-controlled; absent → enabled. */
-    internal fun isAutomaticPpidEnabled(): Boolean = backendAutomaticPpidEnabled ?: true
-
     /**
-     * Applies the publisher config's PPID switches.
+     * Applies the publisher config's PPID switch.
      *
      * Called during remote init, and by the Flutter bridge, which fetches the publisher config in
-     * Dart and so has to hand the resolved values down. Not part of the documented app-facing API.
+     * Dart and so has to hand the resolved value down. Not part of the documented app-facing API.
      */
     @JvmStatic
-    fun applyBackendPpidConfig(ppidEnabled: Boolean?, automaticPpidEnabled: Boolean?) {
+    fun applyBackendPpidConfig(ppidEnabled: Boolean?) {
         backendPpidEnabled = ppidEnabled
-        backendAutomaticPpidEnabled = automaticPpidEnabled
     }
 
     /**
@@ -589,10 +584,7 @@ object AudienzzPrebidMobile {
 
                 companyId = publisherConfig?.ortbConfig?.schainConfig?.sellerId ?: "1"
                 backendSmartRefreshV2 = publisherConfig?.smartRefreshV2
-                applyBackendPpidConfig(
-                    ppidEnabled = publisherConfig?.ppidEnabled,
-                    automaticPpidEnabled = publisherConfig?.automaticPpidEnabled,
-                )
+                applyBackendPpidConfig(ppidEnabled = publisherConfig?.ppidEnabled)
 
                 val baseUrl = publisherConfig?.prebidServerConfig?.url ?: audienzzHost.hostUrl
                 val prebidServerUrl = if (isPbsDebug) {

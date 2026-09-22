@@ -31,13 +31,6 @@ data class PublisherConfig(
      */
     @SerialName("ppidEnabled")
     val ppidEnabled: Boolean? = null,
-    /**
-     * Backend switch for the SDK-generated PPID only. `false` stops the SDK minting and rotating
-     * its own UUID; a PPID the app supplied through `setPublisherPpid` is still sent, since that is
-     * the publisher's own identifier rather than one the SDK invented. Absent/null → enabled.
-     */
-    @SerialName("automaticPpidEnabled")
-    val automaticPpidEnabled: Boolean? = null,
 )
 
 /**

@@ -4,7 +4,9 @@ import android.content.SharedPreferences
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import kotlinx.serialization.json.Json
 import org.audienzz.mobile.AudienzzPrebidMobile
+import org.audienzz.mobile.api.config.PublisherConfig
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -16,14 +18,14 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * A PPID is sent unless the backend turns it off for this publisher — there is no app-facing
- * opt-out. Two switches arrive in the publisher config and they mean different things: the master
- * one is a privacy setting and suppresses the publisher's own identifier too, while the automatic
- * one governs only the identifier the SDK would invent.
+ * opt-out. One switch decides it: `ppidEnabled`, a top-level boolean on `GET /publishers/{id}`.
+ * Absent means enabled. The app only decides *which* identifier is used, by supplying its own
+ * through [PpidManager.setPublisherPpid]; with none supplied the SDK generates and persists a UUID.
  *
  * Getting the default wrong is expensive in both directions: defaulting off silently drops every
  * PPID (which is exactly what shipped before, costing frequency capping and cross-session
- * targeting), and ignoring the master switch would keep sending an identifier for a publisher who
- * has turned it off.
+ * targeting), and ignoring the switch would keep sending an identifier for a publisher who has
+ * turned it off.
  */
 @RunWith(RobolectricTestRunner::class)
 class PpidManagerTest {
@@ -36,13 +38,13 @@ class PpidManagerTest {
         stored = mutableMapOf()
         manager = PpidManager(fakePreferences())
         manager.setPublisherPpid(null)
-        AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = null, automaticPpidEnabled = null)
+        AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = null)
     }
 
     @After
     fun tearDown() {
         manager.setPublisherPpid(null)
-        AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = null, automaticPpidEnabled = null)
+        AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = null)
     }
 
     private fun fakePreferences(): SharedPreferences {
@@ -72,7 +74,7 @@ class PpidManagerTest {
 
     @Test
     fun `generates and sends a PPID when the backend says nothing`() {
-        // Absent switches mean enabled. This is the default every publisher gets.
+        // An absent switch means enabled. This is the default every publisher gets.
         assertNotNull(manager.getPpid())
     }
 
@@ -102,37 +104,49 @@ class PpidManagerTest {
     }
 
     @Test
-    fun `the master switch suppresses the generated PPID`() {
-        AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = false, automaticPpidEnabled = null)
+    fun `the switch suppresses the generated PPID`() {
+        AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = false)
 
         assertNull(manager.getPpid())
     }
 
     @Test
-    fun `the master switch suppresses a publisher-supplied PPID too`() {
+    fun `the switch suppresses a publisher-supplied PPID too`() {
         // It is a per-publisher privacy switch, so honouring it only for the SDK's own identifier
         // would miss the point entirely.
         manager.setPublisherPpid("hashed-email")
-        AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = false, automaticPpidEnabled = null)
+        AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = false)
 
         assertNull(manager.getPpid())
     }
 
     @Test
-    fun `the automatic switch suppresses only the generated PPID`() {
-        AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = null, automaticPpidEnabled = false)
+    fun `a publisher config carrying automaticPpidEnabled still parses and ignores it`() {
+        // `automaticPpidEnabled` is gone from the model. The backend never sent it, but a payload
+        // carrying it must still decode — this pins both that unknown keys are tolerated and that
+        // nobody reintroduces the field as a second gate.
+        val payload = """
+            {
+              "id": 35,
+              "prebidServer": {
+                "url": "https://ib.adnxs.com/openrtb2/prebid",
+                "accountId": "3927",
+                "statusUrl": "https://ib.adnxs.com/status"
+              },
+              "ppidEnabled": true,
+              "automaticPpidEnabled": false
+            }
+        """.trimIndent()
 
-        assertNull(manager.getPpid())
-    }
+        val json = Json { ignoreUnknownKeys = true }
+        val config = json.decodeFromString(PublisherConfig.serializer(), payload)
 
-    @Test
-    fun `a publisher-supplied PPID survives the automatic switch`() {
-        // The publisher's own identifier is theirs to send; this switch governs only the one the
-        // SDK would invent.
-        manager.setPublisherPpid("hashed-email")
-        AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = null, automaticPpidEnabled = false)
+        assertEquals(true, config.ppidEnabled)
 
-        assertEquals("hashed-email", manager.getPpid())
+        // Re-encoding is what discriminates: a model that still carried the field would decode
+        // this payload just as happily and write the key straight back out.
+        val reencoded = json.encodeToString(PublisherConfig.serializer(), config)
+        assertEquals(false, reencoded.contains("automaticPpidEnabled"))
     }
 
     @Test
@@ -154,8 +168,8 @@ class PpidManagerTest {
     }
 
     @Test
-    fun `switches explicitly set to true behave as enabled`() {
-        AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = true, automaticPpidEnabled = true)
+    fun `the switch explicitly set to true behaves as enabled`() {
+        AudienzzPrebidMobile.applyBackendPpidConfig(ppidEnabled = true)
 
         assertNotNull(manager.getPpid())
     }
