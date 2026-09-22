@@ -226,6 +226,12 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             auctionGeneration++
             retireCurrentAuction()
             pendingLoadReason = null
+            // Blank here, after the retire that would otherwise reveal it — and before the auction,
+            // which only blanks on the path where it actually starts. A slot below the fold is
+            // refused (NOT_VISIBLE) and defers its replacement until it is scrolled to, so blanking
+            // only in the auction path left every off-screen slot showing the PREVIOUS visit's
+            // creative. iOS blanks at the same point in recreateForPage.
+            blankForReloadIfNeeded()
             refreshController.unblock(RefreshBlockReason.PAGE_INACTIVE, schedule = false)
             if (AppForegroundMonitor.isForeground) {
                 refreshController.unblock(RefreshBlockReason.APP_BACKGROUND, schedule = false)
@@ -941,13 +947,17 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             if (reason == RefreshRequestReason.FIRST_LOAD || reason == RefreshRequestReason.PAGE_IMPRESSION) {
                 pendingLoadReason = reason
             }
-            // No replacement is starting, so showing the previous creative beats an empty slot that
-            // nothing will ever fill.
-            restoreFromBlankIfNeeded()
+            // Reveal only when nothing is owed. A deferral is not a cancellation: an off-screen slot
+            // returning to a page is refused here (NOT_VISIBLE) but keeps a pending reason, and its
+            // replacement runs the moment it is scrolled into view. Revealing it because the auction
+            // could not start *yet* is what put the previous screen's creative back on screen in
+            // every slot below the fold — the exact thing blanking on release exists to prevent.
+            if (pendingLoadReason == null) restoreFromBlankIfNeeded()
             return false
         }
         if (refreshController.hasRequestInFlight) {
-            restoreFromBlankIfNeeded()
+            // A request in flight will reveal on its own completion; revealing now would flash the
+            // outgoing creative in the middle of its own replacement.
             return false
         }
         // Usually already blank from releaseForPage(); this covers a page re-reported without an

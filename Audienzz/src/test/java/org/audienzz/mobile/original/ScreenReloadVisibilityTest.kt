@@ -113,11 +113,15 @@ class ScreenReloadVisibilityTest {
         observer.dispatchOnPreDraw()
         assertEquals("an off-screen replacement must wait", 1, responses.size)
         assertEquals("a deferred request must not hide its own viewport trigger", View.VISIBLE, viewVisibility)
-        assertEquals(
-            "nothing is coming to refill the slot, so the previous creative beats a permanent blank",
-            View.VISIBLE,
-            creativeVisibility,
-        )
+        if (blank) {
+            assertEquals(
+                "an off-screen slot must be blanked by the return too — its replacement is deferred, " +
+                    "not cancelled, so showing the previous visit's creative until it is scrolled to " +
+                    "is exactly what blanking on release exists to prevent",
+                View.INVISIBLE,
+                creativeVisibility,
+            )
+        }
 
         // User scrolls back to banner #1. No manual resume: the installed native listener must recover it.
         inViewport = true
@@ -232,6 +236,49 @@ class ScreenReloadVisibilityTest {
         screenAdCoordinatorOverride!!.resumeAllAfterSdkInit()
 
         assertEquals("a banner torn down while waiting must stay torn down", 0, responses.size)
+    }
+
+    /**
+     * Returning to a page blanks EVERY slot on it, not only the ones in the viewport.
+     *
+     * A slot below the fold is refused on return (NOT_VISIBLE) and defers its replacement until it
+     * is scrolled to. Blanking only where the auction actually starts therefore left every
+     * off-screen slot displaying the previous visit's creative — the user scrolled down after
+     * coming back and saw stale ads.
+     */
+    @Test
+    fun `an off-screen slot is blanked by the return, not only the on-screen ones`() {
+        loadVisibleBanner(blank = true, v2 = true)
+        inViewport = false
+        observer.dispatchOnPreDraw()
+
+        AudienzzPrebidMobile.pageImpression("legacy")
+        AudienzzPrebidMobile.pageImpression("remote")
+
+        assertEquals("its replacement is deferred, not cancelled", 1, responses.size)
+        assertEquals(View.INVISIBLE, creativeVisibility)
+        assertEquals("and still without touching the ad view", View.VISIBLE, viewVisibility)
+    }
+
+    @Test
+    fun `the off-screen slot reveals only once its deferred replacement lands`() {
+        loadVisibleBanner(blank = true, v2 = true)
+        inViewport = false
+        observer.dispatchOnPreDraw()
+        AudienzzPrebidMobile.pageImpression("legacy")
+        AudienzzPrebidMobile.pageImpression("remote")
+        assertEquals(View.INVISIBLE, creativeVisibility)
+
+        // Scrolled into view: the deferred replacement runs.
+        inViewport = true
+        observer.dispatchOnPreDraw()
+        assertEquals(2, responses.size)
+        assertEquals("still blank while the replacement is in flight", View.INVISIBLE, creativeVisibility)
+
+        responses[1](AudienzzResultCode.NO_BIDS)
+        listener.onAdLoaded()
+
+        assertEquals(View.VISIBLE, creativeVisibility)
     }
 
     /**
