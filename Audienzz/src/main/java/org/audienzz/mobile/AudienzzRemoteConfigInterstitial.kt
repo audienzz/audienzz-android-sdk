@@ -71,6 +71,9 @@ class AudienzzRemoteConfigInterstitial(
 
         fun onLifecycleEvent(event: Map<String, Any?>) {}
     }
+    /** Stable logical placement, shared with replacement handlers. */
+    var requestContext = org.audienzz.mobile.targeting.AudienzzAdRequestContext()
+
     private var interstitialAdHandler: AudienzzInterstitialAdHandler? = null
     private var loadedInterstitialAd: AdManagerInterstitialAd? = null
     private val scope = CoroutineScope(
@@ -322,6 +325,7 @@ class AudienzzRemoteConfigInterstitial(
         val interstitialHandler = AudienzzInterstitialAdHandler(
             adUnit = interstitial,
             adUnitId = config.gamConfig.adUnitPath,
+            requestContext = requestContext,
         )
 
         interstitialAdHandler = interstitialHandler

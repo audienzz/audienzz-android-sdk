@@ -37,6 +37,8 @@ class ScreenAdCoordinator @Inject constructor() {
     private val registry: MutableSet<AudienzzAdViewHandler> =
         Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap<AudienzzAdViewHandler, Boolean>()))
 
+    internal val requestLedger = org.audienzz.mobile.targeting.AdRequestLedger()
+
     private var activeScreenRef: WeakReference<Any>? = null
 
     /** The active screen token from the most recent [onScreenResumed], or null before the first. */
@@ -58,6 +60,8 @@ class ScreenAdCoordinator @Inject constructor() {
 
     fun register(handler: AudienzzAdViewHandler) {
         registry.add(handler)
+        val screen = activeScreen
+        if (screen == null || handler.isHostedBy(screen)) handler.requestContext.register()
     }
 
     fun deregister(handler: AudienzzAdViewHandler) {
@@ -81,6 +85,7 @@ class ScreenAdCoordinator @Inject constructor() {
         activeScreenName = name
         epoch++
         synchronized(registry) {
+            requestLedger.beginPage(epoch, registry.filter { it.isHostedBy(screen) }.map { it.requestContext })
             android.util.Log.d(
                 TAG,
                 "pageImpression \"$name\" epoch=$epoch screen=${screen.javaClass.simpleName}@${System.identityHashCode(screen)} — ${registry.size} banner(s) registered",

@@ -32,6 +32,7 @@ android {
     version = audienzzSdkVersion
 
     defaultConfig {
+        consumerProguardFiles("consumer-rules.pro")
         namespace = "org.audienzz"
         minSdk = libs.versions.sdk.min.get().toInt()
         buildConfigField(

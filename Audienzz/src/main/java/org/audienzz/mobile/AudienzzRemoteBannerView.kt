@@ -38,6 +38,9 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         },
     )
 
+    /** Stable logical placement, shared with replacement handlers. */
+    var requestContext = org.audienzz.mobile.targeting.AudienzzAdRequestContext()
+
     private var adUnit: AudienzzBannerAdUnit? = null
     private var adView: AdManagerAdView? = null
     private var adViewHandler: AudienzzAdViewHandler? = null
@@ -106,6 +109,9 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     }
 
     fun loadAd() {
+        // Reserve before remote config resolves, so network completion cannot reorder slots.
+        val active = org.audienzz.mobile.screen.screenAdCoordinator?.activeScreen
+        if (pendingScreenKey == null || active == null || pendingScreenKey == active) requestContext.register()
         loadBannerInternal()
     }
 
@@ -329,6 +335,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         val handler = AudienzzAdViewHandler(
             adView = adViewLocal,
             adUnit = adUnitLocal,
+            requestContext = requestContext,
         )
         adViewHandler = handler
         pendingScreenKey?.let { handler.hostScreenOverride = it }

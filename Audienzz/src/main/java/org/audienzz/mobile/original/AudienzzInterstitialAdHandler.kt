@@ -33,9 +33,10 @@ import org.audienzz.mobile.util.noBidResultCode
 import org.audienzz.mobile.util.prebidKeyword
 import java.util.UUID
 
-class AudienzzInterstitialAdHandler(
+class AudienzzInterstitialAdHandler @JvmOverloads constructor(
     private val adUnit: AudienzzInterstitialAdUnit,
     private val adUnitId: String,
+    val requestContext: org.audienzz.mobile.targeting.AudienzzAdRequestContext = org.audienzz.mobile.targeting.AudienzzAdRequestContext(),
 ) {
 
     // Prebid auction winner (hb_bidder), captured on bid success and reported on adImpression.
@@ -86,11 +87,8 @@ class AudienzzInterstitialAdHandler(
             gamRequestBuilder.setPublisherProvidedId(ppid)
         }
 
-        val request =
-            AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(
-                gamRequestBuilder,
-            )
-                .build()
+        AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(gamRequestBuilder)
+        val request = requestContext.buildRequest(gamRequestBuilder)
         adUnit.fetchDemand(request) { resultCode ->
             val timeToRespond = System.currentTimeMillis() - requestStartMs
             // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).

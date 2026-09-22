@@ -47,9 +47,10 @@ import org.audienzz.mobile.util.sizesJson
 import org.audienzz.mobile.util.unwrapActivity
 import java.util.UUID
 
-class AudienzzAdViewHandler(
+class AudienzzAdViewHandler @JvmOverloads constructor(
     private val adView: AdManagerAdView,
     private val adUnit: AudienzzAdUnit,
+    val requestContext: org.audienzz.mobile.targeting.AudienzzAdRequestContext = org.audienzz.mobile.targeting.AudienzzAdRequestContext(),
 ) {
     companion object {
         private const val TAG = "AudienzzAdViewHandler"
@@ -603,9 +604,8 @@ class AudienzzAdViewHandler(
     private fun buildRequest(): AdManagerAdRequest {
         val builder = gamRequestBuilder ?: AdManagerAdRequest.Builder()
         builder.applyPublisherProvidedId(AudienzzPrebidMobile.ppidManager?.getPpid())
-        return AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER
-            .applyToGamRequestBuilder(builder)
-            .build()
+        AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(builder)
+        return requestContext.buildRequest(builder)
     }
 
     /**
