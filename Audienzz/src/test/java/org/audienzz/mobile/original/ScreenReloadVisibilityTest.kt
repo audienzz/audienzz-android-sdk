@@ -30,6 +30,12 @@ class ScreenReloadVisibilityTest {
     private var googleLoads = 0
     private var inViewport = true
     private var viewVisibility = View.VISIBLE
+    /**
+     * The rendered creative. Blanking hides the ad view's CHILDREN, never the ad view itself —
+     * [org.audienzz.mobile.util.isRefreshEligible] rejects anything whose own visibility is not
+     * VISIBLE, so blanking the ad view made the slot ineligible for the auction meant to refill it.
+     */
+    private var creativeVisibility = View.VISIBLE
     private var oldBlank = false
     private var oldV2: Boolean? = null
 
@@ -55,6 +61,11 @@ class ScreenReloadVisibilityTest {
             firstArg<IntArray>()[0] = 0
             firstArg<IntArray>()[1] = 0
         }
+        val creative: View = mockk(relaxed = true)
+        every { creative.visibility } answers { creativeVisibility }
+        every { creative.visibility = any() } answers { creativeVisibility = firstArg() }
+        every { view.childCount } returns 1
+        every { view.getChildAt(0) } returns creative
         every { view.adListener } answers { listener }
         every { view.adListener = any() } answers { listener = firstArg() }
         val unit = mockk<AudienzzAdUnit>(relaxed = true)
@@ -85,6 +96,7 @@ class ScreenReloadVisibilityTest {
         listener.onAdLoaded()
         assertEquals("control: the initial creative completed", 1, googleLoads)
         assertEquals(View.VISIBLE, viewVisibility)
+        assertEquals(View.VISIBLE, creativeVisibility)
     }
 
     private fun leaveAndReturnWhileScrolledDown(blank: Boolean, v2: Boolean) {
@@ -97,6 +109,11 @@ class ScreenReloadVisibilityTest {
         observer.dispatchOnPreDraw()
         assertEquals("an off-screen replacement must wait", 1, responses.size)
         assertEquals("a deferred request must not hide its own viewport trigger", View.VISIBLE, viewVisibility)
+        assertEquals(
+            "nothing is coming to refill the slot, so the previous creative beats a permanent blank",
+            View.VISIBLE,
+            creativeVisibility,
+        )
 
         // User scrolls back to banner #1. No manual resume: the installed native listener must recover it.
         inViewport = true
@@ -106,6 +123,7 @@ class ScreenReloadVisibilityTest {
         listener.onAdLoaded()
         assertEquals(2, googleLoads)
         assertEquals(View.VISIBLE, viewVisibility)
+        assertEquals("the fresh creative is revealed", View.VISIBLE, creativeVisibility)
     }
 
     @Test fun `v2 returning offscreen banner recovers when demo blanking is enabled`() =
@@ -124,13 +142,24 @@ class ScreenReloadVisibilityTest {
         AudienzzPrebidMobile.pageImpression("legacy")
         AudienzzPrebidMobile.pageImpression("remote")
         assertEquals(2, responses.size)
-        assertEquals("control: an accepted replacement is blanked", View.INVISIBLE, viewVisibility)
+        assertEquals("control: an accepted replacement is blanked", View.INVISIBLE, creativeVisibility)
+        assertEquals("but the ad view itself is never hidden", View.VISIBLE, viewVisibility)
         observer.dispatchOnPreDraw()
-        assertTrue(handler.refreshController.blockReasons.contains(RefreshBlockReason.NOT_VISIBLE))
+        assertFalse(
+            "a blanked slot must stay eligible — hiding the ad view itself is what used to mark it " +
+                "NOT_VISIBLE and stall the very replacement the blank was waiting for",
+            handler.refreshController.blockReasons.contains(RefreshBlockReason.NOT_VISIBLE),
+        )
 
         // Leave again before the replacement's Prebid response. No Google callback can restore it.
         AudienzzPrebidMobile.pageImpression("legacy")
-        assertEquals("retiring the request must retire its temporary blank", View.VISIBLE, viewVisibility)
+        assertEquals(
+            "leaving blanks the slot: that is what stops the stale creative being on screen when " +
+                "the page comes back",
+            View.INVISIBLE,
+            creativeVisibility,
+        )
+        assertEquals("and still without touching the ad view", View.VISIBLE, viewVisibility)
         responses[1](AudienzzResultCode.NO_BIDS)
         assertEquals("the retired auction must not load Google", 1, googleLoads)
         AudienzzPrebidMobile.pageImpression("remote")
@@ -140,6 +169,62 @@ class ScreenReloadVisibilityTest {
         listener.onAdLoaded()
         assertEquals(2, googleLoads)
         assertEquals(View.VISIBLE, viewVisibility)
+        assertEquals("the fresh creative is revealed", View.VISIBLE, creativeVisibility)
+    }
+
+    /**
+     * The headline behaviour: leaving a page clears its creative, so returning never shows the
+     * previous ad. Blanking used to start when the replacement auction started, which left the
+     * outgoing creative on screen for the whole transition — the user saw the old ad, then a blank,
+     * then the new one.
+     */
+    @Test
+    fun `leaving a page blanks its creative immediately, so the return never shows the old ad`() {
+        loadVisibleBanner(blank = true, v2 = true)
+
+        AudienzzPrebidMobile.pageImpression("legacy")
+
+        assertEquals(View.INVISIBLE, creativeVisibility)
+        assertEquals("without ever hiding the ad view the gate reads", View.VISIBLE, viewVisibility)
+    }
+
+    @Test
+    fun `the slot is still blank when the page comes back, until the fresh creative arrives`() {
+        loadVisibleBanner(blank = true, v2 = true)
+
+        AudienzzPrebidMobile.pageImpression("legacy")
+        AudienzzPrebidMobile.pageImpression("remote")
+
+        assertEquals("still blank while the replacement is in flight", View.INVISIBLE, creativeVisibility)
+        assertEquals(2, responses.size)
+
+        responses[1](AudienzzResultCode.NO_BIDS)
+        listener.onAdLoaded()
+
+        assertEquals("revealed only once the fresh creative has rendered", View.VISIBLE, creativeVisibility)
+    }
+
+    @Test
+    fun `blanking stays off when the publisher has not asked for it`() {
+        loadVisibleBanner(blank = false, v2 = true)
+
+        AudienzzPrebidMobile.pageImpression("legacy")
+        AudienzzPrebidMobile.pageImpression("remote")
+
+        assertEquals(View.VISIBLE, creativeVisibility)
+    }
+
+    @Test
+    fun `a publisher-hidden slot is left alone`() {
+        // Taking ownership of visibility the publisher set would reveal an ad they hid.
+        loadVisibleBanner(blank = true, v2 = true)
+        viewVisibility = View.GONE
+
+        AudienzzPrebidMobile.pageImpression("legacy")
+        AudienzzPrebidMobile.pageImpression("remote")
+        listener.onAdLoaded()
+
+        assertEquals(View.GONE, viewVisibility)
     }
 
     @Test fun `v2 a cancelled replacement releases its temporary blank`() = cancelledReplacementRecovers(v2 = true)

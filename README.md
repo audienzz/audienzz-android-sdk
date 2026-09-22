@@ -260,7 +260,7 @@ Smart Refresh v2 refines the model in two ways. It is **off by default**; when d
 
 The scroll-off/scroll-back timer is unchanged (stale-aware, respecting your refresh interval); only **screen navigation** forces an immediate reload.
 
-Optionally, set `AudienzzPrebidMobile.blankOnScreenReload = true` to briefly blank the slot (keeping its size, so no layout shift) during a screen-change reload — a clear visual cue that the ad refreshed. Default is off.
+Optionally, set `AudienzzPrebidMobile.blankOnScreenReload = true` to clear the slot (keeping its size, so no layout shift) while a screen-change reload is in progress. The slot is blanked as soon as the page is left, so returning to it never shows the previous screen's creative — you see an empty slot until the fresh ad renders, rather than the old ad followed by a blank. If no replacement auction can start, the previous creative is left in place rather than leaving the slot empty with nothing on the way. Default is off.
 
 Enable it per publisher from the backend remote config (`smartRefreshV2: true` on the publisher config), or locally in the app (the local override wins):
 

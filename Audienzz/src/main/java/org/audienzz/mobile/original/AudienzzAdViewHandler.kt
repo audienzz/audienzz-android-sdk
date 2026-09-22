@@ -251,6 +251,11 @@ class AudienzzAdViewHandler(
         // Bump the generation FIRST so a response already in flight is recognised as stale.
         auctionGeneration++
         retireCurrentAuction()
+        // The creative is retired here, so blank it here too. Blanking only once the replacement
+        // auction starts meant the outgoing creative was still on screen when the page came back —
+        // the user saw the *previous* ad, then a blank, then the new one. Clearing it on the way out
+        // means the slot is already empty on the way in.
+        blankForReloadIfNeeded()
     }
 
     /**
@@ -276,9 +281,11 @@ class AudienzzAdViewHandler(
         pendingLoadReason = null
         adUnit.destroy()
         initialRequestGeneration = null
-        // A cancelled replacement will never reach the Google callback that restores its blank.
-        // Leaving our INVISIBLE flag behind prevents the viewport listener from admitting the
-        // next replacement when the slot returns to screen.
+        // A cancelled replacement will never reach the Google callback that restores its blank, so
+        // without this the slot would sit empty with nothing on the way to refill it. (It no longer
+        // also stalls the next auction: blanking hides the ad view's children, not the ad view the
+        // visibility gate reads. A caller that is retiring in order to replace — a page release, a
+        // page activation — blanks again straight after.)
         restoreFromBlankIfNeeded()
     }
 
@@ -429,10 +436,40 @@ class AudienzzAdViewHandler(
 
     private var blankedForReload = false
 
+    /**
+     * Hide the current creative while its replacement is on the way, keeping the slot's size.
+     *
+     * Hides the ad view's **children** rather than the ad view itself. [AdManagerAdView] is a
+     * ViewGroup whose children are the rendered creative, and the visibility gate
+     * ([org.audienzz.mobile.util.isRefreshEligible]) rejects anything whose own `visibility` is not
+     * `VISIBLE` — so blanking the ad view made the slot ineligible for the very auction meant to
+     * refill it. That is why blanking used to be deferred until an auction was already starting,
+     * and it is what made an earlier blank unsafe. Hiding the children leaves the gate's view of
+     * the world untouched.
+     *
+     * `INVISIBLE` rather than transparency on purpose: a fully transparent creative would still be
+     * laid out and still take touches, so a tap on an apparently empty slot would click the ad that
+     * is on its way out.
+     */
+    private fun blankForReloadIfNeeded() {
+        if (!AudienzzPrebidMobile.blankOnScreenReload || blankedForReload) return
+        // Do not take ownership of visibility the publisher already set to hidden.
+        if (adView.visibility != View.VISIBLE) return
+        if (adView.childCount == 0) return
+        for (i in 0 until adView.childCount) {
+            adView.getChildAt(i).visibility = View.INVISIBLE
+        }
+        blankedForReload = true
+    }
+
+    /** Reveal a creative hidden by [blankForReloadIfNeeded]. No-op unless this slot blanked itself. */
     private fun restoreFromBlankIfNeeded() {
-        if (blankedForReload) {
-            blankedForReload = false
-            adView.visibility = View.VISIBLE
+        if (!blankedForReload) return
+        blankedForReload = false
+        // Re-read the children: a freshly rendered creative may be a different child than the one
+        // that was hidden.
+        for (i in 0 until adView.childCount) {
+            adView.getChildAt(i).visibility = View.VISIBLE
         }
     }
 
@@ -873,18 +910,18 @@ class AudienzzAdViewHandler(
             if (reason == RefreshRequestReason.FIRST_LOAD || reason == RefreshRequestReason.PAGE_IMPRESSION) {
                 pendingLoadReason = reason
             }
+            // No replacement is starting, so showing the previous creative beats an empty slot that
+            // nothing will ever fill.
+            restoreFromBlankIfNeeded()
             return false
         }
-        if (refreshController.hasRequestInFlight) return false
-        // Blanking is a visual aid for a replacement that is actually starting. Blanking a
-        // deferred/off-screen slot earlier makes its own visibility gate permanently reject it.
-        // Do not take ownership of visibility that the publisher already set to hidden.
-        if (reason == RefreshRequestReason.PAGE_IMPRESSION &&
-            AudienzzPrebidMobile.blankOnScreenReload && adView.visibility == View.VISIBLE
-        ) {
-            adView.visibility = View.INVISIBLE
-            blankedForReload = true
+        if (refreshController.hasRequestInFlight) {
+            restoreFromBlankIfNeeded()
+            return false
         }
+        // Usually already blank from releaseForPage(); this covers a page re-reported without an
+        // intervening release.
+        if (reason == RefreshRequestReason.PAGE_IMPRESSION) blankForReloadIfNeeded()
         pendingLoadReason = null
         // An auction is actually starting, so nothing is owed any more.
         // Every new auction supersedes the previous one.
