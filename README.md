@@ -1,6 +1,102 @@
 Audienzz Android SDK
 ========
 
+## Quick integration (remote config + `pageImpression`)
+
+The recommended path: your ad units come from the Audienzz publisher config, and you tell the SDK
+which screen is current. Five steps.
+
+### 1. Install
+
+```gradle
+repositories { mavenCentral() }
+
+dependencies {
+  implementation 'com.audienzz:sdk:{latest_version}'
+}
+```
+
+Latest version on [Maven Central](https://central.sonatype.com/artifact/com.audienzz/sdk). Add your
+GAM/AdMob app ID to `AndroidManifest.xml` as `com.google.android.gms.ads.APPLICATION_ID`.
+
+### 2. Initialize once, in your `Application`
+
+```kotlin
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+
+        RemoteConfigManager.initialize(
+            publisherId = "YOUR_PUBLISHER_ID",   // provided by Audienzz
+            remoteUrl = "https://api.adnz.co/api/ws-sdk-config/public/v1/",
+        )
+
+        AudienzzPrebidMobile.initializeRemoteSdk(this, "YOUR_PUBLISHER_ID") { status ->
+            if (status != AudienzzInitializationStatus.SUCCEEDED) {
+                Log.e(TAG, "Audienzz init failed: $status")
+            }
+        }
+    }
+}
+```
+
+**In the `Application`, not in an `Activity` or `Fragment`.** An SDK initialized by whichever screen
+happens to open first is not initialized at all when the reader starts somewhere else, and every ad
+on that launch stays empty.
+
+Run your CMP **before** this and forward the result through `AudienzzTargetingParams` — see
+[Consent](#consent). Initializing first requests ads without the consent signals.
+
+### 3. Report every screen
+
+```kotlin
+override fun onResume() {
+    super.onResume()
+    AudienzzPrebidMobile.pageImpression(this)   // Activity, Fragment, dialog…
+}
+```
+
+This is the one thing the SDK cannot do for you, and everything else follows from it: it groups a
+visit's ad events, and it is what releases the *previous* screen's banners.
+
+**Report ad-free screens too.** A settings page with no ads still has to be reported — skipping it
+leaves the previous screen's banners auctioning for a screen nobody is looking at.
+
+### 4. Place a banner
+
+```kotlin
+val banner = AudienzzRemoteBannerView(context, adConfigId = "YOUR_CONFIG_ID")
+container.addView(banner)
+banner.loadAd()
+```
+
+### 5. Show an interstitial
+
+Three verbs, and the distinction between them is deliberate:
+
+```kotlin
+val interstitial = AudienzzRemoteConfigInterstitial(context, "YOUR_CONFIG_ID")
+
+// Obtain and retain one ad. Never presents.
+interstitial.prefetch()
+
+// Present what is in hand, at a moment you chose. Returns false if nothing is ready —
+// it does NOT present later, when the reader has moved on.
+interstitial.show(activity)
+
+// The one call that presents something you did not explicitly time.
+interstitial.prefetchAndShow()
+```
+
+### That's it
+
+You do not have to wait for initialization before creating ads. An auction that would start before
+Prebid is ready is deferred and taken as soon as it is ready — so a banner built during launch fills
+normally rather than losing its one request.
+
+---
+
+
 ## Overview
 
 A mobile advertising SDK that combines header bidding capabilities from Prebid Mobile with Google's advertising ecosystem through a unified interface.
