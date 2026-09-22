@@ -205,12 +205,12 @@ internal class EventBatcherTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val sent = mutableListOf<List<EventNetwork>>()
         coEvery { repository.submitBatch(capture(sent)) } returns Unit
-        every { store.loadAll() } returns (0 until 120).map { event(it) }
+        every { store.loadAll() } returns (0 until 50).map { event(it) }
 
         EventBatcher(repository, store, dispatcher)
         advanceUntilIdle()
 
-        // 50 + 50 + 20, not one oversized POST.
-        assertEquals(listOf(50, 50, 20), sent.map { it.size })
+        // 20 + 20 + 10, not one oversized POST.
+        assertEquals(listOf(20, 20, 10), sent.map { it.size })
     }
 }

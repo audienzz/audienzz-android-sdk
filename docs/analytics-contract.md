@@ -324,13 +324,13 @@ Identical on iOS (`AUEventQueue` + `AUEventStore`) and Android (`EventBatcher` +
 
 | Setting | Value | Was |
 |---|---|---|
-| Max events per POST | 50 | 20 |
-| Flush interval (partial batch) | 30s | 5s |
+| Max events per POST | 20 | 20 (unchanged) |
+| Flush interval (partial batch) | 15s | 5s |
 | Max buffered / stored events | 500 | 500 (memory only) |
 | Retries per batch | 3, backing off 2s / 4s / 8s | unchanged |
 | Extra flush triggers | app background, app foreground, connectivity regained (iOS) | unchanged |
 
-**What this means for a consumer.** An event can now arrive up to ~30s after it occurred, plus
+**What this means for a consumer.** An event can now arrive up to ~15s after it occurred, plus
 retry backoff — `event_timestamp` is when it *happened* and is unaffected, but "rows seen in the
 last minute" is no longer a good proxy for "events that just occurred". Order within a session is
 carried by `session_seq`, not arrival, so batching and retries cannot reorder anything.
