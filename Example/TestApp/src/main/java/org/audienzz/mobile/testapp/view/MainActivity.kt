@@ -60,26 +60,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun tabTitle(position: Int) = when (position) {
-        0 -> "Ads page"
-        1 -> "Targeting page"
-        2 -> "Remote Config"
-        3 -> "Legacy (v0.0.13)"
-        4 -> "Non-Remote"
+        0 -> "Remote Config"
+        1 -> "Non-Remote"
+        2 -> "Legacy (v0.0.13)"
+        3 -> "Targeting"
         else -> "Tab ${position + 1}"
     }
 }
 
+/**
+ * Tab order is the order these are worth looking at: the supported remote-config integration
+ * first, then the non-remote original API, then the v0.0.13 copy kept for comparison, then
+ * targeting.
+ */
 class TabPagerAdapter(fragmentActivity: FragmentActivity) : FragmentStateAdapter(fragmentActivity) {
-    override fun getItemCount(): Int = 5
+    override fun getItemCount(): Int = 4
 
     override fun createFragment(position: Int): Fragment {
         return when (position) {
-            0 -> AdsPageFragment()
-            1 -> TargetingPageFragment()
-            2 -> RemoteConfigStickyFragment()
-            3 -> LegacyAdsPageFragment()
-            4 -> NonRemoteBannersFragment()
-            else -> AdsPageFragment()
+            0 -> RemoteConfigStickyFragment()
+            1 -> NonRemoteBannersFragment()
+            2 -> LegacyAdsPageFragment()
+            3 -> TargetingPageFragment()
+            else -> RemoteConfigStickyFragment()
         }
     }
 }

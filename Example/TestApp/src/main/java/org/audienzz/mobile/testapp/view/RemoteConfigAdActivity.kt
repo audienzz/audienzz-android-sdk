@@ -1,6 +1,7 @@
 package org.audienzz.mobile.testapp.view
 
 import android.os.Bundle
+import android.widget.Button
 import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import org.audienzz.mobile.AudienzzPrebidMobile
@@ -32,6 +33,10 @@ class RemoteConfigAdActivity : AppCompatActivity() {
             ),
         )
         b.loadAd()
+
+        // Same transition as the system back gesture, just discoverable. Finishing is what makes
+        // the Remote Config tab current again, which is the half of this test that matters.
+        findViewById<Button>(R.id.btnClose).setOnClickListener { finish() }
     }
 
     override fun onResume() {

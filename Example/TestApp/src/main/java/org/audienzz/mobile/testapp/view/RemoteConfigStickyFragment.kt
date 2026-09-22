@@ -28,6 +28,7 @@ import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzRemoteBannerView
 import org.audienzz.mobile.AudienzzRemoteConfigInterstitial
 import org.audienzz.mobile.AudienzzStickyAdWrapperView
+import org.audienzz.mobile.util.AudienzzDiagnostics
 import org.audienzz.mobile.testapp.R
 
 /**
@@ -81,13 +82,26 @@ class RemoteConfigStickyFragment : Fragment() {
         // Section 4 — sticky banner
         loadStickyBannerInto(view.findViewById(R.id.stickyContainer2), BANNER_CONFIG_ID)
 
-        view.findViewById<Button>(R.id.btnLoadInterstitial).text = "Preload / show interstitial"
+        view.findViewById<Button>(R.id.btnLoadInterstitial).text = "Show interstitial"
         view.findViewById<Button>(R.id.btnLoadInterstitial).setOnClickListener {
-            loadInterstitial()
+            showInterstitial()
         }
 
-        view.findViewById<Button>(R.id.btnOpenAdScreen).setOnClickListener {
-            startActivity(android.content.Intent(requireContext(), RemoteConfigAdActivity::class.java))
+        // One under every ad slot. They all open the same screen; which one you tapped is recorded
+        // so a captured log says WHICH slot's leave-and-return you were exercising — with four
+        // identical buttons the log would otherwise be ambiguous.
+        listOf(
+            R.id.btnOpenAdScreen1 to "banner1",
+            R.id.btnOpenAdScreen2 to "sticky1",
+            R.id.btnOpenAdScreen3 to "banner2",
+            R.id.btnOpenAdScreen4 to "sticky2",
+        ).forEach { (buttonId, slot) ->
+            view.findViewById<Button>(buttonId).setOnClickListener {
+                AudienzzDiagnostics.log("app", "openAdScreen", "from" to slot)
+                startActivity(
+                    android.content.Intent(requireContext(), RemoteConfigAdActivity::class.java),
+                )
+            }
         }
     }
 
@@ -133,16 +147,27 @@ class RemoteConfigStickyFragment : Fragment() {
         banner.loadAd()
     }
 
-    private fun loadInterstitial() {
-        val existing = interstitial
-        if (existing?.isReady == true) {
-            existing.show(requireActivity(), eligible = true)
-        } else {
-            if (interstitial == null) {
-                interstitial = AudienzzRemoteConfigInterstitial(requireContext(), INTERSTITIAL_CONFIG_ID)
-            }
-            interstitial?.prefetch()
+    /**
+     * One tap, one interstitial: [AudienzzRemoteConfigInterstitial.prefetchAndShow] presents as
+     * soon as the load completes, or presents inventory already in hand.
+     *
+     * This button used to do two different things depending on state — the first tap prefetched,
+     * the second showed — which read as "nothing happened" the first time, and needed a third tap
+     * if you were quick enough to beat the load.
+     *
+     * The owner is kept across taps rather than rebuilt: repeated taps coalesce onto the request
+     * in flight and reuse ready inventory, and cannot present twice. Rebuilding it each time would
+     * throw away a load already paid for.
+     *
+     * The two-step flow (`prefetch()` now, `show(activity, eligible)` at a moment you choose) is
+     * the one to use in a real app, where you decide when an interstitial is appropriate. It is
+     * exercised in the managed test screens.
+     */
+    private fun showInterstitial() {
+        if (interstitial == null) {
+            interstitial = AudienzzRemoteConfigInterstitial(requireContext(), INTERSTITIAL_CONFIG_ID)
         }
+        interstitial?.prefetchAndShow()
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────────────────────
