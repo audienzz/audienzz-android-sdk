@@ -288,10 +288,18 @@ this is a small change; it was not added speculatively.**
 
 ## 9. Release compatibility
 
-`sdk_version` alone is **not** sufficient evidence of behaviour: it is a compile-time constant
-(`AUSDKVersion = "0.3.2"` on iOS, `BuildConfig.AUDIENZZ_SDK_VERSION` from `audienzzSdkVersion =
-"0.2.2"` on Android) and is **not bumped on a feature branch**. The attached log was produced by a
-build of this branch and reports `0.3.2` — the same string the released 0.3.2 reports.
+`sdk_version` is a compile-time constant (`AUSDKVersion` on iOS, `BuildConfig.AUDIENZZ_SDK_VERSION`
+from `audienzzSdkVersion` on Android). It has now been bumped to **0.3.3 / 0.2.3**, which is what
+separates a build carrying these corrections from the released 0.3.2 / 0.2.2 that does not.
+
+Two things follow, and the second is easy to get wrong:
+
+* Logs captured **before** the bump report `0.3.2` / `0.2.2` even though they came from a branch
+  build carrying the fixes. An older attached log reporting `0.3.2` is therefore not evidence that
+  the fixes are absent.
+* `sdk_version = 0.3.3` means "built after the bump", **not** "published". Until the release goes
+  out, branch builds report it too. It distinguishes corrected behaviour from uncorrected; it does
+  not distinguish a release from a local build.
 
 | Field | Affected releases | Fixing commit | First released fix | Recommended filter |
 |---|---|---|---|---|
@@ -304,12 +312,14 @@ build of this branch and reports `0.3.2` — the same string the released 0.3.2 
 | `bidder_code = 'test'` | all | — | not a defect | exclude `bidder_code='test' AND cpm=1.42` |
 | `bidder_code = 'google'` on every render | all | — | ad-ops configuration | see §3 |
 
-**Nothing above is in a published release.** Do not assume all data from Android 0.2.2 or iOS 0.3.2
-is trustworthy on these fields — by the table above, none of it is.
+**Nothing above is in a published release yet.** Do not assume all data from Android 0.2.2 or iOS
+0.3.2 is trustworthy on these fields — by the table above, none of it is. The version constants now
+read 0.2.3 / 0.3.3, so the corrected builds are identifiable, but the release itself has not shipped.
 
 ### How the correction release will be distinguishable
 
-Once released, `sdk_version >= 0.3.3` (iOS) / `>= 0.2.3` (Android) is the marker. Until then, a
+`sdk_version >= 0.3.3` (iOS) / `>= 0.2.3` (Android) is the marker, and the constants now carry it.
+For rows already collected before the bump, a
 build carrying these fixes is indistinguishable by version alone, so use the **data shape**:
 
 * `session_start_timestamp < 1e11` ⇒ post-fix, unambiguously.
