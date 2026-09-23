@@ -37,7 +37,7 @@ class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) 
         button.setOnClickListener {
             displayInterstitial?.destroy()
             displayInterstitial = AudienzzRemoteConfigInterstitial(adContainer.context, INTERSTITIAL_CONFIG_ID)
-            displayInterstitial?.loadAd()
+            displayInterstitial?.prefetchAndShow()
         }
     }
 

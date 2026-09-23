@@ -6,6 +6,21 @@ class CustomTargetingManager(
     private val sdkPlatform: String = "android",
     private val sdkVersion: String = "",
 ) {
+    /**
+     * The single SDK identification key sent on every GAM request: platform and version in one
+     * value, e.g. `android-0.2.2`.
+     *
+     * It used to be two keys — `au_sdk = android` and `au_v = 0.2.2`. One key is what GAM line-item
+     * targeting and reporting actually want, because "this platform on this version" is a single
+     * condition; expressing it as two forced every rule to AND them together.
+     *
+     * **`au_v` is no longer sent.** Anything keyed on it in Ad Manager needs to move to `au_sdk`
+     * matching `<platform>-<version>`. The version is omitted only when the SDK could not resolve
+     * one, in which case the value is the bare platform.
+     */
+    private val sdkPlatformVersion: String =
+        if (sdkVersion.isEmpty()) sdkPlatform else "$sdkPlatform-$sdkVersion"
+
     private val targetingMap = mutableMapOf<String, String>()
 
     /** Keys set by SDK/bridge init — invisible to publishers.
@@ -95,18 +110,14 @@ class CustomTargetingManager(
             }
         }
 
-        // SDK-owned keys applied after publisher keys so they always win.
-        requestBuilder.addCustomTargeting("au_sdk", sdkPlatform)
-        if (sdkVersion.isNotEmpty()) {
-            requestBuilder.addCustomTargeting("au_v", sdkVersion)
-        }
+        // SDK-owned key applied after publisher keys so it always wins.
+        requestBuilder.addCustomTargeting("au_sdk", sdkPlatformVersion)
         reservedTargetingMap.forEach { (key, value) ->
             requestBuilder.addCustomTargeting(key, value)
         }
 
         Log.d(TAG, "GAM custom targeting applied:")
-        Log.d(TAG, "  au_sdk = $sdkPlatform")
-        if (sdkVersion.isNotEmpty()) Log.d(TAG, "  au_v   = $sdkVersion")
+        Log.d(TAG, "  au_sdk = $sdkPlatformVersion")
         reservedTargetingMap.forEach { (key, value) -> Log.d(TAG, "  $key = $value [reserved]") }
         targetingMap.forEach { (key, value) -> Log.d(TAG, "  $key = $value") }
 

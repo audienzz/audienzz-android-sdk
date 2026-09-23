@@ -31,6 +31,7 @@ import org.audienzz.mobile.rendering.bidding.interfaces.AudienzzInterstitialCont
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzDisplayVideoListener
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzDisplayViewListener
 import org.audienzz.mobile.rendering.listeners.AudienzzSdkInitializationListener
+import org.audienzz.mobile.util.AudienzzDiagnostics
 import org.audienzz.mobile.util.CurrentActivityTracker
 import org.audienzz.mobile.util.PpidManager
 import org.json.JSONObject
@@ -59,6 +60,29 @@ object AudienzzPrebidMobile {
     /** Cached backend smart-refresh-v2 flag from the publisher config (set during init). */
     private var backendSmartRefreshV2: Boolean? = null
 
+    /** Cached backend PPID switch from the publisher config (set during init). */
+    private var backendPpidEnabled: Boolean? = null
+
+    /**
+     * Whether any PPID may be sent. Backend-controlled; absent → enabled.
+     *
+     * There is deliberately no public setter. A PPID is always sent unless the backend turns it off
+     * for that publisher, and the only thing an app decides is *which* identifier to use, via
+     * `PpidManager.setPublisherPpid`.
+     */
+    internal fun isPpidEnabled(): Boolean = backendPpidEnabled ?: true
+
+    /**
+     * Applies the publisher config's PPID switch.
+     *
+     * Called during remote init, and by the Flutter bridge, which fetches the publisher config in
+     * Dart and so has to hand the resolved value down. Not part of the documented app-facing API.
+     */
+    @JvmStatic
+    fun applyBackendPpidConfig(ppidEnabled: Boolean?) {
+        backendPpidEnabled = ppidEnabled
+    }
+
     /**
      * Local override for the screen-aware smart-refresh model (directional viewport gate +
      * screen-navigation pause/reload). Takes precedence over the backend `smartRefreshV2` for the
@@ -78,15 +102,6 @@ object AudienzzPrebidMobile {
         smartRefreshV2Override ?: backendSmartRefreshV2 ?: false
 
     /**
-     * Automatic screen tracking. When true (default), the SDK observes Activity and Fragment
-     * lifecycle and fires a page impression (and drives screen-aware smart refresh) on every screen
-     * change — Activities, fragment navigation, and ViewPager2 tabs — with no per-screen code.
-     * Set to false before init to opt out and drive screens yourself via [onScreenResumed].
-     */
-    @JvmStatic
-    var autoScreenTracking: Boolean = true
-
-    /**
      * When true, a screen-change reload (smart refresh v2, on returning to a screen) briefly blanks
      * the current banner — keeping the slot's size — until the fresh ad renders, making the refresh
      * visually obvious. Default false. Only affects screen-change reloads, not periodic refresh.
@@ -94,14 +109,144 @@ object AudienzzPrebidMobile {
     @JvmStatic
     var blankOnScreenReload: Boolean = false
 
-    private var screenTracker: org.audienzz.mobile.screen.ScreenTracker? = null
+    /**
+     * Emit one greppable `AUDZ …` line per decision the SDK makes about a slot: which page became
+     * current, which page a slot belongs to, when an auction started, and why one did not.
+     *
+     * Off by default. Turn it on **before** initializing when you need a log you can capture on a
+     * device (`adb logcat -s AUDZ`) and hand to someone else. Route it elsewhere with
+     * [AudienzzDiagnostics.sink].
+     *
+     * The iOS, Flutter and React Native SDKs emit the same line format, so one flow can be
+     * compared across platforms.
+     */
+    @JvmStatic
+    var diagnosticsEnabled: Boolean
+        get() = AudienzzDiagnostics.isEnabled
+        set(value) { AudienzzDiagnostics.isEnabled = value }
 
     /** Single sink for both the auto tracker and the manual API: page impression + v2 coordinator. */
     private fun notifyScreenResumed(screen: Any, screenName: String) {
-        android.util.Log.d(TAG, "screenResumed: $screenName (smartRefreshV2=${isSmartRefreshV2Enabled()})")
+        android.util.Log.d(TAG, "pageImpression: firing → \"$screenName\"")
+        AudienzzDiagnostics.log(
+            "page", "impression",
+            "id" to diagnosticToken(screen),
+            "name" to screenName,
+        )
+        // An explicit report always wins over a pending automatic foreground one, and claims this
+        // foreground visit so an activation arriving afterwards doesn't schedule a duplicate.
+        reportedInThisForegroundVisit = true
+        cancelPendingForegroundReimpression()
         eventLogger?.onScreenResumed(screenName)
-        if (isSmartRefreshV2Enabled()) {
-            org.audienzz.mobile.screen.screenAdCoordinator?.onScreenResumed(screen)
+        // Ads are page-scoped unconditionally. This is NOT gated on isSmartRefreshV2Enabled(), which
+        // now only selects the viewport gate used for scroll pause/resume: every page impression
+        // releases the previous page's banners and recreates the incoming page's, so a banner can
+        // never keep auctioning for a screen the user has left.
+        org.audienzz.mobile.screen.screenAdCoordinator?.onScreenResumed(screen, screenName)
+        // Emitted only once the transition is complete. An observer is free to report another page
+        // — the bridges hand this to app code — and running it mid-transition let that nested
+        // report finish first, after which this call's sweep overwrote it with the older page.
+        // The ROUTING key, not the display name. A bridge matches its banners against the token the
+        // coordinator is now holding, so emitting the name would leave every bridge banner unable to
+        // recognise its own page impression whenever the two differ. They are identical for a
+        // name-only report, so nothing changes for an app that never supplies an id.
+        pageImpressionObserver?.invoke(screen as? String ?: screenName)
+    }
+
+    /**
+     * Delay before an automatic foreground re-impression fires. An app that reports its own page
+     * impression on resume cancels the pending one within this window, so the two orderings —
+     * `onActivityStarted` (which drives the foreground callback) before `onResume` (where apps
+     * typically report) — both end in exactly one page impression.
+     */
+    private const val FOREGROUND_REIMPRESSION_DELAY_MS = 400L
+
+    /**
+     * Whether the app reported a page impression itself during the current foreground visit. Reset
+     * when the app backgrounds, so each visit is judged on its own.
+     */
+    @Volatile
+    private var reportedInThisForegroundVisit: Boolean = false
+
+    /**
+     * Notified after every page impression, including the automatic one fired on returning to the
+     * foreground.
+     *
+     * The Flutter and React Native bridges need to know a page transition happened so they can
+     * remount platform views and page-scope the ad types the native coordinator doesn't track. They
+     * used to observe their own app lifecycle and report a page impression themselves, which meant
+     * two independent owners each scheduling and de-duplicating — no ordering of the two ever came
+     * out right. Native owns foreground reporting; the bridges just listen.
+     */
+    @JvmStatic
+    var pageImpressionObserver: ((String) -> Unit)? = null
+
+    private val foregroundHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingForegroundReimpression: Runnable? = null
+
+    /**
+     * True while an automatic foreground page impression is scheduled. A banner whose auction the
+     * gate deferred consults this: the impression recreates every banner on the active page, so it
+     * owns the recovery and a deferred retry must stand down rather than auction as well.
+     */
+    internal val hasPendingForegroundReimpression: Boolean
+        get() = pendingForegroundReimpression != null
+
+    private fun cancelPendingForegroundReimpression() {
+        pendingForegroundReimpression?.let { foregroundHandler.removeCallbacks(it) }
+        pendingForegroundReimpression = null
+    }
+
+    /**
+     * Returning from the background is a new page impression for the screen the user comes back to:
+     * its banners reload so the creative is fresh at the moment it's looked at, and any banner left
+     * over from an earlier screen is released.
+     *
+     * Suppressed when the app itself reported a page impression within
+     * [FOREGROUND_REIMPRESSION_DEBOUNCE_MS] of the activation (the common case, where the resumed
+     * Activity/Fragment also calls pageImpression), so a restore never double-auctions.
+     */
+    private val foregroundReimpressionListener = object : org.audienzz.mobile.util.AppForegroundMonitor.Listener {
+        override fun onEnterBackground() {
+            // Backgrounding again inside the scheduling window must drop the pending re-impression,
+            // or it would fire while backgrounded and recreate the whole active page — auctions that
+            // would pass the response guard because they carry the current generation.
+            cancelPendingForegroundReimpression()
+            // A new foreground visit starts when we come back, and nothing has been reported for it.
+            reportedInThisForegroundVisit = false
+        }
+
+        override fun onEnterForeground() {
+            val coordinator = org.audienzz.mobile.screen.screenAdCoordinator ?: return
+            val screen = coordinator.activeScreen ?: run {
+                android.util.Log.d(TAG, "pageImpression: foreground — no active screen yet, skipping")
+                return
+            }
+            val name = coordinator.activeScreenName ?: screen.javaClass.name
+            // Cancelling covers only "activation first". An app that reports during activity
+            // creation reports BEFORE onActivityStarted, so there is nothing pending to cancel and
+            // scheduling here would emit a second page impression 400ms later.
+            //
+            // Deliberately not an elapsed-time test. Age and ownership are different questions, and
+            // conflating them fails both ways: a slow start makes a report from this visit look old
+            // enough to ignore, and a quick background/return makes a report from the PREVIOUS visit
+            // look recent enough to suppress this one.
+            if (reportedInThisForegroundVisit) {
+                android.util.Log.d(TAG, "pageImpression: foreground — app already reported \"$name\" this visit, skipping")
+                return
+            }
+            cancelPendingForegroundReimpression()
+            val runnable = Runnable {
+                pendingForegroundReimpression = null
+                if (!org.audienzz.mobile.util.AppForegroundMonitor.isForeground) {
+                    android.util.Log.d(TAG, "pageImpression: foreground → no longer foreground, skipping")
+                    return@Runnable
+                }
+                android.util.Log.d(TAG, "pageImpression: foreground → re-firing \"$name\"")
+                notifyScreenResumed(screen, name)
+            }
+            pendingForegroundReimpression = runnable
+            foregroundHandler.postDelayed(runnable, FOREGROUND_REIMPRESSION_DELAY_MS)
         }
     }
 
@@ -256,11 +401,53 @@ object AudienzzPrebidMobile {
         }
 
     /**
+     * Test seam for [isSdkInitialized]. Robolectric never really initializes Prebid, so without
+     * this every banner test would sit behind the not-initialized gate.
+     */
+    internal var sdkInitializedOverride: Boolean? = null
+
+    /**
+     * Work that needs Prebid and arrived before it was ready. Drained once, on initialization.
+     *
+     * Banners do not use this — they defer through [canStartAuction] and the pending-load machinery
+     * like every other reason they cannot auction yet. It is for the paths that have no such gate.
+     */
+    private val pendingPrebidWork = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    /**
+     * Run [action] once Prebid is initialized, or immediately if it already is.
+     *
+     * Calling Prebid's `fetchDemand` before initialization does not fail politely: Prebid logs
+     * "SDK wasn't initialized. Context is null." and never calls back, so the caller waits on a
+     * response that will never arrive and its slot stays empty for the rest of the session.
+     */
+    internal fun whenPrebidInitialized(action: () -> Unit) {
+        if (isSdkInitialized) {
+            action()
+            return
+        }
+        pendingPrebidWork.add(action)
+    }
+
+    /**
+     * Prebid is ready: release everything that was waiting on it.
+     *
+     * Banner handlers are resumed through the coordinator's registry rather than by queueing a
+     * closure each, so a banner destroyed while waiting is simply no longer in the registry.
+     */
+    private fun onPrebidInitialized() {
+        val work = pendingPrebidWork.toList()
+        pendingPrebidWork.clear()
+        work.forEach { it() }
+        org.audienzz.mobile.screen.screenAdCoordinator?.resumeAllAfterSdkInit()
+    }
+
+    /**
      * Return 'true' if Prebid Rendering SDK is initialized completely
      */
     @JvmStatic
     val isSdkInitialized: Boolean
-        get() = PrebidMobile.isSdkInitialized()
+        get() = sdkInitializedOverride ?: PrebidMobile.isSdkInitialized()
 
     @JvmStatic
     var logLevel: AudienzzLogLevel
@@ -381,8 +568,6 @@ object AudienzzPrebidMobile {
      *
      * @param context  any context (must be not null)
      * @param companyId Company ID provided for the app by Audienzz
-     * @param enablePpid Controls if unique PPID would be generated for users and used along with
-     * ad requests
      * @param appVolume Global GMA ad audio level. Range: 0.0 (muted) – 1.0 (full device volume).
      *                  Defaults to 0.0 (muted). Can be overridden at any time via [setAppVolume].
      * @param sdkInitializationListener initialization listener (can be null).
@@ -393,7 +578,6 @@ object AudienzzPrebidMobile {
     fun initializeSdk(
         context: Context,
         companyId: String,
-        enablePpid: Boolean = false,
         prebidServerUrl: String? = null,
         @FloatRange(from = 0.0, to = 1.0) appVolume: Float = 0f,
         sdkInitializationListener: AudienzzSdkInitializationListener?,
@@ -402,10 +586,10 @@ object AudienzzPrebidMobile {
         val listener = SdkInitializationListener { status ->
             // M5: flush any consent/COPPA values the publisher set before init reached Prebid.
             AudienzzTargetingParams.onPrebidInitialized()
+            onPrebidInitialized()
             sdkInitializationListener?.onInitializationComplete(
                 AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
             )
-            ppidManager?.setAutomaticPpidEnabled(enablePpid)
         }
         registerActivityCallbacks(context)
         MainComponent.init(context)
@@ -419,8 +603,6 @@ object AudienzzPrebidMobile {
      *
      * @param context  any context (must be not null)
      * @param publisherId Publisher ID provided by Audienzz for remote configuration
-     * @param enablePpid Controls if unique PPID would be generated for users and used along with
-     * ad requests
      * @param sdkInitializationListener initialization listener (can be null)
      */
     @MainThread
@@ -428,7 +610,6 @@ object AudienzzPrebidMobile {
     fun initializeRemoteSdk(
         context: Context,
         publisherId: String,
-        enablePpid: Boolean = false,
         sdkInitializationListener: AudienzzSdkInitializationListener?,
     ) {
         registerActivityCallbacks(context)
@@ -446,6 +627,7 @@ object AudienzzPrebidMobile {
 
                 companyId = publisherConfig?.ortbConfig?.schainConfig?.sellerId ?: "1"
                 backendSmartRefreshV2 = publisherConfig?.smartRefreshV2
+                applyBackendPpidConfig(ppidEnabled = publisherConfig?.ppidEnabled)
 
                 val baseUrl = publisherConfig?.prebidServerConfig?.url ?: audienzzHost.hostUrl
                 val prebidServerUrl = if (isPbsDebug) {
@@ -475,10 +657,10 @@ object AudienzzPrebidMobile {
                 val listener = SdkInitializationListener { status ->
                     // M5: flush any consent/COPPA values the publisher set before init reached Prebid.
                     AudienzzTargetingParams.onPrebidInitialized()
+            onPrebidInitialized()
                     sdkInitializationListener?.onInitializationComplete(
                         AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
                     )
-                    ppidManager?.setAutomaticPpidEnabled(enablePpid)
                 }
 
                 configureGam(context, publisherConfig?.gamConfig)
@@ -548,54 +730,70 @@ object AudienzzPrebidMobile {
         }
     }
 
+    /**
+     * Subscribes the automatic foreground re-impression to the lifecycle monitor. Separated from
+     * [registerActivityCallbacks] so a unit test can exercise the foreground decision without
+     * standing up an Application.
+     */
+    @androidx.annotation.VisibleForTesting
+    internal fun observeForegroundReimpression() {
+        org.audienzz.mobile.util.AppForegroundMonitor.addListener(foregroundReimpressionListener)
+    }
+
     private fun registerActivityCallbacks(context: Context) {
         val app = context.applicationContext as? Application ?: return
         app.registerActivityLifecycleCallbacks(CURRENT_ACTIVITY_TRACKER)
         app.registerActivityLifecycleCallbacks(org.audienzz.mobile.util.AppForegroundMonitor)
-        // Automatic screen tracking (opt-out via autoScreenTracking). Registered once.
-        if (autoScreenTracking && screenTracker == null) {
-            val tracker = org.audienzz.mobile.screen.ScreenTracker { screen, name ->
-                notifyScreenResumed(screen, name)
-            }
-            screenTracker = tracker
-            app.registerActivityLifecycleCallbacks(tracker)
-        }
+        observeForegroundReimpression()
     }
 
     /**
-     * Call this in every Activity or Fragment's onResume() to track screen impressions.
-     * Generates a new pageImpressionId for the screen and fires a pageImpression event.
-     * All ad events fired after this call will be associated with this screen visit.
+     * Report an ad-bearing screen, dialog, or popup by an explicit [name] (e.g. a route name from
+     * Jetpack Compose / Flutter / React Native). Always applied — automatic tracking can't see
+     * non-Activity/Fragment screens, so this is how you report them. Generates a fresh
+     * pageImpressionId and fires a pageImpression event; all ad events after this call are
+     * associated with this screen visit.
+     */
+    @JvmStatic
+    fun pageImpression(name: String) {
+        android.util.Log.d(TAG, "pageImpression: name=\"$name\"")
+        notifyScreenResumed(name, name)
+    }
+
+    /**
+     * Report an ad-bearing screen, dialog, or popup by the screen object itself — pass `this` from an
+     * Activity, Fragment, Dialog, or DialogFragment. The screen name is derived from the object's type
+     * unless [name] is provided. Call it when the screen/dialog appears (e.g. `onResume()`).
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun pageImpression(screen: Any, name: String? = null) {
+        val screenName = name ?: deriveScreenName(screen)
+        android.util.Log.d(
+            TAG,
+            "pageImpression: screen=${screen.javaClass.name} → \"$screenName\" (${if (name == null) "derived" else "override"})",
+        )
+        notifyScreenResumed(screen, screenName)
+    }
+
+    /**
+     * How a screen token is named in an `AUDZ` line.
      *
-     * @param activity the current Activity
+     * A route key is its own string; an Activity or Fragment has none, so its object identity
+     * stands in. The point is only that two visits to the same screen, and two instances of the
+     * same class, are distinguishable when reading a captured log back.
      */
-    @JvmStatic
-    fun onScreenResumed(activity: Activity) {
-        // Ignored while automatic tracking is on — it already observes Activities (avoids
-        // double-counting). Turn off autoScreenTracking to drive screens manually.
-        if (autoScreenTracking) return
-        notifyScreenResumed(activity, activity.componentName.className)
-    }
+    private fun diagnosticToken(screen: Any): String =
+        if (screen is String) screen
+        else "${screen.javaClass.simpleName}#${System.identityHashCode(screen) % 100000}"
 
-    /**
-     * Manual screen signal for a Fragment. The Fragment is the screen identity, so different
-     * Fragments — including ViewPager2 tabs — are distinct screens. Ignored while
-     * [autoScreenTracking] is on (auto already observes Fragments).
-     */
-    @JvmStatic
-    fun onScreenResumed(fragment: androidx.fragment.app.Fragment) {
-        if (autoScreenTracking) return
-        notifyScreenResumed(fragment, fragment.javaClass.name)
-    }
-
-    /**
-     * Manual screen signal by an opaque key (e.g. a route name from Jetpack Compose / Flutter /
-     * React Native). The key string is the screen identity. Always applied — automatic tracking
-     * can't see non-Activity/Fragment screens, so this is how you report them.
-     */
-    @JvmStatic
-    fun onScreenResumed(screenKey: String) {
-        notifyScreenResumed(screenKey, screenKey)
+    /** Derive a stable screen name from a screen entity (Activity/Fragment/Dialog/Context/other). */
+    private fun deriveScreenName(screen: Any): String = when (screen) {
+        is Activity -> screen.componentName.className
+        is androidx.fragment.app.Fragment -> screen.javaClass.name
+        is android.app.Dialog -> screen.javaClass.name
+        is android.content.Context -> (screen as? Activity)?.componentName?.className ?: screen.javaClass.name
+        else -> screen.javaClass.name
     }
 
     @JvmStatic

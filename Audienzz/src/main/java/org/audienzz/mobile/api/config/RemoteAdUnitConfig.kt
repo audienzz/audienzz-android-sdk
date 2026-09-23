@@ -23,6 +23,12 @@ data class RemoteConfig(
     val refreshTimeSeconds: Int? = null,
     @SerialName("prefetchDistanceDp")
     val prefetchDistanceDp: Int? = null,
+    /**
+     * Whether the banner defers its auction until it approaches the viewport.
+     * null falls back to the SDK default (see AudienzzRemoteBannerView.DEFAULT_LAZY_LOAD).
+     */
+    @SerialName("lazyLoad")
+    val lazyLoad: Boolean? = null,
     /** Reserved height (dp) for the sticky ad wrapper. null falls back to the SDK default (600). */
     @SerialName("stickyMaxHeight")
     val stickyMaxHeight: Int? = null,

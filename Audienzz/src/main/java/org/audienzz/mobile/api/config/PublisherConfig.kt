@@ -24,6 +24,13 @@ data class PublisherConfig(
      */
     @SerialName("smartRefreshV2")
     val smartRefreshV2: Boolean? = null,
+    /**
+     * Master backend switch for Publisher Provided Identifiers. `false` suppresses every PPID,
+     * including one the app supplied through `setPublisherPpid` — it is a per-publisher privacy
+     * switch, not a preference. Absent/null → enabled.
+     */
+    @SerialName("ppidEnabled")
+    val ppidEnabled: Boolean? = null,
 )
 
 /**

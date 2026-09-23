@@ -38,6 +38,9 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         },
     )
 
+    /** Stable logical placement, shared with replacement handlers. */
+    var requestContext = org.audienzz.mobile.targeting.AudienzzAdRequestContext()
+
     private var adUnit: AudienzzBannerAdUnit? = null
     private var adView: AdManagerAdView? = null
     private var adViewHandler: AudienzzAdViewHandler? = null
@@ -45,10 +48,50 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     private var pendingScreenKey: Any? = null
 
     /**
+     * Publisher state requested before the ad handler existed.
+     *
+     * Remote config is fetched asynchronously, so a host can legitimately stop or cover this banner
+     * while [adViewHandler] is still null. Forwarding through a nullable handler silently dropped
+     * those calls, and the handler that arrived afterwards held neither — so a banner the publisher
+     * had stopped went on refreshing, and a reported cover was never applied.
+     */
+    private var pendingPublisherStop = false
+    private var pendingHostCover = false
+
+    // Delivery overrides. Both resolve publisher override -> ad config -> SDK default, the same
+    // precedence used by AudienzzPrebidMobile.smartRefreshV2Override. They are read when the ad
+    // handler is built, so set them before loadAd(); changing one afterwards takes effect on the
+    // next load.
+
+    /**
+     * Publisher override for lazy loading. null (default) defers to the ad config's `lazyLoad`,
+     * which itself falls back to [DEFAULT_LAZY_LOAD].
+     *
+     * false auctions as soon as [loadAd] runs, wherever the slot sits. true defers the auction
+     * until the slot comes within [prefetchMarginDpOverride] dp of the viewport.
+     */
+    var lazyLoadOverride: Boolean? = null
+
+    /**
+     * Publisher override for the prefetch margin, in dp. null (default) defers to the ad config's
+     * `prefetchDistanceDp`, which itself falls back to 200 dp. Only has an effect while lazy
+     * loading is on.
+     */
+    var prefetchMarginDpOverride: Int? = null
+
+    /** Resolved lazy-load setting: publisher override, then the ad config, then the SDK default. */
+    internal fun resolveLazyLoad(config: RemoteAdUnitConfig): Boolean =
+        lazyLoadOverride ?: config.config.lazyLoad ?: DEFAULT_LAZY_LOAD
+
+    /** Resolved prefetch margin in dp: publisher override, then the ad config, then 200 dp. */
+    internal fun resolvePrefetchMarginDp(config: RemoteAdUnitConfig): Int =
+        prefetchMarginDpOverride ?: config.config.prefetchDistanceDp ?: DEFAULT_PREFETCH_DISTANCE_DP
+
+    /**
      * Associate this banner with a screen the SDK can't infer from the view tree — a Jetpack Compose
      * destination, or a custom navigation model. Pass the same token you report to
-     * `AudienzzPrebidMobile.onScreenResumed(token)` (typically the route key `String`); on that
-     * screen's `onScreenResumed` this banner reloads, and it pauses on every other. Call it before or
+     * `AudienzzPrebidMobile.pageImpression(token)` (typically the route key `String`); on that
+     * screen's `pageImpression` this banner reloads, and it pauses on every other. Call it before or
      * after `loadAd()` — the handler is created asynchronously, so the key is applied when ready.
      * Not needed for Activity/Fragment/ViewPager2 hosts (those are resolved automatically).
      */
@@ -66,6 +109,9 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     }
 
     fun loadAd() {
+        // Reserve before remote config resolves, so network completion cannot reorder slots.
+        val active = org.audienzz.mobile.screen.screenAdCoordinator?.activeScreen
+        if (pendingScreenKey == null || active == null || pendingScreenKey == active) requestContext.register()
         loadBannerInternal()
     }
 
@@ -89,16 +135,66 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         scope.cancel()
     }
 
+    /**
+     * Visibility resume, for a host that tracks it itself. Clears only the visibility reason, so a
+     * publisher pause or a released page survives; the refresh controller decides whether the
+     * banner is overdue or should wait out the remainder of its interval.
+     */
     fun onResume() {
-        // H4/M10: resume through the handler's stale-aware smart refresh, which restores the
-        // correct remaining interval instead of resetting Prebid's timer to a full interval.
-        adViewHandler?.resumeSmartRefresh() ?: adUnit?.resumeAutoRefresh()
+        adViewHandler?.resumeSmartRefresh()
     }
 
+    /**
+     * Applies whatever the host asked for while the handler was still being built.
+     *
+     * The stop goes on FIRST, before [AudienzzAdViewHandler.load] can request: installing it after
+     * the load call would let an eager banner issue one request the publisher had already stopped.
+     */
+    private fun applyPendingPublisherState(handler: AudienzzAdViewHandler) {
+        if (pendingPublisherStop) {
+            handler.stopAutoRefresh()
+        }
+        if (pendingHostCover) {
+            handler.pauseForHostCover()
+        }
+    }
+
+    /** Visibility pause: the banner is off screen, so a refresh into it would go unseen. */
     fun onPause() {
-        // H4: cancel any pending postDelayed refresh runnable too — stopping only Prebid's timer
-        // left the scheduled runnable to fire while backgrounded, issuing ad requests off-screen.
-        adViewHandler?.pauseSmartRefresh() ?: adUnit?.stopAutoRefresh()
+        adViewHandler?.pauseSmartRefresh()
+    }
+
+    /**
+     * A cover the SDK cannot infer, reported by a host that tracks it itself.
+     *
+     * Its own hold, independent of [onPause]/[onResume]: a scroll must not clear a cover, and
+     * clearing a cover must not clear an offscreen hold.
+     */
+    fun setHostCover(covered: Boolean) {
+        pendingHostCover = covered
+        if (covered) {
+            adViewHandler?.pauseForHostCover()
+        } else {
+            adViewHandler?.resumeFromHostCover()
+        }
+    }
+
+    /**
+     * Publisher pause. Durable and independent of [onPause]: nothing else clears it — not a scroll
+     * back into view, not a page impression, not a return to the foreground. Only
+     * [resumeAutoRefresh] does.
+     */
+    fun stopAutoRefresh() {
+        pendingPublisherStop = true
+        adViewHandler?.stopAutoRefresh()
+    }
+
+    /**
+     * Clears the publisher pause. Refresh actually resumes only once nothing else is holding it.
+     */
+    fun resumeAutoRefresh() {
+        pendingPublisherStop = false
+        adViewHandler?.resumeAutoRefresh()
     }
 
     /**
@@ -213,10 +309,12 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         }
 
         adView = adViewLocal
-        // Center the GAM view within this full-width (MATCH_PARENT) host. Without a
-        // gravity the child defaults to TOP|START, so a creative narrower than the host
-        // (e.g. a 300-wide banner on a wide/tablet screen, or a smaller multisize fill)
-        // renders left-aligned. Same class of fix as the RN bridge / AURemoteConfigBannerView.
+        // Center the GAM view within this full-width (MATCH_PARENT) host. Without a gravity the
+        // child defaults to TOP|START, so a creative narrower than the host (a 300-wide banner on a
+        // wide/tablet screen, or a smaller multisize fill) renders left-aligned. This centers the
+        // CREATIVE inside the host; the `layoutParams` set in `init` centers the host inside the
+        // publisher's container — two different problems, both needed. Same fix as the RN bridge
+        // and AURemoteConfigBannerView. (From origin/main, 4a304c9.)
         addView(
             adViewLocal,
             LayoutParams(
@@ -250,12 +348,16 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         val handler = AudienzzAdViewHandler(
             adView = adViewLocal,
             adUnit = adUnitLocal,
+            requestContext = requestContext,
         )
         adViewHandler = handler
         pendingScreenKey?.let { handler.hostScreenOverride = it }
+        // Before load(): a stop requested while config was resolving must be in place before the
+        // handler can issue its first request.
+        applyPendingPublisherState(handler)
         handler.load(
-            withLazyLoading = true,
-            prefetchMarginDp = config.config.prefetchDistanceDp ?: DEFAULT_PREFETCH_DISTANCE_DP,
+            withLazyLoading = resolveLazyLoad(config),
+            prefetchMarginDp = resolvePrefetchMarginDp(config),
         ) { request, resultCode ->
             Log.d(TAG, "Ad request prepared, resultCode=${resultCode ?: "unknown"}")
             adViewLocal.loadAd(request)
@@ -307,5 +409,18 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         private const val TAG = "AudienzzRemoteConfigBannerView"
         private const val DEFAULT_REFRESH_SECONDS = 30
         private const val DEFAULT_PREFETCH_DISTANCE_DP = 200
+
+        /**
+         * Remote-config banners defer their auction until the slot approaches the viewport unless
+         * the ad config or the publisher asks otherwise.
+         *
+         * This was briefly flipped to eager. That made every mounted placement auction on [loadAd]
+         * regardless of position, so a publisher opening an article bought fills for below-fold
+         * slots the reader might never approach — responses that can never become impressions,
+         * which is the delivery pattern we are trying to reduce, not create. Eager remains
+         * available per placement (`lazyLoad: false` on the ad config, or
+         * `lazyLoadOverride = false`) for slots that are always on screen.
+         */
+        internal const val DEFAULT_LAZY_LOAD = true
     }
 }

@@ -48,7 +48,7 @@ class LegacyAdsPageFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         if (AudienzzPrebidMobile.isSdkInitialized) {
-            activity?.let { AudienzzPrebidMobile.onScreenResumed(it) }
+            AudienzzPrebidMobile.pageImpression(this)
         }
     }
 
@@ -80,37 +80,17 @@ class LegacyAdsPageFragment : Fragment() {
     }
 
     private fun initSdk() {
-        if (AudienzzPrebidMobile.isSdkInitialized) {
-            AudienzzTargetingParams.isSubjectToGDPR = true
-            binding.progressBar.isVisible = false
-            adapter.submitList(createMockData())
-            return
-        }
-
-        val useRemoteConfiguration = true
-
-        if (useRemoteConfiguration) {
-            RemoteConfigManager.initialize(
-                publisherId = PUBLISHER_ID,
-                remoteUrl = "https://api.adnz.co/api/ws-sdk-config/public/v1"
+        // The App initializes the SDK — a screen must never be the thing that decides whether the
+        // SDK exists, or the app shows no ads at all when you open a different tab first.
+        binding.progressBar.isVisible = !AudienzzPrebidMobile.isSdkInitialized
+        App.whenSdkReady {
+            handleInitializationStatus(
+                if (AudienzzPrebidMobile.isSdkInitialized) {
+                    AudienzzInitializationStatus.SUCCEEDED
+                } else {
+                    AudienzzInitializationStatus.FAILED
+                },
             )
-
-            AudienzzPrebidMobile.isPbsDebug = true
-            AudienzzPrebidMobile.initializeRemoteSdk(
-                requireContext().applicationContext,
-                PUBLISHER_ID,
-                true,
-            ) { status ->
-                handleInitializationStatus(status)
-            }
-        } else {
-            AudienzzPrebidMobile.initializeSdk(
-                requireContext().applicationContext,
-                "TestCompany",
-                true,
-            ) { status ->
-                handleInitializationStatus(status)
-            }
         }
     }
 

@@ -32,6 +32,17 @@
             android:minHeight="50dp"
             android:background="@drawable/bg_ad_slot" />
 
+        <!-- One under every ad slot on purpose: the screen-navigation test is about what happens
+             to THAT banner when you leave and come back, so the button has to be visible while the
+             slot it concerns is on screen. Scrolling to a single button at the bottom moves other
+             slots out of view and changes what you are measuring. -->
+        <Button
+            android:id="@+id/btnOpenAdScreen1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:text="Open ad screen (from banner 1)" />
+
         <include layout="@layout/item_sticky_paragraph" android:id="@+id/para1" />
         <include layout="@layout/item_sticky_paragraph" android:id="@+id/para2" />
         <include layout="@layout/item_sticky_paragraph" android:id="@+id/para3" />
@@ -56,6 +67,13 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="20dp"
             android:background="@drawable/bg_ad_slot" />
+
+        <Button
+            android:id="@+id/btnOpenAdScreen2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:text="Open ad screen (from sticky 1)" />
 
         <include layout="@layout/item_sticky_paragraph" android:id="@+id/para6" />
         <include layout="@layout/item_sticky_paragraph" android:id="@+id/para7" />
@@ -83,6 +101,13 @@
             android:minHeight="50dp"
             android:background="@drawable/bg_ad_slot" />
 
+        <Button
+            android:id="@+id/btnOpenAdScreen3"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:text="Open ad screen (from banner 2)" />
+
         <include layout="@layout/item_sticky_paragraph" android:id="@+id/para11" />
         <include layout="@layout/item_sticky_paragraph" android:id="@+id/para12" />
         <include layout="@layout/item_sticky_paragraph" android:id="@+id/para13" />
@@ -108,6 +133,13 @@
             android:layout_marginBottom="20dp"
             android:background="@drawable/bg_ad_slot" />
 
+        <Button
+            android:id="@+id/btnOpenAdScreen4"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:text="Open ad screen (from sticky 2)" />
+
         <include layout="@layout/item_sticky_paragraph" android:id="@+id/para16" />
         <include layout="@layout/item_sticky_paragraph" android:id="@+id/para17" />
         <include layout="@layout/item_sticky_paragraph" android:id="@+id/para18" />
@@ -116,20 +148,51 @@
 
         <!-- ═══════════════════════════════ Interstitial ════════════════════════════════════ -->
 
-        <Button
-            android:id="@+id/btnLoadInterstitial"
-            android:layout_width="wrap_content"
+        <!-- One button per verb, so each can be exercised on its own. A single button that both
+             fetched and showed could not tell you which half misbehaved, and hid the fact that
+             `prefetch` must never present by itself. -->
+
+        <TextView
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Load Interstitial" />
+            android:layout_marginBottom="6dp"
+            android:text="Interstitial"
+            android:textColor="#212121"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.04" />
+
+        <TextView
+            android:id="@+id/interstitialStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:padding="8dp"
+            android:background="@drawable/bg_ad_slot"
+            android:text="not loaded"
+            android:textColor="#616161"
+            android:textSize="14sp"
+            android:fontFamily="monospace" />
 
         <Button
-            android:id="@+id/btnOpenAdScreen"
+            android:id="@+id/btnPrefetchInterstitial"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="24dp"
-            android:text="Open ad screen (test screen nav)" />
+            android:text="Prefetch" />
+
+        <Button
+            android:id="@+id/btnShowInterstitial"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Show" />
+
+        <Button
+            android:id="@+id/btnPrefetchAndShowInterstitial"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:text="Prefetch and show" />
 
     </LinearLayout>
 

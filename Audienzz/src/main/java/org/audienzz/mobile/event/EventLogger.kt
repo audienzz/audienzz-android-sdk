@@ -83,6 +83,7 @@ internal fun EventLogger.bidRequest(
     adUnitCode: String? = null,
     mediaTypes: String? = null,
     auctionId: String? = null,
+    slotReload: Int? = null,
 ) {
     logEvent(
         EventDomain(
@@ -99,6 +100,7 @@ internal fun EventLogger.bidRequest(
             adUnitCode = adUnitCode,
             mediaTypes = mediaTypes,
             auctionId = auctionId,
+            slotReload = slotReload,
         ),
     )
 }
@@ -184,8 +186,12 @@ internal fun EventLogger.noBid(
     adUnitCode: String? = null,
     mediaTypes: String? = null,
     auctionId: String? = null,
+    slotReload: Int? = null,
 ) {
     logEvent(
+        // A no-bid is AUCTION-level: Prebid reports that nothing usable came back, not which
+        // bidders were asked or which of them declined. `bidderCode` is therefore left null — the
+        // collector receives no key at all — rather than inventing one or reusing the last winner.
         EventDomain(
             eventType = NO_BID,
             adUnitId = adUnitId,

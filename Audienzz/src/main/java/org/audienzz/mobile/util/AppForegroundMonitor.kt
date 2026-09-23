@@ -25,10 +25,34 @@ internal object AppForegroundMonitor : Application.ActivityLifecycleCallbacks {
     }
 
     private val listeners = CopyOnWriteArraySet<Listener>()
-    private var startedActivities = 0
 
+    /**
+     * Identities of the activities observed started, not a bare count.
+     *
+     * A counter breaks after late initialization: register while activity A is already started,
+     * start B (count 0 → 1), then stop A — the count returns to 0 and reports background even though
+     * B is still visible, destroying B's loaders. Tracking identities means stopping an activity we
+     * never saw start is simply ignored.
+     */
+    private val startedActivities = java.util.Collections.newSetFromMap(
+        java.util.WeakHashMap<Activity, Boolean>(),
+    )
+
+    /**
+     * Whether any activity lifecycle callback has been seen yet.
+     *
+     * Android does not replay lifecycle callbacks for an activity that already started, and the SDK
+     * is usually initialized from within a running activity — always so for the Flutter and React
+     * Native bridges, which init from Dart/JS. Until a transition is observed the counter says
+     * "zero started activities", which is indistinguishable from backgrounded unless tracked
+     * separately. Treating that unknown state as background made the auction gate reject every
+     * first load on the launch screen.
+     */
+    private var hasObservedLifecycle = false
+
+    /** True while the app is in the foreground, or while that is not yet known. */
     val isForeground: Boolean
-        get() = startedActivities > 0
+        get() = !hasObservedLifecycle || startedActivities.isNotEmpty()
 
     fun addListener(listener: Listener) {
         listeners.add(listener)
@@ -39,18 +63,40 @@ internal object AppForegroundMonitor : Application.ActivityLifecycleCallbacks {
     }
 
     override fun onActivityStarted(activity: Activity) {
-        val wasForeground = startedActivities > 0
-        startedActivities++
+        val wasForeground = isForeground
+        hasObservedLifecycle = true
+        startedActivities.add(activity)
         if (!wasForeground) {
             listeners.forEach { it.onEnterForeground() }
         }
     }
 
     override fun onActivityStopped(activity: Activity) {
-        startedActivities = (startedActivities - 1).coerceAtLeast(0)
-        if (startedActivities == 0) {
+        val wasTracked = startedActivities.remove(activity)
+        if (!wasTracked && hasObservedLifecycle) {
+            // An activity we never saw start, stopping after we already have a reliable picture:
+            // it was running before the SDK registered and something else is visible now. Ignoring
+            // it is what stops the count going false-negative while another activity is up.
+            return
+        }
+        if (!wasTracked) {
+            // The sole activity that was already running when the SDK registered is now stopping,
+            // and we have observed nothing else. This IS the first background transition — treating
+            // it as "unknown, ignore" left isForeground stuck true, so refresh never stopped and the
+            // next start never reported foreground either.
+            hasObservedLifecycle = true
+        }
+        if (startedActivities.isEmpty()) {
             listeners.forEach { it.onEnterBackground() }
         }
+    }
+
+    /** Drops all observed state. Tests only — the monitor is a process-wide singleton. */
+    @androidx.annotation.VisibleForTesting
+    internal fun resetForTesting() {
+        startedActivities.clear()
+        hasObservedLifecycle = false
+        listeners.clear()
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit

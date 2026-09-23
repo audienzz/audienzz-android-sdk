@@ -60,7 +60,24 @@ abstract class AudienzzAdUnit internal constructor(
             adUnit.impOrtbConfig = value
         }
 
-    internal val autoRefreshTime get() = adUnit.configuration.autoRefreshDelay
+    /**
+     * Configured refresh interval in milliseconds; 0 disables refresh.
+     *
+     * Owned by Audienzz and deliberately never handed to Prebid. Prebid's `autoRefreshDelay` stays
+     * 0, which is what makes `BidLoader.setupRefreshTimer()` return without scheduling anything on
+     * either its success or its failure path — the SDK schedules every refresh itself instead, so
+     * only one component owns the timer. A bid response cannot re-enable it either:
+     * `MobileSdkPassThrough.modifyAdUnitConfiguration` can set mute, video duration, skip delay and
+     * the close/skip button settings, but never the refresh delay.
+     */
+    @Volatile
+    internal var audienzzRefreshIntervalMillis: Long = 0
+        private set
+
+    internal var refreshIntervalObserver: ((Long) -> Unit)? = null
+
+    /** Kept for analytics reporting, which records the configured cadence. */
+    internal val autoRefreshTime get() = audienzzRefreshIntervalMillis.toInt()
 
     internal val adFormats get() = adUnit.configuration.adFormats
 
@@ -73,16 +90,35 @@ abstract class AudienzzAdUnit internal constructor(
             to = AUTO_REFRESH_DELAY_MAX / 1000L,
         ) seconds: Int,
     ) {
-        adUnit.setAutoRefreshInterval(seconds)
+        // Stored here rather than forwarded to Prebid — see [audienzzRefreshIntervalMillis].
+        // Clamped the same way Prebid clamps it, so the accepted range and the disabled behaviour
+        // (0 = no refresh) are unchanged for publishers.
+        audienzzRefreshIntervalMillis = when {
+            seconds <= 0 -> 0
+            else -> (seconds * 1000L)
+                .coerceIn(AUTO_REFRESH_DELAY_MIN.toLong(), AUTO_REFRESH_DELAY_MAX.toLong())
+        }
+        refreshIntervalObserver?.invoke(audienzzRefreshIntervalMillis)
     }
 
-    fun resumeAutoRefresh() {
-        adUnit.resumeAutoRefresh()
-    }
+    /**
+     * Historic no-ops, kept so existing callers compile.
+     *
+     * Prebid's timer is never armed, so there is nothing here to stop or resume. Pausing and
+     * resuming is expressed through the refresh controller's block reasons instead, which survive a
+     * response and can be cleared independently.
+     */
+    @Deprecated(
+        "Refresh is owned by the SDK. Use AudienzzAdViewHandler.resumeAutoRefresh(), which clears the " +
+            "publisher pause without disturbing the other reasons refresh may be held for.",
+    )
+    fun resumeAutoRefresh() = Unit
 
-    fun stopAutoRefresh() {
-        adUnit.stopAutoRefresh()
-    }
+    @Deprecated(
+        "Refresh is owned by the SDK. Use AudienzzAdViewHandler.stopAutoRefresh(), which records a " +
+            "durable publisher pause instead of acting on a Prebid BidLoader that fetchDemand replaces.",
+    )
+    fun stopAutoRefresh() = Unit
 
     fun destroy() {
         adUnit.destroy()
