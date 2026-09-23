@@ -15,10 +15,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 
 /**
- * Lazy loading and the prefetch margin are delivery decisions a publisher has to be able to make.
- *
- * [AudienzzRemoteBannerView] used to hardcode `withLazyLoading = true` and read the margin only from
- * the ad config, so a publisher whose slot auctioned too late had no lever at all.
+ * Lazy loading and the prefetch margin of a remote-config banner are backend-driven only: the ad
+ * config's `lazyLoad` and `prefetchDistanceDp`, else the SDK defaults. There is no publisher
+ * override, so one placement behaves the same in every app and on every platform.
  */
 @RunWith(RobolectricTestRunner::class)
 class RemoteBannerDeliverySettingsTest {
@@ -96,32 +95,6 @@ class RemoteBannerDeliverySettingsTest {
         assertEquals(600, v.resolvePrefetchMarginDp(config(prefetchDp = 600)))
     }
 
-    @Test fun `the publisher overrides the ad config`() {
-        val v = view()
-        v.lazyLoadOverride = false
-        v.prefetchMarginDpOverride = 900
-        assertFalse(v.resolveLazyLoad(config(lazyLoad = true)))
-        assertEquals(900, v.resolvePrefetchMarginDp(config(prefetchDp = 600)))
-    }
-
-    @Test fun `eager loading stays reachable as an explicit choice`() {
-        val v = view()
-        v.lazyLoadOverride = false
-        assertFalse("publisher override", v.resolveLazyLoad(config()))
-        v.lazyLoadOverride = null
-        assertFalse("backend alone", v.resolveLazyLoad(config(lazyLoad = false)))
-    }
-
-    @Test fun `clearing an override restores the ad config value`() {
-        val v = view()
-        v.lazyLoadOverride = false
-        v.prefetchMarginDpOverride = 900
-        v.lazyLoadOverride = null
-        v.prefetchMarginDpOverride = null
-        assertTrue(v.resolveLazyLoad(config(lazyLoad = true)))
-        assertEquals(600, v.resolvePrefetchMarginDp(config(prefetchDp = 600)))
-    }
-
     // endregion
 
     // region The resolved values reach the handler
@@ -141,18 +114,7 @@ class RemoteBannerDeliverySettingsTest {
         assertEquals(false, loadedLazy)
     }
 
-    @Test fun `the publisher override reaches the handler`() {
-        seed(config(lazyLoad = false))
-        val v = view()
-        v.lazyLoadOverride = true
-        v.prefetchMarginDpOverride = 750
-        v.loadAd()
-        pump()
-        assertEquals(true, loadedLazy)
-        assertEquals(750, loadedMargin)
-    }
-
-    @Test fun `the ad config reaches the handler when the publisher says nothing`() {
+    @Test fun `the ad config reaches the handler`() {
         seed(config(lazyLoad = true, prefetchDp = 600))
         view().loadAd()
         pump()
