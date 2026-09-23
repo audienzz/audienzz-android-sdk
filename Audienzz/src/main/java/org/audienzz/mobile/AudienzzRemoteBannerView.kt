@@ -258,9 +258,17 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
 
         val prebidPrimarySize = sortedPrebidSizes.firstOrNull()
 
-        if (sortedGamSizes.isEmpty() || prebidPrimarySize == null) {
-            Log.e(TAG, "No valid sizes in remote config for id=$adConfigId")
+        // GAM sizes are required: without them nothing can render. Prebid sizes are not — a slot
+        // with none is simply not in header bidding, and serves GAM-only. This used to refuse to
+        // load at all, while iOS sent Prebid a 0x0 request that could never fill; both now serve
+        // GAM without asking Prebid.
+        if (sortedGamSizes.isEmpty()) {
+            Log.e(TAG, "No GAM sizes in remote config for id=$adConfigId")
             return
+        }
+        val headerBidding = prebidPrimarySize != null
+        if (!headerBidding) {
+            Log.i(TAG, "No Prebid sizes in remote config for id=$adConfigId — serving GAM-only")
         }
 
         val adaptiveConfig = gamConfig.adaptiveBannerConfig
@@ -333,10 +341,12 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
             )
         }
 
+        // With header bidding off the ad unit still carries the refresh interval and formats the
+        // handler reads, but no request is ever made through it, so its size is never sent.
         val adUnitLocal = AudienzzBannerAdUnit(
             prebidConfig.placementId,
-            prebidPrimarySize.width,
-            prebidPrimarySize.height,
+            prebidPrimarySize?.width ?: sortedGamSizes.first().width,
+            prebidPrimarySize?.height ?: sortedGamSizes.first().height,
         ).apply {
             bannerParameters = parameters
 
@@ -351,6 +361,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
             requestContext = requestContext,
         )
         adViewHandler = handler
+        handler.headerBiddingEnabled = headerBidding
         pendingScreenKey?.let { handler.hostScreenOverride = it }
         // Before load(): a stop requested while config was resolving must be in place before the
         // handler can issue its first request.
