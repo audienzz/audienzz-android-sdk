@@ -44,7 +44,9 @@ internal data class AdRequestSnapshot(val pageSequence: Int, val slot: Int, val 
     val targeting: Map<String, String> get() = mapOf(
         "au_page_seq" to pageSequence.toString(),
         "au_slot" to slot.toString(),
-        "au_refresh" to refresh.toString(),
+        // `hb_` like the Prebid keys it sits beside in GAM. Prebid Android only removes the keys
+        // it applied itself, so this one survives every auction (pinned in AdRequestContextTest).
+        "hb_refresh_count" to refresh.toString(),
     )
 }
 
