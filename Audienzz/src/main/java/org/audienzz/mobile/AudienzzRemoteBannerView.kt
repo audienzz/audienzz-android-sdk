@@ -58,34 +58,17 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     private var pendingPublisherStop = false
     private var pendingHostCover = false
 
-    // Delivery overrides. Both resolve publisher override -> ad config -> SDK default, the same
-    // precedence used by AudienzzPrebidMobile.smartRefreshV2Override. They are read when the ad
-    // handler is built, so set them before loadAd(); changing one afterwards takes effect on the
-    // next load.
+    // Delivery settings. Lazy loading and the prefetch margin are backend-driven only: the ad
+    // config's `lazyLoad` and `prefetchDistanceDp`, else the SDK defaults. There is deliberately no
+    // publisher override, so one placement behaves the same in every app and on every platform.
 
-    /**
-     * Publisher override for lazy loading. null (default) defers to the ad config's `lazyLoad`,
-     * which itself falls back to [DEFAULT_LAZY_LOAD].
-     *
-     * false auctions as soon as [loadAd] runs, wherever the slot sits. true defers the auction
-     * until the slot comes within [prefetchMarginDpOverride] dp of the viewport.
-     */
-    var lazyLoadOverride: Boolean? = null
-
-    /**
-     * Publisher override for the prefetch margin, in dp. null (default) defers to the ad config's
-     * `prefetchDistanceDp`, which itself falls back to 200 dp. Only has an effect while lazy
-     * loading is on.
-     */
-    var prefetchMarginDpOverride: Int? = null
-
-    /** Resolved lazy-load setting: publisher override, then the ad config, then the SDK default. */
+    /** Resolved lazy-load setting: the ad config, then [DEFAULT_LAZY_LOAD]. */
     internal fun resolveLazyLoad(config: RemoteAdUnitConfig): Boolean =
-        lazyLoadOverride ?: config.config.lazyLoad ?: DEFAULT_LAZY_LOAD
+        config.config.lazyLoad ?: DEFAULT_LAZY_LOAD
 
-    /** Resolved prefetch margin in dp: publisher override, then the ad config, then 200 dp. */
+    /** Resolved prefetch margin in dp: the ad config's `prefetchDistanceDp`, then 200 dp. */
     internal fun resolvePrefetchMarginDp(config: RemoteAdUnitConfig): Int =
-        prefetchMarginDpOverride ?: config.config.prefetchDistanceDp ?: DEFAULT_PREFETCH_DISTANCE_DP
+        config.config.prefetchDistanceDp ?: DEFAULT_PREFETCH_DISTANCE_DP
 
     /**
      * Associate this banner with a screen the SDK can't infer from the view tree — a Jetpack Compose
@@ -423,14 +406,14 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
 
         /**
          * Remote-config banners defer their auction until the slot approaches the viewport unless
-         * the ad config or the publisher asks otherwise.
+         * the ad config asks otherwise.
          *
          * This was briefly flipped to eager. That made every mounted placement auction on [loadAd]
          * regardless of position, so a publisher opening an article bought fills for below-fold
          * slots the reader might never approach — responses that can never become impressions,
          * which is the delivery pattern we are trying to reduce, not create. Eager remains
-         * available per placement (`lazyLoad: false` on the ad config, or
-         * `lazyLoadOverride = false`) for slots that are always on screen.
+         * available per placement (`lazyLoad: false` on the ad config) for slots that are always
+         * on screen.
          */
         internal const val DEFAULT_LAZY_LOAD = true
     }

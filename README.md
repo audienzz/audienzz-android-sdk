@@ -292,23 +292,14 @@ If raising it does not move the auction earlier, the ad component is not mountin
 
 #### Remote-config banners
 
-`AudienzzRemoteBannerView` resolves both delivery settings **publisher override → ad config → SDK default**:
+`AudienzzRemoteBannerView` takes both delivery settings from the ad config only — **ad config → SDK default**. There is no app-side override: a placement behaves the same in every app and on every platform, and is tuned in the backend.
 
-| Setting | Publisher override | Ad config field | Default |
-|---|---|---|---|
-| Lazy loading | `lazyLoadOverride` | `lazyLoad` | `true` — the auction waits for the viewport |
-| Prefetch margin | `prefetchMarginDpOverride` | `prefetchDistanceDp` | `200` dp |
+| Setting | Ad config field (`config`) | Default |
+|---|---|---|
+| Lazy loading | `lazyLoad` | `true` — the auction waits for the viewport |
+| Prefetch margin | `prefetchDistanceDp` | `200` dp |
 
-```kotlin
-val banner = AudienzzRemoteBannerView(context, adConfigId = "118")
-banner.lazyLoadOverride = true          // defer the auction to the viewport
-banner.prefetchMarginDpOverride = 600   // …starting 600 dp ahead
-banner.loadAd()
-```
-
-Set them **before** `loadAd()`; the values are read when the ad handler is built. `null` (the default) hands control back to the ad config.
-
-> **Default is lazy.** A remote-config banner waits until the slot comes within the prefetch margin. This is deliberate: a publisher who builds several below-fold placements on entering an article would otherwise buy fills the reader may never approach, and an unrendered fill cannot become an impression. Set `lazyLoad: false` on the ad config, or `lazyLoadOverride = false`, for slots that are always on screen.
+> **Default is lazy.** A remote-config banner waits until the slot comes within the prefetch margin. This is deliberate: a publisher who builds several below-fold placements on entering an article would otherwise buy fills the reader may never approach, and an unrendered fill cannot become an impression. Set `lazyLoad: false` on the ad config for slots that are always on screen.
 
 Smart Refresh
 -------
