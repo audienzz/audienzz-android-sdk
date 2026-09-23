@@ -1,16 +1,29 @@
 package org.audienzz.mobile
 
 import androidx.annotation.IntRange
-import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
 import org.audienzz.mobile.event.entity.AdSubtype
 import org.prebid.mobile.InterstitialAdUnit
-import java.util.EnumSet
 
+/**
+ * An interstitial built by hand.
+ *
+ * The formats and API frameworks it requests are not arguments: they are backend-controlled (see
+ * [InterstitialCapabilities]), and a hand-built interstitial, which has no ad config, asks for
+ * banner and video with MRAID 1/2/3 + OMID 1. `bannerParameters.api`, `videoParameters.api` and
+ * `impOrtbConfig` cannot change that; their other settings are kept.
+ */
 class AudienzzInterstitialAdUnit internal constructor(
     private val adUnit: InterstitialAdUnit,
-    private val formats: EnumSet<AudienzzAdUnitFormat>?,
     adSizes: Set<AudienzzAdSize>? = null,
 ) : AudienzzBannerBaseAdUnit(adUnit) {
+
+    /**
+     * Formats and API frameworks this interstitial's requests advertise. The default unless a
+     * bridge that read the ad config itself hands the backend values over
+     * ([setBackendCapabilities]), or the remote-config owner resolves them. Never a publisher
+     * setting.
+     */
+    internal var capabilities: InterstitialCapabilities = InterstitialCapabilities.DEFAULT
 
     init {
         // The sizes that end up as `banner.format` in the bid request.
@@ -25,51 +38,36 @@ class AudienzzInterstitialAdUnit internal constructor(
         val parameters = AudienzzBannerParameters()
         parameters.adSizes = adSizes?.takeIf { it.isNotEmpty() } ?: setOf(AudienzzAdSize(1, 1))
         adUnit.bannerParameters = parameters.prebidBannerParameters
+        applyCapabilities()
     }
 
-    constructor(configId: String) : this(
-        InterstitialAdUnit(configId),
-        null,
-    )
+    constructor(configId: String) : this(InterstitialAdUnit(configId))
 
     constructor(
         configId: String,
         minWidthPerc: Int,
         minHeightPerc: Int,
-    ) : this(
-        InterstitialAdUnit(configId, minWidthPerc, minHeightPerc),
-        null,
-    )
+    ) : this(InterstitialAdUnit(configId, minWidthPerc, minHeightPerc))
 
-    constructor(
-        configId: String,
-        adUnitFormats: EnumSet<AudienzzAdUnitFormat>,
-    ) : this(
-        InterstitialAdUnit(
-            configId,
-            EnumSet.copyOf(adUnitFormats.map { it.prebidAdUnitFormat }),
-        ),
-        adUnitFormats,
-    )
+    /** The remote-config path: the placement's sizes, from the backend. */
+    internal constructor(configId: String, adSizes: Set<AudienzzAdSize>) :
+        this(InterstitialAdUnit(configId), adSizes)
 
     /**
-     * As above, with the sizes the placement is configured for.
-     *
-     * Used by the remote-config path, which knows them from the backend. A caller that omits them
-     * gets the 1x1 fallback described in `init`.
+     * Writes [capabilities] onto the Prebid unit. Called by the handler for every accepted
+     * request, after anything the publisher set, so the backend values always win.
      */
-    constructor(
-        configId: String,
-        adUnitFormats: EnumSet<AudienzzAdUnitFormat>,
-        adSizes: Set<AudienzzAdSize>,
-    ) : this(
-        InterstitialAdUnit(
-            configId,
-            EnumSet.copyOf(adUnitFormats.map { it.prebidAdUnitFormat }),
-        ),
-        adUnitFormats,
-        adSizes,
-    )
+    internal fun applyCapabilities() = capabilities.apply(adUnit)
+
+    /**
+     * Bridge-only: the ad config's raw `prebidConfig.format` / `prebidConfig.apis`, for a bridge
+     * whose remote interstitials read the ad config themselves (Flutter). Validated exactly as the
+     * native remote interstitial validates them; takes effect on the next accepted request.
+     */
+    @AudienzzBridgeApi
+    fun setBackendCapabilities(format: String?, apis: List<Int>?) {
+        capabilities = InterstitialCapabilities.resolve(format, apis)
+    }
 
     fun setMinSizePercentage(
         @IntRange(from = 0, to = 100) width: Int,
@@ -78,23 +76,5 @@ class AudienzzInterstitialAdUnit internal constructor(
         adUnit.setMinSizePercentage(width, height)
     }
 
-    internal fun getSubType(): AdSubtype {
-        return when {
-            formats.isNullOrEmpty() -> AdSubtype.HTML
-
-            formats.containsAll(
-                setOf(
-                    AudienzzAdUnitFormat.VIDEO,
-                    AudienzzAdUnitFormat.BANNER,
-                ),
-            ) -> AdSubtype.MULTIFORMAT
-
-            formats.size == 1 -> when (formats.first()) {
-                AudienzzAdUnitFormat.VIDEO -> AdSubtype.VIDEO
-                AudienzzAdUnitFormat.BANNER -> AdSubtype.HTML
-            }
-
-            else -> AdSubtype.MULTIFORMAT
-        }
-    }
+    internal fun getSubType(): AdSubtype = capabilities.adSubtype
 }

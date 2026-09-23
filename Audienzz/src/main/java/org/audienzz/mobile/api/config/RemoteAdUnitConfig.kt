@@ -2,6 +2,10 @@ package org.audienzz.mobile.api.config
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.doubleOrNull
 
 @Serializable
 data class RemoteAdUnitConfig(
@@ -75,9 +79,38 @@ data class RemotePrebidConfig(
     val placementId: String,
     @SerialName("adSizes")
     private val adSizesRaw: List<String>,
+    /**
+     * Interstitials: the media formats the bid request asks for. Held as raw JSON and read
+     * leniently (see [format]): a strict type here made one malformed value drop the whole ad
+     * config, and with it every load of that placement.
+     */
+    @SerialName("format")
+    private val formatJson: JsonElement? = null,
+    /** Interstitials: the OpenRTB API framework ids the impression advertises. See [apis]. */
+    @SerialName("apis")
+    private val apisJson: JsonElement? = null,
 ) {
     val adSizes: List<RemoteAdSize>
         get() = adSizesRaw.map { RemoteAdSizeMapper.map(it) }
+
+    /**
+     * `banner`, `video` or `bannerAndVideo` — the raw backend value; `InterstitialCapabilities`
+     * validates it. null when absent or not a string.
+     */
+    val format: String?
+        get() = (formatJson as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+    /**
+     * The raw backend API ids, keeping only integral numbers (`3` or `3.0`); strings, booleans and
+     * fractions are dropped. null when absent or not an array. Validated like [format].
+     */
+    val apis: List<Int>?
+        get() = (apisJson as? JsonArray)?.mapNotNull { element ->
+            val primitive = element as? JsonPrimitive ?: return@mapNotNull null
+            if (primitive.isString) return@mapNotNull null
+            val number = primitive.doubleOrNull ?: return@mapNotNull null
+            number.takeIf { it == Math.rint(it) && kotlin.math.abs(it) <= Int.MAX_VALUE }?.toInt()
+        }
 }
 
 data class RemoteAdSize(

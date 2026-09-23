@@ -3,6 +3,19 @@
 All notable changes to the Audienzz Android SDK are documented here. This project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased — breaking: interstitial formats and API frameworks are backend-controlled
+
+- `prebidConfig.format` (`banner` / `video` / `bannerAndVideo`, default `bannerAndVideo`) and
+  `prebidConfig.apis` (default `[3, 5, 6, 7]`) now decide what every interstitial requests.
+  Validated, and resolved once per accepted load. See `docs/interstitial-capabilities.md`.
+- **Removed:** `AudienzzInterstitialAdUnit(configId, adUnitFormats)` and
+  `(configId, adUnitFormats, adSizes)`. Use `(configId)` or `(configId, minWidthPerc, minHeightPerc)`.
+- An interstitial's `bannerParameters.api`, `videoParameters.api` and `impOrtbConfig` `api` /
+  format keys are ignored; their other settings are kept.
+- The remote interstitial now requests banner **and video** by default (it requested banner only)
+  and gets playable video parameters when video is asked for. Set `"format": "banner"` in the
+  backend to keep a placement banner-only. Malformed `format` / `apis` no longer drop the config.
+
 ## [0.1.7] — 2026-08-19
 
 Hardening release: fixes the refresh-loop, lifecycle, callback, remote-config, and

@@ -409,15 +409,15 @@ Ad unit used for loading interstitial ads.
 | `impOrtbConfig`    | `String?`                   | Imp object OpenRTB configuration for the impression.        |
 | `bannerParameters` | `AudienzzBannerParameters?` | Banner parameters                                           |
 | `videoParameters`  | `AudienzzVideoParameters?`  | Video parameters                                            |
-| `formats`          | `Set<AudienzzAdUnitFormat>` | The set of supported ad formats for ad unit (Banner, Video) |
 
 **Constructors:**
 
 | Name                         | Parameters                                                       | Description                                                                                                         |
 |------------------------------|------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------|
-| `AudienzzInterstitialAdUnit` | `configId: String, adUnitFormats: EnumSet<AudienzzAdUnitFormat>` | Creates a new `AudienzzInterstitialAdUnit` with specified adUnitFormats. ConfigId - refers to prebid config id      |
 | `AudienzzInterstitialAdUnit` | `configId: String, minWidthPerc: Int, minHeightPerc: Int`        | Creates a new `AudienzzInterstitialAdUnit` with a minimum size in percentage. ConfigId - refers to prebid config id |
 | `AudienzzInterstitialAdUnit` | `configId: String`                                               | Creates a new `AudienzzInterstitialAdUnit`. ConfigId - refers to prebid config id                                   |
+
+An interstitial's formats and API frameworks are not arguments: they are backend-controlled (`prebidConfig.format` / `prebidConfig.apis`), and a hand-built `AudienzzInterstitialAdUnit` requests banner + video with MRAID 1/2/3 + OMID 1. The `api` of its `bannerParameters` / `videoParameters` is ignored. See [docs/interstitial-capabilities.md](docs/interstitial-capabilities.md).
 
 
 **Methods:**

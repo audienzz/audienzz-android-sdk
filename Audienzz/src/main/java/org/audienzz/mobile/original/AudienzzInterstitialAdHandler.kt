@@ -66,6 +66,10 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
         ) -> Unit
         ),
     ) {
+        // Per accepted request, after anything the publisher set on the unit: formats and API
+        // frameworks are backend-controlled and win over bannerParameters, videoParameters and
+        // impOrtbConfig alike. Before the bidRequest event, whose subtype follows the format.
+        adUnit.applyCapabilities()
         prebidWinningBidder = null
         // Mint the auction id up front so bidRequest and every later event of this auction share it.
         currentAuctionId = UUID.randomUUID().toString()
