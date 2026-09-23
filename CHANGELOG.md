@@ -5,6 +5,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased — breaking: interstitial formats and API frameworks are backend-controlled
 
+- **Breaking: `AudienzzMultiformatAdHandler.load` callback is now `(AudienzzBidInfo,
+  AdManagerAdRequest) -> Unit`.** Load the request it hands back in Google; it carries global
+  targeting, the SDK's keys and Prebid's bid keys. A request rebuilt from your builder carries none
+  of them, because the builder is no longer modified.
 - **Publisher key-values and the SDK's never clear each other.** Global targeting and `au_sdk` were
   written into the publisher's retained request builder, so a global key-value removed later kept
   being sent on every refresh, and the SDK's keys ended up in the publisher's builder (rewarded and
