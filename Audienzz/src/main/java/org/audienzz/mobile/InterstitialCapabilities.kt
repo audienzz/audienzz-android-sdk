@@ -48,22 +48,14 @@ internal data class InterstitialCapabilities(val format: Format, val apis: List<
             if (format.includesVideo) add(AudienzzAdUnitFormat.VIDEO)
         }
 
-    private val prebidFormats: EnumSet<AdUnitFormat>
+    internal val prebidFormats: EnumSet<AdUnitFormat>
         get() = EnumSet.noneOf(AdUnitFormat::class.java).apply {
             if (format.includesBanner) add(AdUnitFormat.BANNER)
             if (format.includesVideo) add(AdUnitFormat.VIDEO)
         }
 
     val prebidApis: List<Signals.Api>
-        get() = apis.mapNotNull {
-            when (it) {
-                3 -> Signals.Api.MRAID_1
-                5 -> Signals.Api.MRAID_2
-                6 -> Signals.Api.MRAID_3
-                7 -> Signals.Api.OMID_1
-                else -> null
-            }
-        }
+        get() = apis.mapNotNull { id -> RENDERER_APIS.firstOrNull { it.value == id } }
 
     /** The analytics subtype for this format, as the other ad types report it. */
     val adSubtype: AdSubtype
@@ -73,31 +65,20 @@ internal data class InterstitialCapabilities(val format: Format, val apis: List<
             Format.BANNER_AND_VIDEO -> AdSubtype.MULTIFORMAT
         }
 
-    /**
-     * Writes these capabilities onto the ad unit, just before its request.
-     *
-     * Everything else already on the unit is kept: its sizes and minimum size percentages, and a
-     * publisher's other video settings (duration, bitrate, protocols, …). Only the formats and the
-     * API lists are replaced. A video request without video parameters gets the SDK's interstitial
-     * defaults, so it is always playable.
-     */
-    fun apply(adUnit: InterstitialAdUnit) {
-        adUnit.configuration.setAdUnitFormats(prebidFormats)
-        adUnit.bannerParameters = (adUnit.bannerParameters ?: BannerParameters()).apply { api = prebidApis }
-        if (format.includesVideo) {
-            val video = adUnit.videoParameters?.takeIf { !it.mimes.isNullOrEmpty() } ?: defaultVideoParameters()
-            video.api = prebidApis
-            adUnit.videoParameters = video
-        }
-        adUnit.impOrtbConfig = sanitizedImpOrtb(adUnit.impOrtbConfig, format)
-    }
-
     companion object {
         /**
          * MRAID 1, MRAID 2, MRAID 3 and OMID 1: what Google's renderer supports for the creatives an
          * interstitial can receive. VPAID (1, 2) and ORMMA (4) are not, and are never advertised.
          */
-        val SUPPORTED_APIS = listOf(3, 5, 6, 7)
+        private val RENDERER_APIS = listOf(
+            Signals.Api.MRAID_1,
+            Signals.Api.MRAID_2,
+            Signals.Api.MRAID_3,
+            Signals.Api.OMID_1,
+        )
+
+        /** The same, as the OpenRTB ids the backend uses: [3, 5, 6, 7]. */
+        val SUPPORTED_APIS: List<Int> = RENDERER_APIS.map { it.value }
 
         val DEFAULT = InterstitialCapabilities(Format.BANNER_AND_VIDEO, SUPPORTED_APIS)
 
@@ -135,7 +116,8 @@ internal data class InterstitialCapabilities(val format: Format, val apis: List<
             } catch (_: Exception) {
                 return null
             }
-            for ((key, allowed) in listOf("banner" to format.includesBanner, "video" to format.includesVideo)) {
+            val objects = listOf("banner" to format.includesBanner, "video" to format.includesVideo)
+            for ((key, allowed) in objects) {
                 if (!imp.has(key)) continue
                 val obj = imp.optJSONObject(key)
                 if (!allowed || obj == null) imp.remove(key) else obj.remove("api")
@@ -143,6 +125,28 @@ internal data class InterstitialCapabilities(val format: Format, val apis: List<
             return imp.toString()
         }
     }
+}
+
+/**
+ * Writes these capabilities onto the ad unit, just before its request.
+ *
+ * Everything else already on the unit is kept: its sizes and minimum size percentages, and a
+ * publisher's other video settings (duration, bitrate, protocols, …). Only the formats and the API
+ * lists are replaced. A video request without video parameters gets the SDK's interstitial
+ * defaults, so it is always playable.
+ */
+internal fun InterstitialCapabilities.apply(adUnit: InterstitialAdUnit) {
+    adUnit.configuration.setAdUnitFormats(prebidFormats)
+    val banner = adUnit.bannerParameters ?: BannerParameters()
+    banner.api = prebidApis
+    adUnit.bannerParameters = banner
+    if (format.includesVideo) {
+        val supplied = adUnit.videoParameters?.takeIf { !it.mimes.isNullOrEmpty() }
+        val video = supplied ?: InterstitialCapabilities.defaultVideoParameters()
+        video.api = prebidApis
+        adUnit.videoParameters = video
+    }
+    adUnit.impOrtbConfig = InterstitialCapabilities.sanitizedImpOrtb(adUnit.impOrtbConfig, format)
 }
 
 /**

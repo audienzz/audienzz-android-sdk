@@ -8,7 +8,6 @@ import com.google.android.gms.ads.admanager.AdManagerInterstitialAd
 import org.audienzz.mobile.AudienzzInterstitialAdUnit
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
-import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.event.RenderEconomics
 import org.audienzz.mobile.event.adClick
 import org.audienzz.mobile.event.adImpression
@@ -91,7 +90,8 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
             gamRequestBuilder.setPublisherProvidedId(ppid)
         }
 
-        AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(gamRequestBuilder)
+        // Global targeting and the SDK's keys go onto the built request, never the publisher's
+        // builder (see AudienzzAdRequestContext.buildPublisherRequest).
         val request = requestContext.buildRequest(gamRequestBuilder)
         adUnit.fetchDemand(request) { resultCode ->
             val timeToRespond = System.currentTimeMillis() - requestStartMs

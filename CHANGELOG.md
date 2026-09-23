@@ -5,6 +5,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased — breaking: interstitial formats and API frameworks are backend-controlled
 
+- **Publisher key-values and the SDK's never clear each other.** Global targeting and `au_sdk` were
+  written into the publisher's retained request builder, so a global key-value removed later kept
+  being sent on every refresh, and the SDK's keys ended up in the publisher's builder (rewarded and
+  multiformat too). They are now applied to each built request; the builder is never modified.
 - `prebidConfig.format` (`banner` / `video` / `bannerAndVideo`, default `bannerAndVideo`) and
   `prebidConfig.apis` (default `[3, 5, 6, 7]`) now decide what every interstitial requests.
   Validated, and resolved once per accepted load. See `docs/interstitial-capabilities.md`.

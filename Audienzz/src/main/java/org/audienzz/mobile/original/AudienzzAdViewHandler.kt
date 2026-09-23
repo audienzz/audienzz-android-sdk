@@ -15,7 +15,6 @@ import org.audienzz.mobile.util.AudienzzDiagnostics
 import org.audienzz.mobile.AudienzzWinningBid
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
-import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.event.adClick
 import org.audienzz.mobile.event.adImpression
 import org.audienzz.mobile.event.bidRequest
@@ -632,7 +631,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     private fun buildRequest(): AdManagerAdRequest {
         val builder = gamRequestBuilder ?: AdManagerAdRequest.Builder()
         builder.applyPublisherProvidedId(AudienzzPrebidMobile.ppidManager?.getPpid())
-        AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(builder)
+        // Global targeting and the SDK's keys go onto the built request, not this retained
+        // builder (see AudienzzAdRequestContext.buildPublisherRequest).
         return requestContext.buildRequest(builder)
     }
 
@@ -991,15 +991,21 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         // Mint the auction id up front so bidRequest and every later event of this auction share it.
         currentAuctionId = UUID.randomUUID().toString()
         if (!headerBiddingEnabled) {
-            // No Prebid, so none of its analytics either: a bidRequest with no response — or a noBid
-            // for a slot that never bid — would put an auction that never happened into the
+            // No Prebid, so none of its analytics either: a bidRequest with no response — or a
+            // noBid for a slot that never bid — would put an auction that never happened into the
             // header-bidding funnel. The GAM events that follow the load are still reported.
             prebidLineItemWon = false
             prebidWinningBidder = null
             lastWinningBid = null
             lastRenderEconomics = null
             Log.d(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — header bidding off, GAM-only")
-            startGoogleLoad(request, callback, auctionGeneration, refreshGeneration, resultCode = null)
+            startGoogleLoad(
+                request,
+                callback,
+                auctionGeneration,
+                refreshGeneration,
+                resultCode = null,
+            )
             return true
         }
         eventLogger?.bidRequest(

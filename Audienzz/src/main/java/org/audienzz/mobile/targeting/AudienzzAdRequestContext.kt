@@ -1,6 +1,7 @@
 package org.audienzz.mobile.targeting
 
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
+import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.screen.screenAdCoordinator
 import java.util.IdentityHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -17,8 +18,7 @@ class AudienzzAdRequestContext {
 
     internal fun buildRequest(builder: AdManagerAdRequest.Builder): AdManagerAdRequest {
         val snapshot = ledger.nextRequest(this)
-        val request = builder.build()
-        GamTargetingSnapshot.detach(request)
+        val request = buildPublisherRequest(builder)
         snapshot.targeting.forEach { (key, value) -> request.customTargeting.putString(key, value) }
         return request
     }
@@ -27,6 +27,19 @@ class AudienzzAdRequestContext {
         private val nextOrder = AtomicLong()
         private val legacyLedger = AdRequestLedger()
         private val ledger get() = screenAdCoordinator?.requestLedger ?: legacyLedger
+
+        /**
+         * One auction's request: the publisher's builder built into a request of its own, then the
+         * current global targeting and the SDK's identification over it — later layers win a name
+         * clash, and the publisher's other keys are kept. The builder is never modified, so a
+         * global key-value added or removed later reaches the next auction.
+         */
+        internal fun buildPublisherRequest(builder: AdManagerAdRequest.Builder): AdManagerAdRequest {
+            val request = builder.build()
+            GamTargetingSnapshot.detach(request)
+            AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequest(request)
+            return request
+        }
 
         /** Bridge-only identity, stable across native objects created for the same Dart/JS ad. */
         @JvmStatic @JvmOverloads
