@@ -10,14 +10,12 @@ import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzRemoteConfigInterstitial
 import org.audienzz.mobile.AudienzzSignals
 import org.audienzz.mobile.AudienzzVideoParameters
-import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
 import org.audienzz.mobile.original.AudienzzInterstitialAdHandler
 import org.audienzz.mobile.original.callbacks.AudienzzInterstitialAdLoadCallback
 import org.audienzz.mobile.testapp.R
 import org.audienzz.mobile.testapp.adapter.BaseAdHolder
 import org.audienzz.mobile.testapp.constants.VideoConstants
 import org.audienzz.mobile.testapp.utils.FullscreenAdUtils
-import java.util.EnumSet
 
 class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) {
 
@@ -48,10 +46,10 @@ class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) 
             AudienzzPrebidMobile.getAdUnitConfig(INTERSTITIAL_CONFIG_ID) { config ->
                 config ?: return@getAdUnitConfig
 
-                val adUnit = AudienzzInterstitialAdUnit(
-                    config.prebidConfig.placementId,
-                    EnumSet.of(AudienzzAdUnitFormat.VIDEO),
-                )
+                // Formats and API frameworks are backend-controlled: a hand-built interstitial
+                // always asks for banner and video with MRAID 1/2/3 + OMID 1. Video settings other
+                // than the API list still apply.
+                val adUnit = AudienzzInterstitialAdUnit(config.prebidConfig.placementId)
                 adUnit.videoParameters = configureVideoParameters()
 
                 AudienzzInterstitialAdHandler(adUnit, config.gamConfig.adUnitPath).load(
@@ -78,18 +76,9 @@ class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) 
             AudienzzPrebidMobile.getAdUnitConfig(INTERSTITIAL_CONFIG_ID) { config ->
                 config ?: return@getAdUnitConfig
 
-                val adUnit = AudienzzInterstitialAdUnit(
-                    config.prebidConfig.placementId,
-                    EnumSet.of(AudienzzAdUnitFormat.BANNER, AudienzzAdUnitFormat.VIDEO),
-                )
+                val adUnit = AudienzzInterstitialAdUnit(config.prebidConfig.placementId)
                 adUnit.setMinSizePercentage(DEFAULT_MIN_WIDTH, DEFAULT_MIN_HEIGHT)
-                adUnit.videoParameters = AudienzzVideoParameters(listOf("video/mp4")).apply {
-                    api = listOf(
-                        AudienzzSignals.Api.VPAID_1,
-                        AudienzzSignals.Api.VPAID_2,
-                        AudienzzSignals.Api.OMID_1,
-                    )
-                }
+                adUnit.videoParameters = AudienzzVideoParameters(listOf("video/mp4"))
 
                 AudienzzInterstitialAdHandler(adUnit, config.gamConfig.adUnitPath).load(
                     adLoadCallback = createAdLoadCallback(),

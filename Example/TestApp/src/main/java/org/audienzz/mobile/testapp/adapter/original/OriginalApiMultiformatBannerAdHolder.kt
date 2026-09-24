@@ -129,9 +129,11 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
 
             val gamRequestBuilder = AdManagerAdRequest.Builder()
             AudienzzMultiformatAdHandler(adUnitMultiformat!!, gamPath)
-                .load(gamRequestBuilder, prebidRequest) { bidInfo ->
+                .load(gamRequestBuilder, prebidRequest) { bidInfo, request ->
                     showFetchErrorDialog(adContainer.context, bidInfo.resultCode)
-                    loadGam(gamRequestBuilder, gamPath)
+                    // The prepared request: it carries global targeting, the SDK's keys and the
+                    // bid keys. Rebuilding from gamRequestBuilder would send none of them.
+                    loadGam(request, gamPath)
                 }
         }
     }
@@ -161,7 +163,7 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
         }
     }
 
-    private fun loadGam(gamRequestBuilder: AdManagerAdRequest.Builder, gamPath: String) {
+    private fun loadGam(request: AdManagerAdRequest, gamPath: String) {
         val onBannerLoaded = OnAdManagerAdViewLoadedListener { adView ->
             showBannerAd(adView)
         }
@@ -185,7 +187,7 @@ class OriginalApiMultiformatBannerAdHolder(parent: ViewGroup) : BaseAdHolder(par
             )
             .withAdManagerAdViewOptions(AdManagerAdViewOptions.Builder().build())
             .build()
-        adLoader.loadAd(gamRequestBuilder.build())
+        adLoader.loadAd(request)
     }
 
     private fun createBannerParameters() = AudienzzBannerParameters().apply {

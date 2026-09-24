@@ -15,7 +15,6 @@ import org.audienzz.mobile.util.AudienzzDiagnostics
 import org.audienzz.mobile.AudienzzWinningBid
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
-import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.event.adClick
 import org.audienzz.mobile.event.adImpression
 import org.audienzz.mobile.event.bidRequest
@@ -102,6 +101,17 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     // carrying the current PPID/consent/targeting rather than values baked in at first load().
     private var gamRequestBuilder: AdManagerAdRequest.Builder? = null
     private var storedCallback: ((AdManagerAdRequest, AudienzzResultCode?) -> Unit)? = null
+
+    /**
+     * Whether auctions run header bidding. `false` makes every auction GAM-only: no Prebid request,
+     * straight to the GAM load, with refresh, page ownership, blanking and targeting unchanged.
+     *
+     * For a slot with no Prebid sizes configured. Sending Prebid a request anyway meant either
+     * refusing to load (this platform, before) or asking for a 0x0 format that can never fill (iOS,
+     * before) — a wasted round trip on every auction, logged as a bidRequest and a noBid for a slot
+     * that was never in header bidding. Set before [load].
+     */
+    var headerBiddingEnabled: Boolean = true
 
     // Viewability tracking (viewability.start / viewability.success)
     private var viewabilityTracker: ViewabilityTracker? = null
@@ -621,7 +631,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     private fun buildRequest(): AdManagerAdRequest {
         val builder = gamRequestBuilder ?: AdManagerAdRequest.Builder()
         builder.applyPublisherProvidedId(AudienzzPrebidMobile.ppidManager?.getPpid())
-        AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(builder)
+        // Global targeting and the SDK's keys go onto the built request, not this retained
+        // builder (see AudienzzAdRequestContext.buildPublisherRequest).
         return requestContext.buildRequest(builder)
     }
 
@@ -979,6 +990,24 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         val requestStartMs = System.currentTimeMillis()
         // Mint the auction id up front so bidRequest and every later event of this auction share it.
         currentAuctionId = UUID.randomUUID().toString()
+        if (!headerBiddingEnabled) {
+            // No Prebid, so none of its analytics either: a bidRequest with no response — or a
+            // noBid for a slot that never bid — would put an auction that never happened into the
+            // header-bidding funnel. The GAM events that follow the load are still reported.
+            prebidLineItemWon = false
+            prebidWinningBidder = null
+            lastWinningBid = null
+            lastRenderEconomics = null
+            Log.d(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — header bidding off, GAM-only")
+            startGoogleLoad(
+                request,
+                callback,
+                auctionGeneration,
+                refreshGeneration,
+                resultCode = null,
+            )
+            return true
+        }
         eventLogger?.bidRequest(
             adViewId = adView.adViewId,
             adUnitId = adView.adUnitId,
@@ -1116,16 +1145,31 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                     mediaTypes = mediaTypesJson(adUnit.adFormats.adSubtype),
                 )
             }
-            slotReloadCount++
-            val load = GoogleLoad(generationAtRequest, refreshGeneration)
-            googleLoad = load
-            googleEventPageGeneration = creativePageGeneration
-            renderAuctionId = currentAuctionId
-            watchGoogleLoad(load)
-            setEventsListenerToAdView()
-            callback.invoke(request, resultCode)
+            startGoogleLoad(request, callback, generationAtRequest, refreshGeneration, resultCode)
         }
         return true
+    }
+
+    /**
+     * Hand the request to GAM. The one place both paths converge — with Prebid's response, or
+     * straight away when header bidding is off — so the load watchdog, listener repair and render
+     * attribution cannot differ between them.
+     */
+    private fun startGoogleLoad(
+        request: AdManagerAdRequest,
+        callback: (AdManagerAdRequest, AudienzzResultCode?) -> Unit,
+        generationAtRequest: Int,
+        refreshGeneration: Int,
+        resultCode: AudienzzResultCode?,
+    ) {
+        slotReloadCount++
+        val load = GoogleLoad(generationAtRequest, refreshGeneration)
+        googleLoad = load
+        googleEventPageGeneration = creativePageGeneration
+        renderAuctionId = currentAuctionId
+        watchGoogleLoad(load)
+        setEventsListenerToAdView()
+        callback.invoke(request, resultCode)
     }
 
     private fun setEventsListenerToAdView() {

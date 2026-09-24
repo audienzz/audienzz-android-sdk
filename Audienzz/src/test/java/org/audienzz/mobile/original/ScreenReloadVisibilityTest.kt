@@ -180,6 +180,84 @@ class ScreenReloadVisibilityTest {
         assertEquals("the fresh creative is revealed", View.VISIBLE, creativeVisibility)
     }
 
+    // ── header bidding off (no Prebid sizes configured) ─────────────────────
+
+    /**
+     * A slot with no Prebid sizes serves GAM-only: no Prebid request, straight to the GAM load.
+     *
+     * Before, this platform refused to load such a slot at all, and iOS sent Prebid a 0x0 request
+     * that could never fill — a wasted round trip on every auction, recorded as a bidRequest and a
+     * noBid for a slot that was never in header bidding.
+     */
+    private fun loadGamOnly() {
+        AudienzzPrebidMobile.blankOnScreenReload = false
+        handler.headerBiddingEnabled = false
+        handler.load(withLazyLoading = false) { _, resultCode ->
+            googleLoads++
+            gamOnlyResultCodes += resultCode
+        }
+    }
+    private val gamOnlyResultCodes = mutableListOf<AudienzzResultCode?>()
+
+    @Test
+    fun `with header bidding off, an auction never reaches Prebid and goes straight to GAM`() {
+        loadGamOnly()
+
+        assertEquals("Prebid must not be asked", 0, responses.size)
+        assertEquals("GAM must still load", 1, googleLoads)
+        assertEquals("there was no Prebid result to report", listOf<AudienzzResultCode?>(null), gamOnlyResultCodes)
+    }
+
+    @Test
+    fun `a GAM-only slot still reloads on its next page impression, without Prebid`() {
+        // Page ownership and refresh run on the same path; only the Prebid step is skipped.
+        loadGamOnly()
+        listener.onAdLoaded()
+
+        AudienzzPrebidMobile.pageImpression("legacy")
+        AudienzzPrebidMobile.pageImpression("remote")
+
+        assertEquals(2, googleLoads)
+        assertEquals(0, responses.size)
+    }
+
+    @Test
+    fun `a GAM-only auction reports no header-bidding analytics`() {
+        // A bidRequest with no response — or a noBid for a slot that never bid — would put an
+        // auction that never happened into the header-bidding funnel.
+        val logged = mutableListOf<org.audienzz.mobile.event.entity.EventDomain>()
+        val logger = mockk<org.audienzz.mobile.event.EventLogger>(relaxed = true)
+        every { logger.logEvent(capture(logged)) } just Runs
+        mockkObject(org.audienzz.mobile.di.MainComponent.Companion)
+        every { org.audienzz.mobile.di.MainComponent.eventLogger } returns logger
+
+        loadGamOnly()
+
+        val hbEvents = setOf(
+            org.audienzz.mobile.event.entity.EventType.BID_REQUEST,
+            org.audienzz.mobile.event.entity.EventType.BID_RESPONSE,
+            org.audienzz.mobile.event.entity.EventType.BID_WON,
+            org.audienzz.mobile.event.entity.EventType.NO_BID,
+        )
+        assertEquals(emptyList<Any>(), logged.filter { it.eventType in hbEvents }.map { it.eventType })
+    }
+
+    @Test
+    fun `control - with header bidding on, the same auction does go to Prebid and reports it`() {
+        // Proves the analytics assertion above can fail: the logger IS wired in this harness.
+        val logged = mutableListOf<org.audienzz.mobile.event.entity.EventDomain>()
+        val logger = mockk<org.audienzz.mobile.event.EventLogger>(relaxed = true)
+        every { logger.logEvent(capture(logged)) } just Runs
+        mockkObject(org.audienzz.mobile.di.MainComponent.Companion)
+        every { org.audienzz.mobile.di.MainComponent.eventLogger } returns logger
+
+        AudienzzPrebidMobile.blankOnScreenReload = false
+        handler.load(withLazyLoading = false) { _, _ -> googleLoads++ }
+
+        assertEquals(1, responses.size)
+        assertTrue(logged.any { it.eventType == org.audienzz.mobile.event.entity.EventType.BID_REQUEST })
+    }
+
     // ── Prebid initialization race ──────────────────────────────────────────
 
     /**

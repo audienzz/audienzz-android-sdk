@@ -74,7 +74,7 @@ class AdRequestContextTest {
     private fun assertRequest(request: AdManagerAdRequest, page: Int, slot: Int, refresh: Int) {
         assertEquals(page.toString(), request.customTargeting.getString("au_page_seq"))
         assertEquals(slot.toString(), request.customTargeting.getString("au_slot"))
-        assertEquals(refresh.toString(), request.customTargeting.getString("au_refresh"))
+        assertEquals(refresh.toString(), request.customTargeting.getString("hb_refresh_count"))
     }
 
     @Test fun `a registered deferred slot keeps its position when the second slot requests first`() {
@@ -142,9 +142,27 @@ class AdRequestContextTest {
         screenAdCoordinatorOverride = coordinator
         val context = AudienzzAdRequestContext()
         val builder = AdManagerAdRequest.Builder().addCustomTargeting("category", "sports")
-            .addCustomTargeting("au_refresh", "999")
+            .addCustomTargeting("hb_refresh_count", "999")
         val request = context.buildRequest(builder)
         assertRequest(request, 0, 1, 0)
         assertEquals("sports", request.customTargeting.getString("category"))
+    }
+
+    /**
+     * Prebid strips keys from the GAM request before applying a new bid. On iOS it removes every
+     * `hb_` key, so the counter has to be re-applied there; Android removes only the keys Prebid
+     * itself applied. This runs Prebid's real keyword pass twice, as consecutive auctions do.
+     */
+    @Test fun `hb_refresh_count survives Prebid applying and replacing bid keywords`() {
+        coordinator = ScreenAdCoordinator()
+        screenAdCoordinatorOverride = coordinator
+        val request = AudienzzAdRequestContext().buildRequest(AdManagerAdRequest.Builder())
+        org.prebid.mobile.Util.apply(hashMapOf("hb_pb" to "1.00", "hb_bidder" to "appnexus"), request)
+        org.prebid.mobile.Util.apply(hashMapOf("hb_pb" to "2.00"), request)
+
+        assertEquals("0", request.customTargeting.getString("hb_refresh_count"))
+        assertEquals("2.00", request.customTargeting.getString("hb_pb"))
+        assertEquals("the previous auction's key is Prebid's to remove",
+            null, request.customTargeting.getString("hb_bidder"))
     }
 }

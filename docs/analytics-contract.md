@@ -289,7 +289,7 @@ this is a small change; it was not added speculatively.**
 ## 9. Release compatibility
 
 `sdk_version` is a compile-time constant (`AUSDKVersion` on iOS, `BuildConfig.AUDIENZZ_SDK_VERSION`
-from `audienzzSdkVersion` on Android). It has now been bumped to **0.3.3 / 0.2.3**, which is what
+from `audienzzSdkVersion` on Android). It has now been bumped to **0.4.0 / 0.3.0**, which is what
 separates a build carrying these corrections from the released 0.3.2 / 0.2.2 that does not.
 
 Two things follow, and the second is easy to get wrong:
@@ -297,7 +297,7 @@ Two things follow, and the second is easy to get wrong:
 * Logs captured **before** the bump report `0.3.2` / `0.2.2` even though they came from a branch
   build carrying the fixes. An older attached log reporting `0.3.2` is therefore not evidence that
   the fixes are absent.
-* `sdk_version = 0.3.3` means "built after the bump", **not** "published". Until the release goes
+* `sdk_version = 0.4.0` (iOS) / `0.3.0` (Android) means "built after the bump", **not** "published". Until the release goes
   out, branch builds report it too. It distinguishes corrected behaviour from uncorrected; it does
   not distinguish a release from a local build.
 
@@ -314,11 +314,11 @@ Two things follow, and the second is easy to get wrong:
 
 **Nothing above is in a published release yet.** Do not assume all data from Android 0.2.2 or iOS
 0.3.2 is trustworthy on these fields — by the table above, none of it is. The version constants now
-read 0.2.3 / 0.3.3, so the corrected builds are identifiable, but the release itself has not shipped.
+read 0.3.0 / 0.4.0, so the corrected builds are identifiable, but the release itself has not shipped.
 
 ### How the correction release will be distinguishable
 
-`sdk_version >= 0.3.3` (iOS) / `>= 0.2.3` (Android) is the marker, and the constants now carry it.
+`sdk_version >= 0.4.0` (iOS) / `>= 0.3.0` (Android) is the marker, and the constants now carry it.
 For rows already collected before the bump, a
 build carrying these fixes is indistinguishable by version alone, so use the **data shape**:
 

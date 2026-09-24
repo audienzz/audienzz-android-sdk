@@ -3,19 +3,19 @@ package org.audienzz.mobile.original
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
-import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.api.data.AudienzzBidInfo
 import org.audienzz.mobile.api.original.AudienzzPrebidAdUnit
 import org.audienzz.mobile.api.original.AudienzzPrebidRequest
+import org.audienzz.mobile.event.RenderEconomics
 import org.audienzz.mobile.event.bidRequest
 import org.audienzz.mobile.event.bidResponse
-import org.audienzz.mobile.event.RenderEconomics
 import org.audienzz.mobile.event.bidWon
 import org.audienzz.mobile.event.entity.AdSubtype
 import org.audienzz.mobile.event.entity.AdType
 import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
 import org.audienzz.mobile.event.noBid
+import org.audienzz.mobile.targeting.AudienzzAdRequestContext
 import org.audienzz.mobile.util.HB_BIDDER_KEY
 import org.audienzz.mobile.util.HB_FORMAT_KEY
 import org.audienzz.mobile.util.HB_PB_KEY
@@ -33,10 +33,17 @@ class AudienzzMultiformatAdHandler(
     // SDK-generated auction id, minted at auction start and reused across the auction's events.
     private var currentAuctionId: String? = null
 
+    /**
+     * Runs the Prebid auction and hands back the request to load in Google.
+     *
+     * Load THAT [AdManagerAdRequest], not one rebuilt from [gamRequestBuilder]: it alone carries
+     * global targeting, the SDK's keys and Prebid's bid keys. The builder is left as the publisher
+     * made it, so rebuilding from it sends Google none of those.
+     */
     @JvmOverloads fun load(
         gamRequestBuilder: AdManagerAdRequest.Builder = AdManagerAdRequest.Builder(),
         prebidRequest: AudienzzPrebidRequest,
-        callback: (AudienzzBidInfo) -> Unit,
+        callback: (AudienzzBidInfo, AdManagerAdRequest) -> Unit,
     ) {
         val isAutorefresh = adUnit.autoRefreshTime > 0
         val autorefreshTime = adUnit.autoRefreshTime.toLong()
@@ -61,12 +68,11 @@ class AudienzzMultiformatAdHandler(
             gamRequestBuilder.setPublisherProvidedId(ppid)
         }
 
-        val request = AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(
-            gamRequestBuilder,
-        )
-            .build()
+        // Global targeting and the SDK's keys go onto the built request, never the publisher's
+        // builder (see AudienzzAdRequestContext.buildPublisherRequest).
+        val request = AudienzzAdRequestContext.buildPublisherRequest(gamRequestBuilder)
         adUnit.fetchDemand(request, prebidRequest) { bidInfo ->
-            callback.invoke(bidInfo)
+            callback.invoke(bidInfo, request)
             eventLogger?.bidResponse(
                 adUnitId = adUnitId,
                 sizes = prebidRequest.getAdSizes().audienzzSizesJson,
