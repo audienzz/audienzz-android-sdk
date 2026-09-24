@@ -3,6 +3,27 @@
 All notable changes to the Audienzz Android SDK are documented here. This project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## 0.3.0 (unreleased) — breaking: interstitial formats and API frameworks are backend-controlled
+
+- **Breaking: `AudienzzMultiformatAdHandler.load` callback is now `(AudienzzBidInfo,
+  AdManagerAdRequest) -> Unit`.** Load the request it hands back in Google; it carries global
+  targeting, the SDK's keys and Prebid's bid keys. A request rebuilt from your builder carries none
+  of them, because the builder is no longer modified.
+- **Publisher key-values and the SDK's never clear each other.** Global targeting and `au_sdk` were
+  written into the publisher's retained request builder, so a global key-value removed later kept
+  being sent on every refresh, and the SDK's keys ended up in the publisher's builder (rewarded and
+  multiformat too). They are now applied to each built request; the builder is never modified.
+- `prebidConfig.format` (`banner` / `video` / `bannerAndVideo`, default `bannerAndVideo`) and
+  `prebidConfig.apis` (default `[3, 5, 6, 7]`) now decide what every interstitial requests.
+  Validated, and resolved once per accepted load. See `docs/interstitial-capabilities.md`.
+- **Removed:** `AudienzzInterstitialAdUnit(configId, adUnitFormats)` and
+  `(configId, adUnitFormats, adSizes)`. Use `(configId)` or `(configId, minWidthPerc, minHeightPerc)`.
+- An interstitial's `bannerParameters.api`, `videoParameters.api` and `impOrtbConfig` `api` /
+  format keys are ignored; their other settings are kept.
+- The remote interstitial now requests banner **and video** by default (it requested banner only)
+  and gets playable video parameters when video is asked for. Set `"format": "banner"` in the
+  backend to keep a placement banner-only. Malformed `format` / `apis` no longer drop the config.
+
 ## [0.1.7] — 2026-08-19
 
 Hardening release: fixes the refresh-loop, lifecycle, callback, remote-config, and

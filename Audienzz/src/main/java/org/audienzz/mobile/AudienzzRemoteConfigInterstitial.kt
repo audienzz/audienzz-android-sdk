@@ -16,13 +16,11 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.audienzz.mobile.api.config.RemoteAdUnitConfig
-import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
 import org.audienzz.mobile.di.MainComponent
 import org.audienzz.mobile.original.AudienzzInterstitialAdHandler
 import org.audienzz.mobile.original.callbacks.AudienzzFullScreenContentCallback
 import org.audienzz.mobile.original.callbacks.AudienzzInterstitialAdLoadCallback
 import org.audienzz.mobile.util.getActivity
-import java.util.EnumSet
 import java.util.UUID
 import java.lang.ref.WeakReference
 import org.audienzz.mobile.util.AppForegroundMonitor
@@ -86,6 +84,10 @@ class AudienzzRemoteConfigInterstitial(
     )
 
     internal var configDispatcher: CoroutineDispatcher = Dispatchers.IO
+
+    /** Test seam: sees each ad unit a load builds, with the capabilities it will request. */
+    internal var onAdUnitBuilt: ((AudienzzInterstitialAdUnit) -> Unit)? = null
+
     private var generation = 0
     private var loading = false
     private var presenting = false
@@ -318,9 +320,14 @@ class AudienzzRemoteConfigInterstitial(
 
         val interstitial = AudienzzInterstitialAdUnit(
             configId = config.prebidConfig.placementId,
-            adUnitFormats = EnumSet.of(AudienzzAdUnitFormat.BANNER),
             adSizes = prebidSizes,
         )
+        // Formats and API frameworks: backend-controlled, resolved from the config fetched for
+        // THIS load. A config that changes while an ad is ready, loading or on screen affects only
+        // the next accepted load, so it cannot discard inventory, interrupt a presentation or cause
+        // a request of its own.
+        interstitial.capabilities = InterstitialCapabilities.resolve(config.prebidConfig)
+        onAdUnitBuilt?.invoke(interstitial)
 
         val interstitialHandler = AudienzzInterstitialAdHandler(
             adUnit = interstitial,

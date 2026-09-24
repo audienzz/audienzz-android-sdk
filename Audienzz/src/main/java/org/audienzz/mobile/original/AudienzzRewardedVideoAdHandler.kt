@@ -8,7 +8,6 @@ import com.google.android.gms.ads.rewarded.RewardedAd
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.AudienzzRewardedVideoAdUnit
-import org.audienzz.mobile.AudienzzTargetingParams
 import org.audienzz.mobile.event.RenderEconomics
 import org.audienzz.mobile.event.adClick
 import org.audienzz.mobile.event.adImpression
@@ -24,6 +23,7 @@ import org.audienzz.mobile.event.viewabilityStart
 import org.audienzz.mobile.event.viewabilitySuccess
 import org.audienzz.mobile.original.callbacks.AudienzzFullScreenContentCallback
 import org.audienzz.mobile.original.callbacks.AudienzzRewardedAdLoadCallback
+import org.audienzz.mobile.targeting.AudienzzAdRequestContext
 import org.audienzz.mobile.util.AD_SERVER_BIDDER
 import org.audienzz.mobile.util.FullScreenViewabilityTimer
 import org.audienzz.mobile.util.HB_BIDDER_KEY
@@ -87,10 +87,9 @@ class AudienzzRewardedVideoAdHandler(
             gamRequestBuilder.setPublisherProvidedId(ppid)
         }
 
-        val request = AudienzzTargetingParams.CUSTOM_TARGETING_MANAGER.applyToGamRequestBuilder(
-            gamRequestBuilder,
-        )
-            .build()
+        // Global targeting and the SDK's keys go onto the built request, never the publisher's
+        // builder (see AudienzzAdRequestContext.buildPublisherRequest).
+        val request = AudienzzAdRequestContext.buildPublisherRequest(gamRequestBuilder)
         adUnit.fetchDemand(request) { resultCode ->
             val timeToRespond = System.currentTimeMillis() - requestStartMs
             // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).

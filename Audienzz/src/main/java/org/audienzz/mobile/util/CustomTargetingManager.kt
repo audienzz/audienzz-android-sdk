@@ -97,6 +97,21 @@ class CustomTargetingManager(
         return keywordPairs.joinToString(",")
     }
 
+    /**
+     * Adds global targeting, `au_sdk` and the reserved keys to an already built request, over the
+     * publisher's own keys, which are kept. The request's targeting must already be detached from
+     * its builder (`GamTargetingSnapshot.detach`).
+     *
+     * Never applied to the publisher's builder: writing there put the SDK's keys into the
+     * publisher's object, and left a global key the publisher later removed in every following
+     * request, because a builder only ever accumulates. Built through a scratch builder so values
+     * are encoded exactly as Google encodes them (multi-value keys included).
+     */
+    fun applyToGamRequest(request: AdManagerAdRequest) {
+        val layered = applyToGamRequestBuilder(AdManagerAdRequest.Builder()).build().customTargeting
+        request.customTargeting.putAll(layered)
+    }
+
     /** For GAM requests - apply global targeting to a target AdManagerAdRequest.Builder */
     fun applyToGamRequestBuilder(
         requestBuilder: AdManagerAdRequest.Builder,
