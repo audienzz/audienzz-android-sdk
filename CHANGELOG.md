@@ -3,6 +3,13 @@
 All notable changes to the Audienzz Android SDK are documented here. This project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- Fix late SDK initialization followed by a translucent interstitial leaving the app permanently
+  marked as backgrounded. Returning to the host without a new `onStart` now preserves foreground
+  state, so new banners and page-return replacements can load. Real backgrounding still blocks
+  refresh. This native fix is also required by the Flutter Android interstitial-return update.
+
 ## 0.3.0 (unreleased) — breaking: interstitial formats and API frameworks are backend-controlled
 
 - **Breaking: `AudienzzMultiformatAdHandler.load` callback is now `(AudienzzBidInfo,

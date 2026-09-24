@@ -123,4 +123,53 @@ class AppForegroundMonitorTest {
 
         assertEquals(emptyList<String>(), events)
     }
+
+    @Test
+    fun `late init host remains foreground across a translucent interstitial`() {
+        val host = activity() // onStart happened before SDK initialization
+        val interstitial = activity()
+        AppForegroundMonitor.onActivityPaused(host)
+        AppForegroundMonitor.onActivityStarted(interstitial)
+        AppForegroundMonitor.onActivityResumed(host)
+        AppForegroundMonitor.onActivityStopped(interstitial)
+
+        assertTrue(AppForegroundMonitor.isForeground)
+        assertEquals(emptyList<String>(), events)
+
+        // Remembering the host must not hide the next REAL background transition.
+        AppForegroundMonitor.onActivityPaused(host)
+        AppForegroundMonitor.onActivityStopped(host)
+        assertFalse(AppForegroundMonitor.isForeground)
+        assertEquals(listOf("background"), events)
+        AppForegroundMonitor.onActivityStarted(host)
+        AppForegroundMonitor.onActivityResumed(host)
+        assertTrue(AppForegroundMonitor.isForeground)
+        assertEquals(listOf("background", "foreground"), events)
+    }
+
+    @Test
+    fun `overlay stopping before host resume does not briefly background a late init host`() {
+        val host = activity()
+        val overlay = activity()
+        AppForegroundMonitor.onActivityPaused(host)
+        AppForegroundMonitor.onActivityStarted(overlay)
+        AppForegroundMonitor.onActivityStopped(overlay)
+        assertTrue(AppForegroundMonitor.isForeground)
+        assertEquals(emptyList<String>(), events)
+        AppForegroundMonitor.onActivityResumed(host)
+        assertEquals(emptyList<String>(), events)
+    }
+
+    @Test
+    fun `initialization during an overlay still recognizes the returning resumed host`() {
+        val host = activity()
+        val overlay = activity() // its onStart was also before initialization
+        AppForegroundMonitor.onActivityResumed(host)
+        AppForegroundMonitor.onActivityStopped(overlay)
+        assertTrue(AppForegroundMonitor.isForeground)
+        assertEquals(emptyList<String>(), events)
+        AppForegroundMonitor.onActivityStopped(host)
+        assertFalse(AppForegroundMonitor.isForeground)
+        assertEquals(listOf("background"), events)
+    }
 }
