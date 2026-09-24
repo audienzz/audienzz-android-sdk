@@ -120,6 +120,40 @@ class AudienzzAdViewHandlerTest {
 
     private fun foreground() = AppForegroundMonitor.onActivityStarted(hostActivity)
 
+    private fun translucentInterstitialRoundTrip() {
+        val overlay: android.app.Activity = mockk(relaxed = true)
+        // The real device sequence: host init was late, so no host onStart was observed.
+        AppForegroundMonitor.onActivityPaused(hostActivity)
+        AppForegroundMonitor.onActivityStarted(overlay)
+        AppForegroundMonitor.onActivityResumed(hostActivity)
+        AppForegroundMonitor.onActivityStopped(overlay)
+    }
+
+    @Test
+    fun `a test screen first load works after a translucent interstitial closes`() {
+        openPage("home")
+        translucentInterstitialRoundTrip()
+        openPage("test")
+        loadOn("test")
+        assertEquals("visible test screen must not be held as backgrounded", 1, responses.size)
+        respondTo(0)
+        assertEquals(1, gamLoads.size)
+    }
+
+    @Test
+    fun `returning home after an interstitial and test screen loads its replacement`() {
+        openPage("home")
+        loadOn("home")
+        respondTo(0)
+        translucentInterstitialRoundTrip()
+        openPage("test")
+        openPage("home")
+        idle(1_000)
+        assertEquals("home needs exactly one replacement", 2, responses.size)
+        respondTo(1)
+        assertEquals(2, gamLoads.size)
+    }
+
     // ── The auction gate ────────────────────────────────────────────────────
 
     @Test
