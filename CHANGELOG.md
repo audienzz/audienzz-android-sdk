@@ -3,7 +3,7 @@
 All notable changes to the Audienzz Android SDK are documented here. This project
 adheres to [Semantic Versioning](https://semver.org/).
 
-## Unreleased — breaking: interstitial formats and API frameworks are backend-controlled
+## 0.3.0 (unreleased) — breaking: interstitial formats and API frameworks are backend-controlled
 
 - **Breaking: `AudienzzMultiformatAdHandler.load` callback is now `(AudienzzBidInfo,
   AdManagerAdRequest) -> Unit`.** Load the request it hands back in Google; it carries global
