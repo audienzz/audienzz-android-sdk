@@ -16,6 +16,7 @@ import org.audienzz.mobile.screen.screenAdCoordinatorOverride
 import org.audienzz.mobile.util.AppForegroundMonitor
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -81,6 +82,7 @@ class AudienzzAdViewHandlerTest {
 
     @After
     fun tearDown() {
+        AudienzzPrebidMobile.completePrebidInitialization(org.prebid.mobile.api.data.InitializationStatus.SUCCEEDED)
         AudienzzPrebidMobile.sdkInitializedOverride = null
         handler.destroy()
         org.audienzz.mobile.AudienzzPrebidMobile.pageImpression("cleanup")
@@ -127,6 +129,34 @@ class AudienzzAdViewHandlerTest {
         AppForegroundMonitor.onActivityStarted(overlay)
         AppForegroundMonitor.onActivityResumed(hostActivity)
         AppForegroundMonitor.onActivityStopped(overlay)
+    }
+
+    @Test fun `failed Prebid startup releases a pending banner into Google only mode`() {
+        AudienzzPrebidMobile.sdkInitializedOverride = false
+        openPage("home")
+        loadOn("home")
+        assertTrue(gamLoads.isEmpty())
+        assertTrue(responses.isEmpty())
+        AudienzzPrebidMobile.completePrebidInitialization(org.prebid.mobile.api.data.InitializationStatus.FAILED)
+        assertEquals(1, gamLoads.size)
+        assertTrue("do not call unavailable Prebid", responses.isEmpty())
+        googleListener.onAdLoaded()
+        idle(30_000)
+        assertEquals("normal refresh still reaches Google", 2, gamLoads.size)
+        assertTrue(responses.isEmpty())
+    }
+
+    @Test fun `failed bid still loads Google but a released page never does`() {
+        openPage("home")
+        loadOn("home")
+        responses.single()(AudienzzResultCode.NETWORK_ERROR)
+        assertEquals(1, gamLoads.size)
+        googleListener.onAdLoaded()
+        idle(30_000)
+        assertEquals(2, responses.size)
+        openPage("other")
+        responses.last()(AudienzzResultCode.TIMEOUT)
+        assertEquals(1, gamLoads.size)
     }
 
     @Test

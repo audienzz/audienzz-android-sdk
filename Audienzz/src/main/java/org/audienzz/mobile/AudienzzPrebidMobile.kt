@@ -38,6 +38,7 @@ import org.json.JSONObject
 import org.prebid.mobile.PrebidMobile
 import org.prebid.mobile.PrebidMobile.LogLevel
 import org.prebid.mobile.TargetingParams
+import org.prebid.mobile.api.data.InitializationStatus
 import org.prebid.mobile.api.rendering.PrebidMobileInterstitialControllerInterface
 import org.prebid.mobile.api.rendering.pluginrenderer.PluginEventListener
 import org.prebid.mobile.api.rendering.pluginrenderer.PrebidMobilePluginRenderer
@@ -406,6 +407,27 @@ object AudienzzPrebidMobile {
      */
     internal var sdkInitializedOverride: Boolean? = null
 
+    // Google is configured independently of Prebid. A failed PBS health check must not
+    // strand original-API slots behind a readiness gate for the rest of the session.
+    @Volatile internal var prebidUnavailable = false
+        private set
+    internal val isOriginalApiReady: Boolean
+        get() = isSdkInitialized || prebidUnavailable
+
+    internal fun completePrebidInitialization(status: InitializationStatus): AudienzzInitializationStatus {
+        prebidUnavailable = status == InitializationStatus.FAILED
+        if (prebidUnavailable) {
+            org.audienzz.mobile.screen.screenAdCoordinator?.resumeAllAfterSdkInit()
+            android.util.Log.w(TAG, "Prebid initialization failed; original API continues with Google demand")
+            return AudienzzInitializationStatus.SERVER_STATUS_WARNING.also {
+                it.description = "Prebid is unavailable; Google demand remains available. Retry initialization to restore Prebid."
+            }
+        }
+        AudienzzTargetingParams.onPrebidInitialized()
+        onPrebidInitialized()
+        return AudienzzInitializationStatus.fromPrebidInitializationStatus(status)
+    }
+
     /**
      * Work that needs Prebid and arrived before it was ready. Drained once, on initialization.
      *
@@ -583,13 +605,10 @@ object AudienzzPrebidMobile {
         sdkInitializationListener: AudienzzSdkInitializationListener?,
     ) {
         this.companyId = companyId
+        prebidUnavailable = false
         val listener = SdkInitializationListener { status ->
-            // M5: flush any consent/COPPA values the publisher set before init reached Prebid.
-            AudienzzTargetingParams.onPrebidInitialized()
-            onPrebidInitialized()
-            sdkInitializationListener?.onInitializationComplete(
-                AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
-            )
+            val result = completePrebidInitialization(status)
+            sdkInitializationListener?.onInitializationComplete(result)
         }
         registerActivityCallbacks(context)
         MainComponent.init(context)
@@ -612,6 +631,7 @@ object AudienzzPrebidMobile {
         publisherId: String,
         sdkInitializationListener: AudienzzSdkInitializationListener?,
     ) {
+        prebidUnavailable = false
         registerActivityCallbacks(context)
         MainComponent.init(context)
 
@@ -655,12 +675,8 @@ object AudienzzPrebidMobile {
                 }
 
                 val listener = SdkInitializationListener { status ->
-                    // M5: flush any consent/COPPA values the publisher set before init reached Prebid.
-                    AudienzzTargetingParams.onPrebidInitialized()
-            onPrebidInitialized()
-                    sdkInitializationListener?.onInitializationComplete(
-                        AudienzzInitializationStatus.fromPrebidInitializationStatus(status),
-                    )
+                    val result = completePrebidInitialization(status)
+                    sdkInitializationListener?.onInitializationComplete(result)
                 }
 
                 configureGam(context, publisherConfig?.gamConfig)
