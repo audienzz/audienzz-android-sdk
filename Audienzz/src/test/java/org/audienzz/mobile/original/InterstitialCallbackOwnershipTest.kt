@@ -1,5 +1,9 @@
 package org.audienzz.mobile.original
 
+import com.google.android.gms.ads.admanager.AdManagerAdRequest
+import org.audienzz.mobile.targeting.AudienzzAdRequestContext
+import org.audienzz.mobile.screen.ScreenAdCoordinator
+import org.audienzz.mobile.screen.screenAdCoordinatorOverride
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.admanager.AdManagerInterstitialAd
@@ -16,12 +20,14 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class InterstitialCallbackOwnershipTest {
-    @After fun cleanup() { unmockkAll() }
+    @After fun cleanup() { screenAdCoordinatorOverride = null; unmockkAll() }
 
     private fun load(onLoaded: (AdManagerInterstitialAd) -> Unit,
-                     events: AudienzzFullScreenContentCallback): AdManagerInterstitialAd {
+                     events: AudienzzFullScreenContentCallback,
+                     onRequest: (AdManagerAdRequest) -> Unit = {}): AdManagerInterstitialAd {
         val unit = mockk<AudienzzInterstitialAdUnit>(relaxed = true)
         every { unit.fetchDemand(any(), any()) } answers {
+            onRequest(firstArg())
             secondArg<(AudienzzResultCode?) -> Unit>()(AudienzzResultCode.NO_BIDS)
         }
         val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
@@ -36,6 +42,21 @@ class InterstitialCallbackOwnershipTest {
             resultCallback = { _, _, listener -> listener.onAdLoaded(ad) },
         )
         return ad
+    }
+
+    @Test fun `real interstitial handoff omits banner slot and leaves first banner numbered one`() {
+        val coordinator = ScreenAdCoordinator()
+        screenAdCoordinatorOverride = coordinator
+        coordinator.onScreenResumed("article")
+        val requests = mutableListOf<AdManagerAdRequest>()
+        load(onLoaded = {}, events = object : AudienzzFullScreenContentCallback() {}, onRequest = { requests += it })
+        assertEquals(1, requests.size)
+        val targeting = requests.single().customTargeting
+        assertNull(targeting.getString("au_slot"))
+        assertEquals("1", targeting.getString("au_page_seq"))
+        assertEquals("0", targeting.getString("hb_refresh_count"))
+        val banner = AudienzzAdRequestContext().buildRequest(AdManagerAdRequest.Builder())
+        assertEquals("1", banner.customTargeting.getString("au_slot"))
     }
 
     @Test fun `show from loaded callback already has terminal failure listener`() {

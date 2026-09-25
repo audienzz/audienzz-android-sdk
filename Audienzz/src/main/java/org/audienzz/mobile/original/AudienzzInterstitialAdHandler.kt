@@ -92,7 +92,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
 
         // Global targeting and the SDK's keys go onto the built request, never the publisher's
         // builder (see AudienzzAdRequestContext.buildPublisherRequest).
-        val request = requestContext.buildRequest(gamRequestBuilder)
+        val request = requestContext.buildRequest(gamRequestBuilder, isInterstitial = true)
         adUnit.fetchDemand(request) { resultCode ->
             val timeToRespond = System.currentTimeMillis() - requestStartMs
             // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).

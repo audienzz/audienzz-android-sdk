@@ -16,9 +16,10 @@ class AudienzzAdRequestContext {
 
     internal fun register() = ledger.reserve(this)
 
-    internal fun buildRequest(builder: AdManagerAdRequest.Builder): AdManagerAdRequest {
-        val snapshot = ledger.nextRequest(this)
+    internal fun buildRequest(builder: AdManagerAdRequest.Builder, isInterstitial: Boolean = false): AdManagerAdRequest {
+        val snapshot = ledger.nextRequest(this, isInterstitial)
         val request = buildPublisherRequest(builder)
+        request.customTargeting.remove("au_slot")
         snapshot.targeting.forEach { (key, value) -> request.customTargeting.putString(key, value) }
         return request
     }
@@ -41,6 +42,11 @@ class AudienzzAdRequestContext {
             return request
         }
 
+        /** Interstitials have counters, but do not consume banner positions. */
+        @JvmStatic
+        fun forInterstitial(identifier: String): AudienzzAdRequestContext =
+            ledger.forSlot("interstitial:$identifier")
+
         /** Bridge-only identity, stable across native objects created for the same Dart/JS ad. */
         @JvmStatic @JvmOverloads
         fun forSlot(identifier: String, pageKey: String? = null): AudienzzAdRequestContext =
@@ -53,14 +59,13 @@ class AudienzzAdRequestContext {
 }
 
 /** Immutable values for an admitted auction, not live properties of the currently active page. */
-internal data class AdRequestSnapshot(val pageSequence: Int, val slot: Int, val refresh: Int) {
-    val targeting: Map<String, String> get() = mapOf(
-        "au_page_seq" to pageSequence.toString(),
-        "au_slot" to slot.toString(),
-        // `hb_` like the Prebid keys it sits beside in GAM. Prebid Android only removes the keys
-        // it applied itself, so this one survives every auction (pinned in AdRequestContextTest).
-        "hb_refresh_count" to refresh.toString(),
-    )
+internal data class AdRequestSnapshot(val pageSequence: Int, val slot: Int?, val refresh: Int) {
+    val targeting: Map<String, String> get() = buildMap {
+        put("au_page_seq", pageSequence.toString())
+        // Prebid Android only removes the keys it applied itself, so this survives each auction.
+        put("hb_refresh_count", refresh.toString())
+        slot?.let { put("au_slot", it.toString()) }
+    }
 }
 
 /** Page-local bookkeeping only. Entries retain no view, activity, ad unit or publisher data. */
@@ -68,11 +73,13 @@ internal class AdRequestLedger {
     private data class Entry(val slot: Int, var requests: Int = 0)
     private var pageSequence = 0
     private val entries = IdentityHashMap<AudienzzAdRequestContext, Entry>()
+    private val interstitialRequests = IdentityHashMap<AudienzzAdRequestContext, Int>()
     private val bridgeSlots = mutableMapOf<String, AudienzzAdRequestContext>()
 
     @Synchronized fun beginPage(sequence: Int, retained: List<AudienzzAdRequestContext>) {
         pageSequence = sequence
         entries.clear()
+        interstitialRequests.clear()
         bridgeSlots.clear()
         // Coordinator registries are weak, unordered sets. Reserve BEFORE any recreation starts.
         retained.distinct().sortedBy { it.registrationOrder }.forEach { reserve(it) }
@@ -89,7 +96,12 @@ internal class AdRequestLedger {
             bridgeSlots[identifier] = it
         }
 
-    @Synchronized fun nextRequest(context: AudienzzAdRequestContext): AdRequestSnapshot {
+    @Synchronized fun nextRequest(context: AudienzzAdRequestContext, isInterstitial: Boolean = false): AdRequestSnapshot {
+        if (isInterstitial) {
+            val count = interstitialRequests[context] ?: 0
+            interstitialRequests[context] = count + 1
+            return AdRequestSnapshot(pageSequence, null, count)
+        }
         reserve(context)
         val entry = entries.getValue(context)
         return AdRequestSnapshot(pageSequence, entry.slot, entry.requests++)
