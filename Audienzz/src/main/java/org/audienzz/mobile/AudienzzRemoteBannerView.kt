@@ -258,19 +258,24 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         val isAdaptiveEnabled = adaptiveConfig?.enabled == true
 
         val primaryGamSize: AdSize = if (isAdaptiveEnabled) {
-            val widthPx = when (adaptiveConfig?.widthStrategy) {
-                "fullWidth" -> maxOf(width, resources.displayMetrics.widthPixels)
-                "custom" -> adaptiveConfig.customWidth ?: width
-                else -> width
+            // Backend dimensions are logical dp, like adSizes/maxHeight. Convert only measured
+            // Android pixels. The production backend sends CUSTOM/FULL_WIDTH, not camelCase.
+            val availableWidthDp = resources.pxToDp(width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels)
+            val widthDp = if (adaptiveConfig?.widthStrategy.equals("custom", ignoreCase = true)) {
+                adaptiveConfig?.customWidth?.takeIf { it > 0 } ?: availableWidthDp
+            } else {
+                availableWidthDp
             }
 
-            val widthDp = context.resources.pxToDp(widthPx)
-
-            if (adaptiveConfig.maxHeight != null) {
+            if (adaptiveConfig.type.equals("anchored", ignoreCase = true)) {
+                AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(context, widthDp)
+            } else if (adaptiveConfig.maxHeight != null) {
                 AdSize.getInlineAdaptiveBannerAdSize(
                     widthDp,
                     adaptiveConfig.maxHeight,
                 )
+            } else if (adaptiveConfig.type.equals("inline", ignoreCase = true)) {
+                AdSize.getCurrentOrientationInlineAdaptiveBannerAdSize(context, widthDp)
             } else {
                 AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(
                     context,
@@ -296,6 +301,11 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
             }
 
             setAdSizes(finalSizes[0], *finalSizes.drop(1).toTypedArray())
+            // Inline request descriptors have zero height until Google responds. Preserve a
+            // measurable first-load placeholder for the lazy gate, including a zero margin.
+            if (primaryGamSize.height == 0) {
+                minimumHeight = sortedGamSizes.first().getHeightInPixels(context)
+            }
             adListener = createAdListener()
         }
 
@@ -364,6 +374,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         override fun onAdLoaded() {
             super.onAdLoaded()
             Log.d(TAG, "onAdLoaded")
+            adView?.minimumHeight = 0
             adView?.let { AudienzzAdViewUtils.hideScrollBar(it) }
             externalAdListener?.onAdLoaded()
         }
