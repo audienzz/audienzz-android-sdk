@@ -1,5 +1,8 @@
 package org.audienzz.mobile
 
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import androidx.annotation.IntRange
 import org.audienzz.mobile.api.data.AudienzzBidInfo
 import org.prebid.mobile.AdUnit
@@ -24,6 +27,9 @@ internal data class AudienzzWinningBid(
 abstract class AudienzzAdUnit internal constructor(
     private val adUnit: AdUnit,
 ) {
+    private val demandHandler = Handler(Looper.getMainLooper())
+    private var cancelPendingDemand: (() -> Unit)? = null
+    internal var demandTimeoutMillis: Long? = null
 
     /**
      * Returns the Prebid winning-bid economics (cpm, currency, creative id, auction id, ad id) from
@@ -121,6 +127,8 @@ abstract class AudienzzAdUnit internal constructor(
     fun stopAutoRefresh() = Unit
 
     fun destroy() {
+        cancelPendingDemand?.invoke()
+        cancelPendingDemand = null
         adUnit.destroy()
     }
 
@@ -128,10 +136,48 @@ abstract class AudienzzAdUnit internal constructor(
         adObj: Any,
         listener: (AudienzzResultCode?) -> Unit,
     ) {
-        val onCompleteListener = OnCompleteListener { resultCode ->
-            listener(AudienzzResultCode.getResultCode(resultCode))
+        if (cancelPendingDemand != null) destroy()
+        if (AudienzzPrebidMobile.prebidUnavailable) {
+            listener(AudienzzResultCode.INVALID_CONTEXT)
+            return
         }
-        adUnit.fetchDemand(adObj, onCompleteListener)
+        // A PBS outage must end at Google even if Prebid throws or never calls back.
+        // Destroy the timed-out loader BEFORE handing off, so a late bid cannot mutate
+        // Google's request or cancel a replacement started from the publisher callback.
+        var settled = false
+        lateinit var timeout: Runnable
+        fun complete(result: AudienzzResultCode?, retire: Boolean = false) {
+            if (settled) return
+            settled = true
+            demandHandler.removeCallbacks(timeout)
+            cancelPendingDemand = null
+            if (retire) adUnit.destroy()
+            listener(result)
+        }
+        timeout = Runnable {
+            Log.w("AudienzzDemand", "Prebid response deadline reached; continuing with Google demand")
+            complete(AudienzzResultCode.TIMEOUT, retire = true)
+        }
+        cancelPendingDemand = {
+            settled = true
+            demandHandler.removeCallbacks(timeout)
+        }
+        demandHandler.postDelayed(timeout,
+            demandTimeoutMillis ?: (AudienzzPrebidMobile.timeoutMillis.toLong().coerceAtLeast(1) + 250))
+        try {
+            adUnit.fetchDemand(adObj, OnCompleteListener { resultCode ->
+                if (Looper.myLooper() == Looper.getMainLooper()) {
+                    complete(AudienzzResultCode.getResultCode(resultCode))
+                } else {
+                    demandHandler.post { complete(AudienzzResultCode.getResultCode(resultCode)) }
+                }
+            })
+        } catch (error: RuntimeException) {
+            // Do not swallow an exception raised by the publisher's synchronous callback.
+            if (settled) throw error
+            Log.w("AudienzzDemand", "Prebid request failed; continuing with Google demand", error)
+            complete(AudienzzResultCode.SERVER_ERROR, retire = true)
+        }
     }
 
     fun fetchDemand(listener: (AudienzzBidInfo) -> Unit) {

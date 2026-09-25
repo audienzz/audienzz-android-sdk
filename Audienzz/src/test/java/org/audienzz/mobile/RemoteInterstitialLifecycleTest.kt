@@ -3,6 +3,7 @@ package org.audienzz.mobile
 import android.app.Activity
 import android.os.Looper
 import com.google.android.gms.ads.AdError
+import com.google.android.gms.ads.FullScreenContentCallback
 import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import com.google.android.gms.ads.admanager.AdManagerInterstitialAd
 import io.mockk.*
@@ -55,6 +56,7 @@ class RemoteInterstitialLifecycleTest {
         owner.destroy()
         if (::fullscreen.isInitialized) fullscreen.onAdDismissedFullScreenContent()
         AppForegroundMonitor.resetForTesting()
+        AudienzzPrebidMobile.completePrebidInitialization(org.prebid.mobile.api.data.InitializationStatus.SUCCEEDED)
         unmockkAll()
     }
     private fun prefetchAndShow() { owner.prefetchAndShow(); shadowOf(Looper.getMainLooper()).idle() }
@@ -122,6 +124,48 @@ class RemoteInterstitialLifecycleTest {
         assertEquals(1, loads)
     }
     private fun prefetch() { owner.prefetch(); shadowOf(Looper.getMainLooper()).idle() }
+
+    @Test fun `Google only interstitial can prefetch show and dismiss repeatedly after late initialization`() {
+        // Exercise the actual owner AND handler-installed Google callback. Mocking the handler
+        // would miss a swallowed dismissal and leave the second ready ad unable to present.
+        unmockkConstructor(AudienzzInterstitialAdHandler::class)
+        AudienzzPrebidMobile.completePrebidInitialization(org.prebid.mobile.api.data.InitializationStatus.FAILED)
+        mockkStatic(AdManagerInterstitialAd::class)
+        val ads = mutableListOf<AdManagerInterstitialAd>()
+        every { AdManagerInterstitialAd.load(any<android.content.Context>(), any<String>(),
+            any<AdManagerAdRequest>(), any<com.google.android.gms.ads.admanager.AdManagerInterstitialAdLoadCallback>()) } answers {
+            val ad = mockk<AdManagerInterstitialAd>(relaxed = true)
+            var callback: FullScreenContentCallback? = null
+            every { ad.fullScreenContentCallback } answers { callback }
+            every { ad.fullScreenContentCallback = any() } answers { callback = firstArg() }
+            every { ad.show(activity) } answers { callback!!.onAdShowedFullScreenContent() }
+            ads += ad
+            arg<com.google.android.gms.ads.admanager.AdManagerInterstitialAdLoadCallback>(3).onAdLoaded(ad)
+        }
+        // The host was already running when a JS bridge initialized the SDK: no onStart replay.
+        repeat(3) { cycle ->
+            prefetch()
+            assertEquals(cycle + 1, ads.size)
+            assertTrue(owner.isReady)
+            assertTrue(owner.show(activity))
+            assertFalse(owner.isReady)
+            val overlay = mockk<Activity>(relaxed = true)
+            AppForegroundMonitor.onActivityPaused(activity)
+            AppForegroundMonitor.onActivityStarted(overlay)
+            ads.last().fullScreenContentCallback!!.onAdImpression()
+            // Google may stop its translucent activity before the host's resume callback.
+            AppForegroundMonitor.onActivityStopped(overlay)
+            AppForegroundMonitor.onActivityResumed(activity)
+            ads.last().fullScreenContentCallback!!.onAdDismissedFullScreenContent()
+            assertTrue(AppForegroundMonitor.isForeground)
+            assertFalse(owner.isReady)
+        }
+        ads.forEach { ad -> verify(exactly = 1) { ad.show(activity) } }
+        verify(exactly = 3) { events.onLoaded() }
+        verify(exactly = 3) { events.onClosed() }
+        verify(exactly = 0) { events.onFailedToShow(any()) }
+        verify(exactly = 0) { events.onLifecycleEvent(match { it["event"] == "opportunitySkipped" }) }
+    }
 
     @Test fun `prefetch retains inventory and never remembers a missed opportunity`() {
         prefetch(); prefetch()

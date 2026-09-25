@@ -867,7 +867,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         // and never calls back, so the request stays forever in flight, rearmInitialLoad() refuses
         // to re-arm ("request in flight") and the slot is empty for the rest of the session.
         // Refusing here instead records the pending reason, and initialization resumes it.
-        if (!AudienzzPrebidMobile.isSdkInitialized) {
+        if (!AudienzzPrebidMobile.isOriginalApiReady) {
             Log.d(TAG, "canStartAuction() adUnitId=${adView.adUnitId} — Prebid not initialized yet, deferring $reason")
             return false
         }
@@ -990,7 +990,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         val requestStartMs = System.currentTimeMillis()
         // Mint the auction id up front so bidRequest and every later event of this auction share it.
         currentAuctionId = UUID.randomUUID().toString()
-        if (!headerBiddingEnabled) {
+        if (!headerBiddingEnabled || AudienzzPrebidMobile.prebidUnavailable) {
             // No Prebid, so none of its analytics either: a bidRequest with no response — or a
             // noBid for a slot that never bid — would put an auction that never happened into the
             // header-bidding funnel. The GAM events that follow the load are still reported.
