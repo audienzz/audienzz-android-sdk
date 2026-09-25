@@ -1209,6 +1209,7 @@ prefetching when practical. Do not create owners or requests on rebuild, rotatio
 
 ### Automatic request counters
 
-Original and remote banners/interstitials automatically include `au_page_seq`, `au_slot` and
-`hb_refresh_count` in GAM custom targeting. See [the request targeting contract](docs/ad-request-targeting.md)
+Original and remote banners include `au_page_seq`, `au_slot` and `hb_refresh_count` in GAM
+custom targeting. Interstitials include only `au_page_seq` and `hb_refresh_count`; they never
+consume a banner position. See [the request targeting contract](docs/ad-request-targeting.md)
 for page resets, automatic slot ordering and request-count semantics. No new publisher parameter is required.
