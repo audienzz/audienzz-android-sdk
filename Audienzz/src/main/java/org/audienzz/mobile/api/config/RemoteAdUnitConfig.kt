@@ -63,6 +63,7 @@ data class RemoteAdaptiveBannerConfig(
     val type: String? = null,
     @SerialName("widthStrategy")
     val widthStrategy: String? = null,
+    /** Requested adaptive width in density-independent pixels, not Android physical pixels. */
     @SerialName("customWidth")
     val customWidth: Int? = null,
     @SerialName("maxHeight")
