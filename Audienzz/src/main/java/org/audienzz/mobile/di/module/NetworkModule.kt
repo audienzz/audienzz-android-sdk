@@ -14,6 +14,7 @@ import org.audienzz.mobile.event.network.EventApi
 import retrofit2.Converter.Factory
 import retrofit2.Retrofit
 import javax.inject.Singleton
+import java.util.concurrent.TimeUnit
 
 @Module
 internal class NetworkModule {
@@ -51,7 +52,9 @@ internal class NetworkModule {
         okHttpClient: OkHttpClient,
     ): EventApi = Retrofit.Builder()
         .addConverterFactory(converterFactory)
-        .client(okHttpClient)
+        // Bound a complete analytics attempt, including a server that never finishes its reply.
+        // The derived client shares the connection pool with the supplied client.
+        .client(okHttpClient.newBuilder().callTimeout(30, TimeUnit.SECONDS).build())
         .baseUrl(BuildConfig.EVENTS_BASE_URL)
         .build()
         .create(EventApi::class.java)

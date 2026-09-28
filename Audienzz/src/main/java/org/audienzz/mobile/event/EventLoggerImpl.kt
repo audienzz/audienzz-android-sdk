@@ -91,8 +91,7 @@ internal class EventLoggerImpl @Inject constructor(
         // Assign the sequence synchronously, in call order, before the coroutine launches.
         val sequencedEvent = event.copy(sessionSequence = sessionSequence.getAndIncrement())
         // Inject ids off the main thread (adId lookup can block), then map to the wire payload and
-        // hand it to the batcher, which coalesces events and POSTs them to /submit/batch on
-        // size/time/background triggers.
+        // hand it to the durable sender, which persists it and attempts delivery immediately.
         //
         // Mapping here rather than at send time freezes the device/app context at event creation,
         // which matters once the batcher persists across process death: a restored event must carry

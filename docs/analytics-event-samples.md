@@ -3,7 +3,8 @@
 One representative payload per event type, captured from the Audienzz Test App
 (SDK `0.1.4`, `dev-analytics`, banner + rewarded on `MainActivity`).
 
-Each event is a flat JSON object POSTed individually to
+Each sample below is a flat event object. Current-branch delivery POSTs an array containing
+one such event to
 `https://api.adnz.co/api/ws-clickstream-collector/submit/batch`.
 
 **Event flow per screen visit:**
