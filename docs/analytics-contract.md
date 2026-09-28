@@ -363,3 +363,34 @@ force-quit no longer loses the buffer. Two consequences worth knowing:
 
 The store is capped at 500 events (drop oldest). A device that is offline for a long session will
 lose the oldest events beyond that, exactly as the in-memory buffer did before.
+
+### Checking delivery in Flutter and React Native
+
+Both bridges use the native collector transport. In Charles, look for
+`api.adnz.co/api/ws-clickstream-collector/submit/batch`, with SSL proxying enabled for
+`api.adnz.co:443` and the Charles certificate trusted on the test device. A partial batch can
+wait 15 seconds; there is not one HTTP request per event. Flutter's Dart proxy override alone
+does not route native analytics: the device's network proxy must also be configured.
+
+With SDK diagnostics enabled (already enabled in the examples), filter device logs for
+`AUDZ analytics`. The current branch reports:
+
+* `queued`: the native queue received an event, with its type only.
+* `sending`: a batch is being submitted, with event count and attempt number.
+* `sent`: the HTTP request succeeded. This does not prove downstream dashboard ingestion.
+* `failed`: the HTTP status or transport error code/type; `dropped` means retries were exhausted.
+
+These lines omit payloads, identifiers, targeting and consent strings, and are disabled when
+SDK diagnostics are off. If `sending` appears without a decrypted request in Charles, check the
+device proxy, certificate trust and capture filters. If `failed` appears, its status/code identifies
+the transport failure without needing the event payload.
+
+The current iOS branch also fixes a queue stall in the 0.4.0 transport: an empty or non-JSON reply
+could leave a batch in flight forever. All 2xx acknowledgements now settle successfully, including
+204; non-2xx replies enter the retry path regardless of body format. Both bridges need the fixed
+native SDK (or a local native checkout for verification); upgrading Dart/JS alone cannot apply it.
+
+Verified on September 28, 2026: both iOS example apps built against the patched native checkout
+drained their retained event queues; the live collector returned HTTP 204 in the React Native run.
+Android's event-to-HTTP integration tests also pass with 204 (and retry an HTML 403 response),
+but that does not establish why a particular Android device shows no requests in Charles.
