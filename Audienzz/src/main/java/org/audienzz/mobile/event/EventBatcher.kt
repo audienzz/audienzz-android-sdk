@@ -18,6 +18,8 @@ import org.audienzz.mobile.di.qualifier.IO
 import org.audienzz.mobile.event.network.entity.EventNetwork
 import org.audienzz.mobile.event.repository.remote.RemoteEventRepository
 import org.audienzz.mobile.util.AppForegroundMonitor
+import org.audienzz.mobile.util.AudienzzDiagnostics
+import retrofit2.HttpException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -71,6 +73,7 @@ internal class EventBatcher @Inject constructor(
         // event entirely.
         store.append(event)
         events.trySend(event)
+        AudienzzDiagnostics.log("analytics", "queued", "type" to event.eventType)
     }
 
     /** Ask the consumer to send whatever it has buffered now (no-op if the buffer is empty). */
@@ -120,13 +123,22 @@ internal class EventBatcher @Inject constructor(
         var attempt = 0
         while (true) {
             try {
+                AudienzzDiagnostics.log("analytics", "sending", "count" to batch.size, "attempt" to attempt + 1)
                 remoteRepository.submitBatch(batch)
+                AudienzzDiagnostics.log("analytics", "sent", "count" to batch.size)
                 Log.d(TAG, "batch sent (${batch.size} events)")
                 return
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (throwable: Throwable) {
+                // Log only transport metadata, never the payload or arbitrary server error text.
+                AudienzzDiagnostics.log(
+                    "analytics", "failed", "count" to batch.size, "attempt" to attempt + 1,
+                    "status" to (throwable as? HttpException)?.code(),
+                    "reason" to throwable.javaClass.simpleName,
+                )
                 if (attempt >= MAX_RETRIES) {
+                    AudienzzDiagnostics.log("analytics", "dropped", "count" to batch.size)
                     Log.e(TAG, "batch dropped after $MAX_RETRIES retries (${batch.size} events)", throwable)
                     return
                 }
