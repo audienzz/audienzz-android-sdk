@@ -633,4 +633,35 @@ class AudienzzAdViewHandlerTest {
         idle(22_000); assertEquals(3, responses.size)
     }
 
+
+    @Test
+    fun `Google impression cannot inherit a losing Prebid bid amount`() {
+        val logger = mockk<org.audienzz.mobile.event.EventLogger>(relaxed = true)
+        val events = mutableListOf<org.audienzz.mobile.event.entity.EventDomain>()
+        io.mockk.mockkObject(org.audienzz.mobile.di.MainComponent.Companion)
+        try {
+            every { org.audienzz.mobile.di.MainComponent.eventLogger } returns logger
+            every { logger.logEvent(capture(events)) } returns Unit
+            every { adUnit.getWinningBid() } returns org.audienzz.mobile.AudienzzWinningBid(
+                1.42, "USD", "creative-A", "server-auction-A", "bid-A")
+            every { adUnit.fetchDemand(any(), any()) } answers {
+                val request = firstArg<AdManagerAdRequest>()
+                org.prebid.mobile.Util.apply(hashMapOf("hb_bidder" to "seat-A", "hb_pb" to "1.40"), request)
+                secondArg<(AudienzzResultCode?) -> Unit>().invoke(AudienzzResultCode.SUCCESS)
+            }
+            openPage("A")
+            loadOn("A")
+            googleListener.onAdLoaded()
+            googleListener.onAdImpression()
+            val bid = events.single { it.eventType == org.audienzz.mobile.event.entity.EventType.BID_WON }
+            assertEquals(1.42, bid.cpm)
+            assertEquals("USD", bid.currency)
+            val impression = events.single { it.eventType == org.audienzz.mobile.event.entity.EventType.AD_IMPRESSION }
+            assertEquals("google", impression.bidderCode)
+            assertEquals(null, impression.cpm)
+            assertEquals(null, impression.currency)
+            assertEquals(null, impression.creativeId)
+            assertEquals(null, impression.adId)
+        } finally { io.mockk.unmockkObject(org.audienzz.mobile.di.MainComponent.Companion) }
+    }
 }

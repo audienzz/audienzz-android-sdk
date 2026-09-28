@@ -571,6 +571,11 @@ object AudienzzPrebidMobile {
         return renderer
     }
 
+    /** Call before initialization for test/staging apps or a direct integration. */
+    @JvmStatic
+    fun configureAnalytics(publisherId: String?, environment: String): Boolean =
+        org.audienzz.mobile.event.AnalyticsContext.configure(publisherId, environment)
+
     /**
      * Initializes the main SDK classes and makes request to Prebid server to check its status.
      * If you use custom /status endpoint set it with
@@ -636,6 +641,7 @@ object AudienzzPrebidMobile {
         MainComponent.init(context)
 
         this.publisherId = publisherId
+        org.audienzz.mobile.event.AnalyticsContext.setPublisherId(publisherId)
 
         MainComponent.remoteConfigManager?.let { manager ->
             manager.initialize(publisherId)

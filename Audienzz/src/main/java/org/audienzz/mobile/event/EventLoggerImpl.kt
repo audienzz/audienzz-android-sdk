@@ -89,7 +89,14 @@ internal class EventLoggerImpl @Inject constructor(
             currentPageImpressionId = generateUuidString()
         }
         // Assign the sequence synchronously, in call order, before the coroutine launches.
-        val sequencedEvent = event.copy(sessionSequence = sessionSequence.getAndIncrement())
+        val context = AnalyticsContext.snapshot()
+        val sequencedEvent = event.copy(
+            sessionSequence = sessionSequence.getAndIncrement(),
+            pageImpressionId = currentPageImpressionId,
+            screenName = event.screenName ?: currentScreenName,
+            publisherId = context.publisherId,
+            environment = context.environment,
+        )
         // Inject ids off the main thread (adId lookup can block), then map to the wire payload and
         // hand it to the durable sender, which persists it and attempts delivery immediately.
         //
@@ -107,13 +114,9 @@ internal class EventLoggerImpl @Inject constructor(
         copy(
             uuid = generateUuidString(),
             visitorId = preferences.getVisitorId(),
-            companyId = companyIdProvider.getCompanyId(),
             sessionId = this@EventLoggerImpl.sessionId,
             sessionStartTimestamp = this@EventLoggerImpl.sessionStartTimestamp,
             deviceId = adIdProvider.getAdId(),
-            pageImpressionId = currentPageImpressionId,
-            screenName = screenName ?: currentScreenName,
-            websiteId = websiteId ?: runCatching { AudienzzPrebidMobile.publisherId }.getOrNull(),
         )
 
     companion object {

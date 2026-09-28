@@ -5,6 +5,8 @@ internal data class EventDomain(
     val uuid: String? = null,
     val visitorId: String? = null,
     val companyId: String? = null,
+    val publisherId: String? = null,
+    val environment: String = "production",
     val sessionId: String? = null,
     val sessionStartTimestamp: Long? = null,
     val sessionSequence: Int? = null,
