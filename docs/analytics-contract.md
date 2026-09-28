@@ -24,7 +24,7 @@ remain JSON **strings**, including CPM and counters. The collector endpoint is
 | `event_id` | New lowercase UUID per event; unchanged on retry. Collector deduplicates this key. |
 | `session_id`, `session_seq` | Process session and monotonic event sequence starting at zero. Sort by sequence, not HTTP arrival. |
 | `session_start_timestamp` | Unix seconds. `event_timestamp` remains ISO-8601 UTC with milliseconds. Durations remain milliseconds. |
-| `page_impression_id`, `screen_name` | Current visit and publisher-reported page name, captured when the event fires. |
+| `page_impression_id`, `screen_name` | Screen-visit UUID and publisher-reported name, captured when the ad request starts. All events for that delivery retain this pair; a new page impression creates a new pair. |
 | `device_id` | Available advertising identifier only. Omitted for zero/unavailable IDFA/AAID; no substitute identity is invented. |
 
 Previously, iOS remote initialization copied the publisher ID into both company and website;
@@ -128,6 +128,26 @@ Native SDKs automatically re-report the active page after an app background/fore
 The managed bridge interstitial flow also handles return to the current page; do not add another
 publisher page impression for the same dismissal. A page change in fullscreen must remain owned
 by navigation, rather than resurrecting the page that launched the ad.
+
+### Joining ad events to a page visit
+
+`pageImpression.page_impression_id` is the visit key. Every `bidRequest`, `bidResponse`, `bidWon`,
+`noBid`, `adImpression`, `adClick` and `viewability.*` for an ad request carries that same top-level
+`page_impression_id`. Each event still has its own `event_id` for retry deduplication.
+
+- Refreshing a banner on the same visit keeps the page ID and creates a new auction ID.
+- Navigating A → B → A creates three different page IDs, including on an ad-free screen.
+- Late callbacks and queued/retried events retain the originating visit; they cannot adopt the
+  screen that happens to be current when the callback or network send occurs.
+- An interstitial prefetched on A and shown on B retains A's page ID for its entire lifecycle.
+  A new prefetch accepted on B gets B's ID. Joining the request to its eventual render is deliberate.
+- Call `pageImpression` before requesting ads. Before the first report, the SDK omits the page ID
+  rather than inventing an ID with no matching page event. Such an early load does not adopt a later
+  visit retroactively. Loading behavior is unchanged; a missing page ID indicates integration order.
+
+Native owns this attribution for Flutter and React Native too; publishers do not attach the ID
+manually. Background-thread page reports publish the ID and transition the native slots together
+on the main thread, so old-page work cannot observe the next visit before its release.
 
 ## 5. Release and operational action items
 
@@ -237,15 +257,19 @@ worker threads, not UI blocking time or measurements of physical-device battery 
 
 ## Validation of the September 28 changes
 
-- Native suites: 299 iOS tests and 276 Android tests pass; an additional focused iOS regression
-  verifies that stock Prebid exposes the price bucket without exact bid economics. Flutter: 211 tests; RN: 144 tests plus
-  one existing TODO. TypeScript passes. Flutter analysis retains existing lint warnings/infos.
-- Flutter and RN compile on both platforms against the local updated native SDKs. Local dependency
-  overrides are not committed and published dependency pins remain unchanged.
+- Current native suites: 305 iOS tests and 281 Android tests pass, including page attribution for
+  navigation/return, banner refreshes, late interstitial callbacks and bridge-thread page reports.
+  Reverting captured-page attribution fails the real interstitial callback test on both platforms.
+- Earlier identity/schema checks: Flutter 211 tests; RN 144 tests plus one existing TODO;
+  TypeScript passed. Flutter analysis retained existing lint warnings/infos. These bridge suites
+  were not rerun for the native-only page-attribution follow-up.
+- Earlier Flutter/RN builds compiled on both platforms against local natives. Local dependency
+  overrides are not committed and published dependency pins remain unchanged; the page-attribution
+  follow-up has been compiled and tested through the native suites.
 - The installed iOS banner delegate regression delivers five impression callbacks for one
   creative, then a replacement. Removing the guard fails it (five impressions instead of one).
   The same path checks Google CHF 0.0025 impression revenue becomes CHF 2.50 CPM.
-- Normal Flutter and RN iOS simulator runs received HTTP 204 for the new event schema. Publisher,
+- Before the page-attribution follow-up, normal Flutter and RN iOS simulator runs received HTTP 204 for the new event schema. Publisher,
   environment and OS version were present, legacy company/website fields absent; two Flutter
   impressions had distinct delivery/auction identities. These are short smoke tests, not proof
   of every production lifecycle or of dashboard ingestion.

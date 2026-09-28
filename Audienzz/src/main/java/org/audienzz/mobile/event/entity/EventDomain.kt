@@ -12,6 +12,7 @@ internal data class EventDomain(
     val sessionSequence: Int? = null,
     val deviceId: String? = null,
     val pageImpressionId: String? = null,
+    val pageContext: org.audienzz.mobile.event.AnalyticsPageContext? = null,
     val eventType: EventType? = null,
     val timestamp: Long = System.currentTimeMillis(),
     val resultCode: String? = null,

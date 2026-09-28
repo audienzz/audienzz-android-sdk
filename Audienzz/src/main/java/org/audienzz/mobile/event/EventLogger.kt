@@ -19,6 +19,8 @@ internal interface EventLogger {
     fun logEvent(event: EventDomain)
 
     fun onScreenResumed(screenName: String)
+
+    fun capturePageContext(): AnalyticsPageContext = AnalyticsPageContext()
 }
 
 internal val eventLogger: EventLogger?
@@ -44,6 +46,7 @@ internal data class RenderEconomics(
     val adId: String? = null,
     val timeToRespond: Long? = null,
     val slotReload: Int? = null,
+    val pageContext: AnalyticsPageContext? = null,
 )
 
 private fun EventDomain.applyEconomics(ec: RenderEconomics?): EventDomain =
@@ -66,6 +69,7 @@ private fun EventDomain.applyEconomics(ec: RenderEconomics?): EventDomain =
             adId = ec.adId,
             timeToRespond = timeToRespond ?: ec.timeToRespond,
             slotReload = ec.slotReload,
+            pageContext = pageContext ?: ec.pageContext,
         )
     }
 
@@ -84,9 +88,11 @@ internal fun EventLogger.bidRequest(
     mediaTypes: String? = null,
     auctionId: String? = null,
     slotReload: Int? = null,
+    pageContext: AnalyticsPageContext? = null,
 ) {
     logEvent(
         EventDomain(
+            pageContext = pageContext,
             eventType = BID_REQUEST,
             adUnitId = adUnitId,
             adViewId = adViewId,
@@ -120,9 +126,11 @@ internal fun EventLogger.bidResponse(
     timeToRespond: Long? = null,
     adUnitCode: String? = null,
     economics: RenderEconomics? = null,
+    pageContext: AnalyticsPageContext? = null,
 ) {
     logEvent(
         EventDomain(
+            pageContext = pageContext,
             eventType = BID_RESPONSE,
             adUnitId = adUnitId,
             adViewId = adViewId,
@@ -153,9 +161,11 @@ internal fun EventLogger.bidWon(
     apiType: ApiType,
     adUnitCode: String? = null,
     economics: RenderEconomics? = null,
+    pageContext: AnalyticsPageContext? = null,
 ) {
     logEvent(
         EventDomain(
+            pageContext = pageContext,
             eventType = BID_WON,
             adUnitId = adUnitId,
             adViewId = adViewId,
@@ -187,12 +197,14 @@ internal fun EventLogger.noBid(
     mediaTypes: String? = null,
     auctionId: String? = null,
     slotReload: Int? = null,
+    pageContext: AnalyticsPageContext? = null,
 ) {
     logEvent(
         // A no-bid is AUCTION-level: Prebid reports that nothing usable came back, not which
         // bidders were asked or which of them declined. `bidderCode` is therefore left null — the
         // collector receives no key at all — rather than inventing one or reusing the last winner.
         EventDomain(
+            pageContext = pageContext,
             eventType = NO_BID,
             adUnitId = adUnitId,
             adViewId = adViewId,
@@ -219,9 +231,11 @@ internal fun EventLogger.adImpression(
     apiType: ApiType,
     adUnitCode: String? = null,
     economics: RenderEconomics? = null,
+    pageContext: AnalyticsPageContext? = null,
 ) {
     logEvent(
         EventDomain(
+            pageContext = pageContext,
             eventType = AD_IMPRESSION,
             adUnitId = adUnitId,
             adType = adType,
@@ -240,9 +254,11 @@ internal fun EventLogger.viewabilityStart(
     apiType: ApiType,
     adUnitCode: String? = null,
     economics: RenderEconomics? = null,
+    pageContext: AnalyticsPageContext? = null,
 ) {
     logEvent(
         EventDomain(
+            pageContext = pageContext,
             eventType = VIEWABILITY_START,
             adUnitId = adUnitId,
             adType = adType,
@@ -261,9 +277,11 @@ internal fun EventLogger.viewabilitySuccess(
     apiType: ApiType,
     adUnitCode: String? = null,
     economics: RenderEconomics? = null,
+    pageContext: AnalyticsPageContext? = null,
 ) {
     logEvent(
         EventDomain(
+            pageContext = pageContext,
             eventType = VIEWABILITY_SUCCESS,
             adUnitId = adUnitId,
             adType = adType,
@@ -282,9 +300,11 @@ internal fun EventLogger.adClick(
     apiType: ApiType? = null,
     adUnitCode: String? = null,
     economics: RenderEconomics? = null,
+    pageContext: AnalyticsPageContext? = null,
 ) {
     logEvent(
         EventDomain(
+            pageContext = pageContext,
             eventType = AD_CLICK,
             adUnitId = adUnitId,
             adType = adType,

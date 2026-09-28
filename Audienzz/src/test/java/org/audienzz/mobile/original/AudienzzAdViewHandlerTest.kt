@@ -634,6 +634,41 @@ class AudienzzAdViewHandlerTest {
     }
 
 
+    @Test fun `banner request and rendered creative retain the page visit across refresh and return`() {
+        val logger = mockk<org.audienzz.mobile.event.EventLogger>(relaxed = true)
+        val events = mutableListOf<org.audienzz.mobile.event.entity.EventDomain>()
+        var page = org.audienzz.mobile.event.AnalyticsPageContext()
+        io.mockk.mockkObject(org.audienzz.mobile.di.MainComponent.Companion)
+        try {
+            every { org.audienzz.mobile.di.MainComponent.eventLogger } returns logger
+            every { logger.capturePageContext() } answers { page }
+            every { logger.onScreenResumed(any()) } answers {
+                page = org.audienzz.mobile.event.AnalyticsPageContext(java.util.UUID.randomUUID().toString(), firstArg())
+            }
+            every { logger.logEvent(capture(events)) } returns Unit
+            openPage("A")
+            val first = page
+            loadOn("A")
+            respondTo(0)
+            googleListener.onAdImpression()
+            handler.reloadAd()
+            assertEquals(2, responses.size)
+            respondTo(1)
+            googleListener.onAdImpression()
+            assertEquals(2, events.count { it.eventType == org.audienzz.mobile.event.entity.EventType.AD_IMPRESSION })
+            assertTrue(events.all { it.pageContext == first })
+            openPage("B")
+            openPage("A")
+            val returned = page
+            assertTrue(returned.pageImpressionId != first.pageImpressionId)
+            assertEquals(3, responses.size)
+            respondTo(2)
+            googleListener.onAdImpression()
+            assertEquals(returned, events.last { it.eventType == org.audienzz.mobile.event.entity.EventType.AD_IMPRESSION }.pageContext)
+            assertEquals(returned, events.last { it.eventType == org.audienzz.mobile.event.entity.EventType.BID_REQUEST }.pageContext)
+        } finally { io.mockk.unmockkObject(org.audienzz.mobile.di.MainComponent.Companion) }
+    }
+
     @Test
     fun `Google impression cannot inherit a losing Prebid bid amount`() {
         val logger = mockk<org.audienzz.mobile.event.EventLogger>(relaxed = true)

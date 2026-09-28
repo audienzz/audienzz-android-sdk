@@ -19,6 +19,7 @@ import org.audienzz.mobile.event.adClick
 import org.audienzz.mobile.event.adImpression
 import org.audienzz.mobile.event.bidRequest
 import org.audienzz.mobile.event.bidResponse
+import org.audienzz.mobile.event.AnalyticsPageContext
 import org.audienzz.mobile.event.RenderEconomics
 import org.audienzz.mobile.event.bidWon
 import org.audienzz.mobile.event.entity.AdSubtype
@@ -129,6 +130,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     // auction (bidRequest → bidResponse/bidWon/noBid → adImpression/adClick/viewability). Prebid
     // only assigns its own id after the request, so we pre-generate one for full-funnel counting.
     private var currentAuctionId: String? = null
+    private var currentAnalyticsPage = AnalyticsPageContext()
     // How many times this slot has (re)loaded. Internal only.
     //
     // What is REPORTED is [emittedSlotReload], a binary flag. The counter itself used to be the
@@ -990,6 +992,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         val requestStartMs = System.currentTimeMillis()
         // Mint the auction id up front so bidRequest and every later event of this auction share it.
         currentAuctionId = UUID.randomUUID().toString()
+        val requestPage = eventLogger?.capturePageContext() ?: AnalyticsPageContext()
+        currentAnalyticsPage = requestPage
         if (!headerBiddingEnabled || AudienzzPrebidMobile.prebidUnavailable) {
             // No Prebid, so none of its analytics either: a bidRequest with no response — or a
             // noBid for a slot that never bid — would put an auction that never happened into the
@@ -1009,6 +1013,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             return true
         }
         eventLogger?.bidRequest(
+            pageContext = requestPage,
             adViewId = adView.adViewId,
             adUnitId = adView.adUnitId,
             sizes = adView.adSizes?.asIterable()?.sizesJson,
@@ -1095,6 +1100,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             }
 
             eventLogger?.bidResponse(
+                pageContext = requestPage,
                 adViewId = adView.adViewId,
                 adUnitId = adView.adUnitId,
                 sizes = adView.adSizes?.asIterable()?.sizesJson,
@@ -1113,6 +1119,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             )
             if (economics != null) {
                 eventLogger?.bidWon(
+                    pageContext = requestPage,
                     adViewId = adView.adViewId,
                     adUnitId = adView.adUnitId,
                     sizes = adView.adSizes?.asIterable()?.sizesJson,
@@ -1127,6 +1134,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                 )
             } else {
                 eventLogger?.noBid(
+                    pageContext = requestPage,
                     adViewId = adView.adViewId,
                     adUnitId = adView.adUnitId,
                     sizes = adView.adSizes?.asIterable()?.sizesJson,
@@ -1317,6 +1325,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         val base = lastRenderEconomics ?: RenderEconomics()
         displayedEconomics = base.copy(
             auctionId = base.auctionId ?: currentAuctionId,
+            pageContext = currentAnalyticsPage,
             // The reported flag is binary and belongs to the creative, not the slot's current count.
             slotReload = base.slotReload ?: emittedSlotReload,
         )
