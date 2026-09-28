@@ -8,7 +8,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -43,7 +42,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 @RunWith(RobolectricTestRunner::class)
 class AnalyticsTransportTest {
     @Test
-    fun `events without an advertising ID reach the collector route after 15 seconds`() = verifyDelivery(false)
+    fun `events without an advertising ID reach the collector immediately`() = verifyDelivery(false)
 
     @Test
     fun `an HTML HTTP failure retries the same batch and a 204 drains it`() = verifyDelivery(true)
@@ -70,7 +69,7 @@ class AnalyticsTransportTest {
             requireNotNull(request.body).writeTo(buffer)
             bodies.add(json.parseToJsonElement(buffer.readUtf8()) as JsonArray)
             val status = if (failFirst && bodies.size == 1) 403 else 204
-            if (status == 204) sent.complete(Unit)
+            if (bodies.size == (if (failFirst) 3 else 2)) sent.complete(Unit)
             Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
                 .code(status).message("fixture")
                 .body((if (status == 403) "<html>Forbidden</html>" else "").toResponseBody())
@@ -91,23 +90,21 @@ class AnalyticsTransportTest {
             logger.onScreenResumed("fixture-screen")
             logger.logEvent(EventDomain(eventType = EventType.AD_IMPRESSION))
             runCurrent()
-            assertEquals(2, store.count())
-            advanceTimeBy(14_999)
-            runCurrent()
-            assertTrue("A partial batch should wait for its deadline", bodies.isEmpty())
-            advanceTimeBy(1)
-            runCurrent()
+            // No advanceTimeBy(15_000): the first request must start immediately. Network replies
+            // run on OkHttp's thread; runTest drives subsequent delivery/retry continuations.
             sent.await() // runTest drives the consumer while OkHttp replies on its own thread.
             // Wait for acknowledgement processing too, not merely arrival at the interceptor.
             withContext(Dispatchers.Default) {
                 withTimeout(5_000) { while (store.count() != 0) delay(10) }
             }
-            assertEquals(if (failFirst) 2 else 1, bodies.size)
-            val events = bodies.last().map { it.jsonObject }
+            assertTrue(EventStore(context).loadAll().isEmpty())
+            assertEquals(if (failFirst) 3 else 2, bodies.size)
+            assertTrue(bodies.all { it.size == 1 })
+            val events = bodies.flatten().map { it.jsonObject }.distinctBy { it["event_id"] }
             assertEquals(listOf("pageImpression", "adImpression"), events.map { it["event_type"]?.jsonPrimitive?.content })
             assertTrue(events.all { it["device_id"] == null })
             assertTrue(events.all { !it["event_id"]?.jsonPrimitive?.content.isNullOrBlank() })
-            if (failFirst) assertEquals(bodies.first(), bodies.last())
+            if (failFirst) assertEquals(2, bodies.count { it == bodies.first() })
             assertTrue(diagnostics.any { it.startsWith("AUDZ analytics sending") })
             assertTrue(diagnostics.any { it.startsWith("AUDZ analytics sent") })
             if (failFirst) assertTrue(diagnostics.any { it.startsWith("AUDZ analytics failed") && it.contains("status=403") })

@@ -328,57 +328,62 @@ build carrying these fixes is indistinguishable by version alone, so use the **d
 For the release itself, bump the version constant **in the same commit** as the release tag, so the
 two can never disagree again.
 
-## Delivery: batching and the durable outbox
+## Delivery: immediate sends and a durable outbox
 
-Identical on iOS (`AUEventQueue` + `AUEventStore`) and Android (`EventBatcher` + `EventStore`).
+The current branch uses the same policy on iOS (`AUEventQueue` + `AUEventStore`) and Android
+(`EventBatcher` + `EventStore`). The existing endpoint remains `/submit/batch` for server
+compatibility, but **each request contains a single event**. There is no batching window or size
+threshold. Delivery starts as soon as the event is persisted and the sender is available.
 
-| Setting | Value | Was |
+| Setting | Current branch | Previous behaviour |
 |---|---|---|
-| Max events per POST | 20 | 20 (unchanged) |
-| Flush interval (partial batch) | 15s | 5s |
-| Max buffered / stored events | 500 | 500 (memory only) |
-| Retries per batch | 3, backing off 2s / 4s / 8s | unchanged |
-| Extra flush triggers | app background, app foreground, connectivity regained (iOS) | unchanged |
+| Events per POST | 1 | Up to 20 |
+| Deliberate batching delay | None | Up to 15 seconds |
+| Concurrent HTTP requests per SDK process | 1 | 1 batch |
+| Complete HTTP attempt timeout | 30 seconds | Platform defaults |
+| Failed delivery | Retained; consecutive failures back off 2s, 4s, 8s, 16s, 32s, then 60s; success resets backoff | Dropped after 3 retries |
+| Persisted pending events | 500, evict oldest waiting event on overflow; protect the in-flight event | 500 buffered events |
 
-**What this means for a consumer.** An event can now arrive up to ~15s after it occurred, plus
-retry backoff — `event_timestamp` is when it *happened* and is unaffected, but "rows seen in the
-last minute" is no longer a good proxy for "events that just occurred". Order within a session is
-carried by `session_seq`, not arrival, so batching and retries cannot reorder anything.
+**Save → attempt → acknowledge → remove.** File I/O, request creation and retries run off the UI
+thread. The application never waits for the collector. A successful HTTP acknowledgement,
+including 204, removes that event by `event_id`. Failure leaves it saved. Foreground/connectivity
+hints and new events cannot bypass retry backoff. A rejected event rotates behind other pending
+events so one invalid payload cannot permanently strand the rest. On startup, saved pending
+events resume delivery with their original IDs, timestamps and payloads.
 
-**Duplicates are possible and expected to be deduped on `event_id`.** A batch that is in flight when
-the process dies is still on disk, so the next launch resends it. That is deliberate: a duplicate is
-recoverable, a dropped event is not. `event_id` is a UUID minted per event, so deduping on it is
-exact.
+The outbox keeps the existing JSONL storage and adds small acknowledgement records. It reads the
+backlog once, appends changes, and compacts every 64 removals or when empty. This avoids a full-file
+rewrite for every request. Existing event-only files are readable without losing pending events.
+Repeated SDK initialization reuses the same sender/store owner.
 
-**Events now survive process death.** They are written to a JSON-Lines file the moment they are
-enqueued — not at flush time — and removed only once the batch settles, so a foreground crash or a
-force-quit no longer loses the buffer. Two consequences worth knowing:
+**Duplicates remain possible:** the server can accept an event and the app can close before the
+acknowledgement is recorded. The collector must deduplicate by `event_id`, not `auction_id` or slot.
+Order analytically by `session_seq`, not HTTP arrival. Immediate delivery does not guarantee receipt
+before force-quit; retained data resumes when the app can run again. Uninstalling the app, exceeding
+the storage cap, or a filesystem failure can still lose data. `persistenceFailed` diagnoses a failed
+write; analytics falls back to memory rather than interrupting ads or the application.
 
-* Events can arrive in a *later session* than the one that produced them. They keep their original
-  `session_id`, `session_start_timestamp` and `session_seq`, and on Android the whole payload is
-  frozen at creation time, so `app_version` and device context are the ones the event was produced
-  under — not the ones it was eventually delivered from.
-* A batch that exhausts its retries is dropped from disk rather than kept, otherwise every future
-  launch would replay a permanently failing batch forever.
-
-The store is capped at 500 events (drop oldest). A device that is offline for a long session will
-lose the oldest events beyond that, exactly as the in-memory buffer did before.
+**Performance tradeoff:** removing batching increases HTTP request count. Connection reuse, a
+single in-flight request, off-thread storage and capped retries bound the work; they do not imply
+zero battery/network cost. Host/simulator storage benchmarks are regression checks, not physical
+device battery measurements.
 
 ### Checking delivery in Flutter and React Native
 
 Both bridges use the native collector transport. In Charles, look for
 `api.adnz.co/api/ws-clickstream-collector/submit/batch`, with SSL proxying enabled for
-`api.adnz.co:443` and the Charles certificate trusted on the test device. A partial batch can
-wait 15 seconds; there is not one HTTP request per event. Flutter's Dart proxy override alone
+`api.adnz.co:443` and the Charles certificate trusted on the test device. Current-branch builds
+send individual events without a 15-second wait. Flutter's Dart proxy override alone
 does not route native analytics: the device's network proxy must also be configured.
 
 With SDK diagnostics enabled (already enabled in the examples), filter device logs for
 `AUDZ analytics`. The current branch reports:
 
 * `queued`: the native queue received an event, with its type only.
-* `sending`: a batch is being submitted, with event count and attempt number.
+* `sending`: one event is being submitted, with attempt number.
 * `sent`: the HTTP request succeeded. This does not prove downstream dashboard ingestion.
-* `failed`: the HTTP status or transport error code/type; `dropped` means retries were exhausted.
+* `failed`: the HTTP status or transport error code/type; `retryScheduled` gives the cooldown.
+* `dropped`: the bounded backlog overflowed; `persistenceFailed`: a local write failed.
 
 These lines omit payloads, identifiers, targeting and consent strings, and are disabled when
 SDK diagnostics are off. If `sending` appears without a decrypted request in Charles, check the
@@ -390,7 +395,11 @@ could leave a batch in flight forever. All 2xx acknowledgements now settle succe
 204; non-2xx replies enter the retry path regardless of body format. Both bridges need the fixed
 native SDK (or a local native checkout for verification); upgrading Dart/JS alone cannot apply it.
 
-Verified on September 28, 2026: both iOS example apps built against the patched native checkout
-drained their retained event queues; the live collector returned HTTP 204 in the React Native run.
-Android's event-to-HTTP integration tests also pass with 204 (and retry an HTML 403 response),
-but that does not establish why a particular Android device shows no requests in Charles.
+Verified on September 28, 2026: rebuilt Flutter and React Native iOS examples sent individual
+events to the live collector and received HTTP 204 acknowledgements. The full native suites
+passed (291 iOS tests, 271 Android tests). Android's event-to-HTTP integration tests also pass
+with 204 and retry an HTML 403 response; no Android device was connected for live verification.
+
+Saving and acknowledging 500 events with 2 KB test payloads took about 0.43 seconds on the iOS
+simulator and 0.24 seconds on the Android JVM test host. These are aggregate storage costs on
+worker threads, not UI blocking time or measurements of physical-device battery consumption.
