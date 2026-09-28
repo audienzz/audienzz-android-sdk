@@ -1,4 +1,7 @@
-# Sanitized before/after payloads
+# Historical before/after payloads
+
+This documents the September 21 migration only. For the September 28 publisher/environment,
+currency and impression changes, use [the current contract](analytics-contract.md).
 
 "Before" rows are taken verbatim from the attached 2026-09-21 iOS run (a build of
 `feature/page-impression-api` reporting `sdk_version 0.3.2`), with ids shortened and the app bundle

@@ -225,4 +225,63 @@ class AnalyticsContractTest {
         assertEquals("auction-1", attributes.getValue("auction_id").content)
         assertEquals("1", attributes.getValue("slot_reload").content)
     }
+
+    @Test fun `publisher and device metadata use explicit fields not company or website`() {
+        val event = adEvent(0).copy(publisherId = "35", environment = "test",
+            companyId = "seller", websiteId = "wrong-website")
+        val payload = serialize(event)
+        assertEquals("35", (payload["publisher_id"] as JsonPrimitive).content)
+        assertEquals("test", (payload["environment"] as JsonPrimitive).content)
+        assertEquals(android.os.Build.VERSION.RELEASE, (payload["os_version"] as JsonPrimitive).content)
+        assertEquals("Android", (payload["os_name"] as JsonPrimitive).content)
+        assertFalse(payload.containsKey("company_id"))
+        assertFalse(attributes(payload).containsKey("website_id"))
+        assertFalse(serialize(adEvent(0)).containsKey("publisher_id"))
+    }
+
+    @Test fun `CPM has no exponent and currency is never rewritten`() {
+        for (currency in listOf("CHF", "USD")) {
+            val attrs = attributes(serialize(adEvent(0).copy(cpm = 1.0E-5, currency = currency,
+                creativeId = "0", adId = "0")))
+            assertEquals("0.00001", attrs.getValue("cpm").content)
+            assertEquals(currency, attrs.getValue("currency").content)
+            assertEquals("prebid_bid", attrs.getValue("cpm_source").content)
+            assertFalse(attrs.containsKey("creative_id"))
+            assertFalse(attrs.containsKey("ad_id"))
+        }
+        assertFalse(attributes(serialize(adEvent(0).copy(cpm = Double.NaN))).containsKey("cpm"))
+    }
+
+    @Test fun `invalid analytics environment cannot corrupt context`() {
+        try {
+            assertTrue(AnalyticsContext.configure(" 35 ", "test"))
+            assertFalse(AnalyticsContext.configure("81", "typo"))
+            assertEquals(AnalyticsContext.Snapshot("35", "test"), AnalyticsContext.snapshot())
+            AnalyticsContext.setPublisherId("34")
+            assertEquals(AnalyticsContext.Snapshot("34", "test"), AnalyticsContext.snapshot())
+        } finally { AnalyticsContext.configure(null, "production") }
+    }
+
+    @Test fun `event retains page and publisher at fire time while background enrichment waits`() {
+        val batcher = mockk<EventBatcher>(relaxed = true)
+        val captured = mutableListOf<EventNetwork>()
+        every { batcher.enqueue(capture(captured)) } returns Unit
+        val dispatcher = StandardTestDispatcher()
+        val logger = EventLoggerImpl(batcher, EventNetworkMapper(RuntimeEnvironment.getApplication()),
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), dispatcher)
+        try {
+            AnalyticsContext.configure("35", "test")
+            logger.onScreenResumed("A")
+            logger.logEvent(EventDomain(eventType = EventType.AD_IMPRESSION))
+            AnalyticsContext.configure("34", "production")
+            logger.onScreenResumed("B")
+            dispatcher.scheduler.runCurrent()
+            assertEquals(3, captured.size)
+            assertEquals(listOf("A", "A", "B"), captured.map { it.screenName })
+            assertEquals(listOf("35", "35", "34"), captured.map { it.publisherId })
+            assertEquals(listOf("test", "test", "production"), captured.map { it.environment })
+            assertEquals(captured[0].pageImpressionId, captured[1].pageImpressionId)
+            assertTrue(captured[0].pageImpressionId != captured[2].pageImpressionId)
+        } finally { AnalyticsContext.configure(null, "production") }
+    }
 }

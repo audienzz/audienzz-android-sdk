@@ -17,6 +17,7 @@ class App : Application() {
         // On by default HERE because this app exists to be tested and have its log read back; in
         // a real app it is off unless you ask for it. Set it BEFORE initializing, so the very
         // first page impression is in the log.
+        AudienzzPrebidMobile.configureAnalytics(null, "test")
         AudienzzPrebidMobile.diagnosticsEnabled = true
         AudienzzPrebidMobile.smartRefreshV2Override = DemoFeatureFlags.isSmartRefreshV2Enabled(this)
         // Demo: blank the slot (same size) during a screen-change reload so it's obvious it refreshed.

@@ -97,7 +97,7 @@ internal class EventLoggerImplTest {
         assertEquals(mockUUID.toString(), enriched.uuid)
         assertEquals(mockUUID.toString(), enriched.visitorId)
         assertEquals(mockUUID.toString(), enriched.sessionId)
-        assertEquals(mockCompanyId, enriched.companyId)
+        assertEquals(null, enriched.companyId) // company is now resolved by the collector
         assertEquals(mockAdId, enriched.deviceId)
         assertNotNull(enriched.sessionStartTimestamp)
     }

@@ -1349,17 +1349,19 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * economics (only the ad-server bidder code).
      */
     private fun renderEconomics(): RenderEconomics {
-        // Always carry the winning-bid economics that were in play; bidder_code reflects the actual
-        // render winner (Prebid line item when its GAM app event fired, else the ad server).
+        // Bid economics belong to a render only when the Prebid line item actually won.
+        // A direct/Google fill must not inherit the losing bid's amount or IDs.
         // The DISPLAYED creative's snapshot, not the newest auction's. See [displayedEconomics].
         val base = displayedEconomics ?: RenderEconomics()
         val bidder = resolveBidderCode()
         return base.copy(
             bidderCode = bidder,
             // Ad server rendered — the Prebid bid's creative id would make the enricher misclassify a
-            // direct-sold impression as RTB. Report the GAM creative id when available, else the "0"
-            // stub (GMA exposes no served-creative id → "0").
-            creativeId = if (bidder == AD_SERVER_BIDDER) "0" else base.creativeId,
+            // direct-sold impression as RTB. GMA exposes no served-creative ID, so omit it.
+            creativeId = if (bidder == AD_SERVER_BIDDER) null else base.creativeId,
+            adId = if (bidder == AD_SERVER_BIDDER) null else base.adId,
+            cpm = if (bidder == AD_SERVER_BIDDER) null else base.cpm,
+            currency = if (bidder == AD_SERVER_BIDDER) null else base.currency,
             // Always carry the SDK-minted auction id, even on a direct fill with no Prebid economics.
             auctionId = base.auctionId ?: renderAuctionId,
         )

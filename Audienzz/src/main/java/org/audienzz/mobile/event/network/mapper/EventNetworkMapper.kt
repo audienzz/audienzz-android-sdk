@@ -50,14 +50,17 @@ internal class EventNetworkMapper @Inject constructor(
 
         return EventNetwork(
             eventType = event.eventType?.nameString.orEmpty(),
-            companyId = event.companyId,
+            companyId = null, // company/website are resolved by the collector from publisher_id.
+            publisherId = event.publisherId,
+            environment = event.environment,
+            osVersion = android.os.Build.VERSION.RELEASE,
             source = "android-sdk",
             eventId = event.uuid.orEmpty(),
             pageImpressionId = event.pageImpressionId,
             sessionId = event.sessionId,
             sessionStartTimestamp = event.sessionStartTimestamp,
             sessionSeq = event.sessionSequence ?: 0,
-            eventTimestamp = dateFormatter.format(Date(event.timestamp)),
+            eventTimestamp = synchronized(dateFormatter) { dateFormatter.format(Date(event.timestamp)) },
             locale = Locale.getDefault().toLanguageTag(),
             zoneOffsetSeconds = zoneOffsetSeconds,
             screenHeight = screenHeightDp,
@@ -98,14 +101,17 @@ internal class EventNetworkMapper @Inject constructor(
         event.hbSize?.let { put("hb_size", it) }
         event.hbFormat?.let { put("hb_format", it) }
         // Round to 6 dp so the emitted value is clean (1.425, not 1.4249999999999998) and matches iOS.
-        event.cpm?.let { put("cpm", (Math.round(it * 1_000_000.0) / 1_000_000.0).toString()) }
-        event.currency?.let { put("currency", it) }
-        event.creativeId?.let { put("creative_id", it) }
+        event.cpm?.takeIf { it.isFinite() && it >= 0 }?.let {
+            put("cpm", java.math.BigDecimal.valueOf(it).setScale(6, java.math.RoundingMode.HALF_UP)
+                .stripTrailingZeros().toPlainString())
+            put("cpm_source", "prebid_bid")
+        }
+        event.currency?.takeIf { it.isNotBlank() }?.let { put("currency", it) }
+        event.creativeId?.takeIf { it.isNotBlank() && it != "0" }?.let { put("creative_id", it) }
         event.auctionId?.let { put("auction_id", it) }
-        event.adId?.let { put("ad_id", it) }
+        event.adId?.takeIf { it.isNotBlank() && it != "0" }?.let { put("ad_id", it) }
         // Web-clickstream parity attributes.
         event.adUnitCode?.let { put("ad_unit_code", it) }   // Prebid configId
-        event.websiteId?.let { put("website_id", it) }       // remote-config publisherId
         event.mediaType?.let { put("media_type", it) }
         event.mediaTypes?.let { put("media_types", it) }
         event.size?.let { put("size", it) }
