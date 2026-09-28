@@ -8,6 +8,7 @@ import com.google.android.gms.ads.admanager.AdManagerInterstitialAd
 import org.audienzz.mobile.AudienzzInterstitialAdUnit
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
+import org.audienzz.mobile.event.AnalyticsPageContext
 import org.audienzz.mobile.event.RenderEconomics
 import org.audienzz.mobile.event.adClick
 import org.audienzz.mobile.event.adImpression
@@ -72,8 +73,11 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
         prebidWinningBidder = null
         // Mint the auction id up front so bidRequest and every later event of this auction share it.
         currentAuctionId = UUID.randomUUID().toString()
+        val requestAuctionId = currentAuctionId
+        val requestPage = eventLogger?.capturePageContext() ?: AnalyticsPageContext()
         val requestStartMs = System.currentTimeMillis()
         eventLogger?.bidRequest(
+            pageContext = requestPage,
             adUnitId = adUnitId,
             adType = AdType.INTERSTITIAL,
             adSubtype = adUnit.getSubType(),
@@ -83,7 +87,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
             isRefresh = false,
             adUnitCode = adUnit.configId,
             mediaTypes = mediaTypesJson(adUnit.getSubType()),
-            auctionId = currentAuctionId,
+            auctionId = requestAuctionId,
         )
         val ppid = AudienzzPrebidMobile.ppidManager?.getPpid()
         if (ppid != null) {
@@ -115,7 +119,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                     currency = win?.currency,
                     creativeId = win?.creativeId,
                     // Reuse the SDK-minted auction id (not Prebid's) so the whole funnel counts together.
-                    auctionId = currentAuctionId,
+                    auctionId = requestAuctionId,
                     adId = win?.adId,
                     timeToRespond = timeToRespond,
                     slotReload = 0,
@@ -125,6 +129,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                 lastRenderEconomics = null
             }
             eventLogger?.bidResponse(
+                pageContext = requestPage,
                 adUnitId = adUnitId,
                 adType = AdType.INTERSTITIAL,
                 adSubtype = adUnit.getSubType(),
@@ -139,6 +144,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
             )
             if (economics != null) {
                 eventLogger?.bidWon(
+                    pageContext = requestPage,
                     adUnitId = adUnitId,
                     adType = AdType.INTERSTITIAL,
                     adSubtype = adUnit.getSubType(),
@@ -151,6 +157,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                 )
             } else {
                 eventLogger?.noBid(
+                    pageContext = requestPage,
                     adUnitId = adUnitId,
                     adType = AdType.INTERSTITIAL,
                     adSubtype = adUnit.getSubType(),
@@ -161,13 +168,14 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                     resultCode = noBidResultCode(resultCode),
                     adUnitCode = adUnit.configId,
                     mediaTypes = mediaTypesJson(adUnit.getSubType()),
-                    auctionId = currentAuctionId,
+                    auctionId = requestAuctionId,
                 )
             }
             resultCallback(
                 resultCode,
                 request,
-                connectCallbacks(adLoadCallback, fullScreenContentCallback),
+                connectCallbacks(adLoadCallback, fullScreenContentCallback,
+                    renderEconomics().copy(auctionId = requestAuctionId, pageContext = requestPage)),
             )
         }
     }
@@ -175,6 +183,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
     private fun connectCallbacks(
         adLoadCallback: AudienzzInterstitialAdLoadCallback?,
         fullScreenContentCallback: AudienzzFullScreenContentCallback?,
+        renderSnapshot: RenderEconomics,
     ): AudienzzInterstitialAdLoadCallback {
         return object : AudienzzInterstitialAdLoadCallback() {
             override fun onAdLoaded(adManagerInterstitialAd: AdManagerInterstitialAd) {
@@ -195,7 +204,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                                 adSubtype = adUnit.getSubType(),
                                 apiType = ApiType.ORIGINAL,
                                 adUnitCode = adUnit.configId,
-                                economics = renderEconomics(),
+                                economics = renderSnapshot,
                             )
                         }
 
@@ -235,7 +244,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                                 adSubtype = adUnit.getSubType(),
                                 apiType = ApiType.ORIGINAL,
                                 adUnitCode = adUnit.configId,
-                                economics = renderEconomics(),
+                                economics = renderSnapshot,
                             )
                         }
 
@@ -254,7 +263,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                                         adSubtype = adUnit.getSubType(),
                                         apiType = ApiType.ORIGINAL,
                                         adUnitCode = adUnit.configId,
-                                        economics = renderEconomics(),
+                                        economics = renderSnapshot,
                                     )
                                 },
                                 onSuccess = {
@@ -264,7 +273,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                                         adSubtype = adUnit.getSubType(),
                                         apiType = ApiType.ORIGINAL,
                                         adUnitCode = adUnit.configId,
-                                        economics = renderEconomics(),
+                                        economics = renderSnapshot,
                                     )
                                 },
                             ).also { viewabilityTimer = it }.onShown()

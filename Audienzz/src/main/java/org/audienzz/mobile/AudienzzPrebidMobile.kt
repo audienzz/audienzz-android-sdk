@@ -128,6 +128,12 @@ object AudienzzPrebidMobile {
 
     /** Single sink for both the auto tracker and the manual API: page impression + v2 coordinator. */
     private fun notifyScreenResumed(screen: Any, screenName: String) {
+        // A bridge can call off-main. Publish the analytics ID and transition the slots together,
+        // so an old-page refresh cannot capture the incoming page before its release is applied.
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            foregroundHandler.post { notifyScreenResumed(screen, screenName) }
+            return
+        }
         android.util.Log.d(TAG, "pageImpression: firing → \"$screenName\"")
         AudienzzDiagnostics.log(
             "page", "impression",

@@ -909,8 +909,9 @@ Banner, interstitial and rewarded ads on the Original API are all covered.
 
 ### Step 1 — Initialize the SDK
 
-Analytics is keyed on your **Company ID** (provided by Audienzz), supplied when you initialize the
-SDK. Nothing is reported until initialization succeeds. See [Initialize SDK](#initialize-sdk).
+Analytics uses the **publisher ID** from remote configuration as `publisher_id`; the collector
+resolves company and website IDs. Direct integrations can supply the publisher through
+`configureAnalytics`. See [the analytics contract](docs/analytics-contract.md).
 
 ### Step 2 — Screen reporting
 

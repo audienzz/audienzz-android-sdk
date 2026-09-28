@@ -6,6 +6,7 @@ import org.audienzz.mobile.AudienzzResultCode
 import org.audienzz.mobile.api.data.AudienzzBidInfo
 import org.audienzz.mobile.api.original.AudienzzPrebidAdUnit
 import org.audienzz.mobile.api.original.AudienzzPrebidRequest
+import org.audienzz.mobile.event.AnalyticsPageContext
 import org.audienzz.mobile.event.RenderEconomics
 import org.audienzz.mobile.event.bidRequest
 import org.audienzz.mobile.event.bidResponse
@@ -51,8 +52,11 @@ class AudienzzMultiformatAdHandler(
         isFirstDemandFetch = false
         // Mint the auction id up front so bidRequest and every later event of this auction share it.
         currentAuctionId = UUID.randomUUID().toString()
+        val requestAuctionId = currentAuctionId
+        val requestPage = eventLogger?.capturePageContext() ?: AnalyticsPageContext()
 
         eventLogger?.bidRequest(
+            pageContext = requestPage,
             adUnitId = adUnitId,
             sizes = prebidRequest.getAdSizes().audienzzSizesJson,
             adType = AdType.BANNER,
@@ -61,7 +65,7 @@ class AudienzzMultiformatAdHandler(
             autorefreshTime = autorefreshTime,
             isAutorefresh = isAutorefresh,
             isRefresh = isRefresh,
-            auctionId = currentAuctionId,
+            auctionId = requestAuctionId,
         )
         val ppid = AudienzzPrebidMobile.ppidManager?.getPpid()
         if (ppid != null) {
@@ -74,6 +78,7 @@ class AudienzzMultiformatAdHandler(
         adUnit.fetchDemand(request, prebidRequest) { bidInfo ->
             callback.invoke(bidInfo, request)
             eventLogger?.bidResponse(
+                pageContext = requestPage,
                 adUnitId = adUnitId,
                 sizes = prebidRequest.getAdSizes().audienzzSizesJson,
                 adType = AdType.BANNER,
@@ -89,6 +94,7 @@ class AudienzzMultiformatAdHandler(
             val winningBidder = bidInfo.targetingKeywords?.get(HB_BIDDER_KEY)
             if (bidInfo.resultCode == AudienzzResultCode.SUCCESS && winningBidder != null) {
                 eventLogger?.bidWon(
+                    pageContext = requestPage,
                     adUnitId = adUnitId,
                     sizes = prebidRequest.getAdSizes().audienzzSizesJson,
                     adType = AdType.BANNER,
@@ -106,11 +112,12 @@ class AudienzzMultiformatAdHandler(
                         hbFormat = bidInfo.targetingKeywords?.get(HB_FORMAT_KEY),
                         mediaType = bidInfo.targetingKeywords?.get(HB_FORMAT_KEY),
                         size = bidInfo.targetingKeywords?.get(HB_SIZE_KEY),
-                        auctionId = currentAuctionId,
+                        auctionId = requestAuctionId,
                     ),
                 )
             } else {
                 eventLogger?.noBid(
+                    pageContext = requestPage,
                     adUnitId = adUnitId,
                     sizes = prebidRequest.getAdSizes().audienzzSizesJson,
                     adType = AdType.BANNER,
@@ -121,7 +128,7 @@ class AudienzzMultiformatAdHandler(
                     isRefresh = isRefresh,
                     resultCode = noBidResultCode(bidInfo.resultCode),
                     mediaTypes = mediaTypesJson(AdSubtype.MULTIFORMAT),
-                    auctionId = currentAuctionId,
+                    auctionId = requestAuctionId,
                 )
             }
         }

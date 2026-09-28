@@ -17,3 +17,9 @@ internal object AnalyticsContext {
 
     fun snapshot(): Snapshot = context
 }
+
+/** Immutable visit captured at request start; an empty snapshot never adopts a future page. */
+internal data class AnalyticsPageContext(
+    val pageImpressionId: String? = null,
+    val screenName: String? = null,
+)

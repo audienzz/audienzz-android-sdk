@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.impl.annotations.RelaxedMockK
 import io.mockk.mockk
 import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import io.mockk.slot
 import io.mockk.verify
 import io.mockk.verifySequence
@@ -19,6 +20,7 @@ import org.audienzz.mobile.event.network.mapper.EventNetworkMapper
 import org.audienzz.mobile.event.preferences.EventPreferences
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import java.util.UUID
@@ -84,6 +86,14 @@ internal class EventLoggerImplTest {
         )
     }
 
+    @After
+    fun tearDown() {
+        // UUID is a process-wide bootstrap class: leaving this static mock installed makes
+        // subsequent lifecycle tests mint the same ID for every page/auction.
+        unmockkStatic(UUID::class)
+        unmockkStatic(Log::class)
+    }
+
     @Test
     fun logEvent_enqueuesEnrichedEvent() {
         every { preferences.getVisitorId() } returns mockUUID.toString()
@@ -116,7 +126,6 @@ internal class EventLoggerImplTest {
 
     @Test
     fun onScreenResumed_newPageImpressionIdEachCall() {
-        val ids = mutableListOf<String?>()
         every { UUID.randomUUID() } returnsMany listOf(
             mockUUID,
             UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
