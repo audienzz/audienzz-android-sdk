@@ -50,8 +50,8 @@ class MainActivity : AppCompatActivity() {
         }.attach()
         // No page impression here. Every screen is reported by the app — there is no automatic
         // tracking — but the reporter for a tab is the TAB ITSELF: each fragment calls
-        // `pageImpression(this)` from its own onResume, which ViewPager2 fires for the incoming
-        // tab and for the one the app opens with.
+        // `App.reportScreenIfChanged(this)` from onResume. ViewPager2 resumes the incoming tab;
+        // the helper suppresses a repeat caused solely by returning from the background.
         //
         // Reporting from here as well would be a second reporter for one transition, and a worse
         // one: it names the screen by title, while a banner inside the fragment resolves its host

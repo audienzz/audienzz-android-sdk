@@ -66,11 +66,11 @@ class RemoteConfigStickyFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         if (AudienzzPrebidMobile.isSdkInitialized) {
-            AudienzzPrebidMobile.pageImpression(this)
+            App.reportScreenIfChanged(this)
         } else {
             // Cold start: onResume runs before initialization finishes, so this screen would
             // otherwise never report its FIRST page impression — only later ones, after navigating.
-            App.whenSdkReady { if (isResumed) AudienzzPrebidMobile.pageImpression(this) }
+            App.whenSdkReady { if (isResumed) App.reportScreenIfChanged(this) }
         }
     }
 
@@ -213,7 +213,10 @@ class RemoteConfigStickyFragment : Fragment() {
                 override fun onLoaded() = setInterstitialStatus("ready to show")
                 override fun onFailed(loadError: LoadAdError) =
                     setInterstitialStatus("load failed: ${loadError.message}")
-                override fun onOpened() = setInterstitialStatus("showing")
+                override fun onOpened() {
+                    App.onFullscreenAdOpened()
+                    setInterstitialStatus("showing")
+                }
                 override fun onClosed() = setInterstitialStatus("closed — not loaded")
                 override fun onClicked() = setInterstitialStatus("clicked")
                 override fun onFailedToShow(adError: AdError) =

@@ -88,6 +88,60 @@ class PageImpressionAttributionTest {
         } finally { org.audienzz.mobile.screen.screenAdCoordinatorOverride = null }
     }
 
+    @Test fun `foreground replacement keeps page attribution and discards the backgrounded auction`() {
+        val coordinator = org.audienzz.mobile.screen.ScreenAdCoordinator()
+        org.audienzz.mobile.screen.screenAdCoordinatorOverride = coordinator
+        org.audienzz.mobile.util.AppForegroundMonitor.resetForTesting()
+        org.audienzz.mobile.AudienzzPrebidMobile.sdkInitializedOverride = true
+        val view = mockk<com.google.android.gms.ads.admanager.AdManagerAdView>(relaxed = true)
+        every { view.isAttachedToWindow } returns true
+        var listener: com.google.android.gms.ads.AdListener = object : com.google.android.gms.ads.AdListener() {}
+        every { view.adListener } answers { listener }
+        every { view.adListener = any() } answers { listener = firstArg() }
+        val unit = mockk<org.audienzz.mobile.AudienzzAdUnit>(relaxed = true)
+        val replies = mutableListOf<(AudienzzResultCode?) -> Unit>()
+        every { unit.fetchDemand(any(), any()) } answers { replies += secondArg<(AudienzzResultCode?) -> Unit>() }
+        val handler = org.audienzz.mobile.original.AudienzzAdViewHandler(view, unit)
+        val host = mockk<android.app.Activity>(relaxed = true)
+        var googleLoads = 0
+        try {
+            org.audienzz.mobile.AudienzzPrebidMobile.pageImpression("A")
+            val page = logger.capturePageContext()
+            assertNotNull(page.pageImpressionId)
+            handler.setScreen("A")
+            handler.load(withLazyLoading = false) { _, _ -> googleLoads++ }
+            assertEquals(1, replies.size)
+            org.audienzz.mobile.util.AppForegroundMonitor.onActivityStopped(host)
+            replies[0](AudienzzResultCode.NO_BIDS)
+            assertEquals(0, googleLoads)
+            org.audienzz.mobile.util.AppForegroundMonitor.onActivityStarted(host)
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+                .idleFor(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+            assertEquals(2, replies.size)
+            replies[1](AudienzzResultCode.NO_BIDS)
+            assertNotNull(listener)
+            listener!!.onAdLoaded(); listener!!.onAdImpression()
+            assertEquals(1, googleLoads)
+            drain()
+            assertEquals(1, sent.count { it.eventType == "pageImpression" })
+            val bids = sent.filter { it.eventType == "bidRequest" }
+            assertEquals(2, bids.size)
+            val auctions = bids.map { payload(it).getValue("attributes").jsonObject.getValue("auction_id").jsonPrimitive.content }
+            assertEquals(2, auctions.toSet().size)
+            assertEquals(1, sent.count { it.eventType == "bidResponse" })
+            assertEquals(1, sent.count { it.eventType == "adImpression" })
+            sent.forEach { assertEquals(page.pageImpressionId, pageId(it)) }
+            assertEquals(page, logger.capturePageContext())
+            assertEquals(1, coordinator.epoch)
+        } finally {
+            handler.destroy()
+            org.audienzz.mobile.AudienzzPrebidMobile.pageImpression("cleanup")
+            org.audienzz.mobile.AudienzzPrebidMobile.sdkInitializedOverride = null
+            org.audienzz.mobile.screen.screenAdCoordinatorOverride = null
+            org.audienzz.mobile.util.AppForegroundMonitor.resetForTesting()
+        }
+    }
+
     @Test fun `missing page is not invented and an early load cannot adopt a later screen`() {
         val beforePage = logger.capturePageContext()
         logger.logEvent(EventDomain(eventType = EventType.BID_REQUEST, pageContext = beforePage))

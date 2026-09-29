@@ -33,6 +33,10 @@ class RenderingApiRewardedVideoAdHolder(parent: ViewGroup) : BaseAdHolder(parent
                 )
                 adUnit = AudienzzRewardedAdUnit(adContainer.context, placementId, eventHandler)
                 adUnit?.setRewardedAdUnitListener(object : AudienzzRewardedAdUnitListener {
+                    override fun onAdDisplayed(rewardedAdUnit: AudienzzRewardedAdUnit?) {
+                        org.audienzz.mobile.testapp.App.onFullscreenAdOpened()
+                    }
+
                     override fun onAdLoaded(rewardedAdUnit: AudienzzRewardedAdUnit?) {
                         button.isEnabled = true
                         button.setOnClickListener {

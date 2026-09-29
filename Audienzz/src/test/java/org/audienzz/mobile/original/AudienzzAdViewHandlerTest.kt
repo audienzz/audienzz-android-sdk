@@ -57,7 +57,7 @@ class AudienzzAdViewHandlerTest {
         AppForegroundMonitor.resetForTesting()
         coordinator = ScreenAdCoordinator()
         screenAdCoordinatorOverride = coordinator
-        org.audienzz.mobile.AudienzzPrebidMobile.observeForegroundReimpression()
+        org.audienzz.mobile.AudienzzPrebidMobile.observeForegroundRecovery()
         org.audienzz.mobile.AudienzzPrebidMobile.pageImpression("test-reset")
 
         gamLoads = mutableListOf()

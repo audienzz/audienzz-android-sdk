@@ -1,5 +1,6 @@
 package org.audienzz.mobile.testapp.view
 
+import org.audienzz.mobile.testapp.App
 import android.os.Bundle
 import android.widget.Button
 import android.widget.FrameLayout
@@ -41,7 +42,7 @@ class RemoteConfigAdActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        AudienzzPrebidMobile.pageImpression(this)
+        App.reportScreenIfChanged(this)
     }
 
     override fun onDestroy() {

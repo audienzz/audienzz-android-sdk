@@ -50,10 +50,8 @@ Run your CMP **before** this and forward the result through `AudienzzTargetingPa
 ### 3. Report every screen
 
 ```kotlin
-override fun onResume() {
-    super.onResume()
-    AudienzzPrebidMobile.pageImpression(this)   // Activity, Fragment, dialog…
-}
+// In your navigation callback, before creating the destination's ads:
+AudienzzPrebidMobile.pageImpression(destinationScreen) // Activity, Fragment, or route key
 ```
 
 This is the one thing the SDK cannot do for you, and everything else follows from it: it groups a
@@ -61,6 +59,15 @@ visit's ad events, and it is what releases the *previous* screen's banners.
 
 **Report ad-free screens too.** A settings page with no ads still has to be reported — skipping it
 leaves the previous screen's banners auctioning for a screen nobody is looking at.
+
+**App background/foreground is the same page visit.** With the native foreground-continuity
+update, minimizing and reopening the app refreshes its active banners (and blanks them when
+blanking is enabled), but sends no new `pageImpression` analytics event. The existing
+`page_impression_id`, `au_page_seq` and `au_slot` remain; each replacement request advances the
+slot's `hb_refresh_count` and gets a fresh auction ID. Visibility, page ownership and publisher
+pause still apply. Do not call `pageImpression` from app-resume callbacks just because the app
+became active. Report actual navigation, including ad-free screens, back navigation and a new
+article. An explicit call still starts a new page impression, even for the same screen.
 
 ### 4. Place a banner
 
@@ -529,7 +536,7 @@ This object contains methods to initialize the SDK and configure global settings
 |-------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `initializeSdk`                     | `context: Context`, `companyId: String`, `appVolume: Float = 0f`, `sdkInitializationListener: AudienzzSdkInitializationListener?`                   | Initializes the SDK. A Publisher Provided Identifier is generated, persisted and attached to every Google Ad Manager request automatically — see [PpidManager](#ppidmanager) to supply your own instead. |
 | `initializeRemoteSdk`               | `context: Context`, `publisherId: String`, `sdkInitializationListener: AudienzzSdkInitializationListener?`                                           | Initializes the SDK with remote configuration support, fetching ad unit configs from the Audienzz backend using the publisher ID.                                                                                                                                                             |
-| `pageImpression`                    | `screen: Any, name: String? = null` — or `name: String`                                                                                                                             | Call whenever a screen becomes current (every `Activity`/`Fragment` `onResume()`, every Compose destination, every dialog), **including ad-free destinations**. Fires a `pageImpression` analytics event and generates a new page impression ID shared by all ad events on that screen visit. Replaces the removed `onScreenResumed`. See [Screen reporting](#step-2--screen-reporting). |
+| `pageImpression`                    | `screen: Any, name: String? = null` — or `name: String`                                                                                                                             | Call whenever a screen becomes current (each navigation to an Activity/Fragment, Compose destination or dialog; not app resume), **including ad-free destinations**. Fires a `pageImpression` analytics event and generates a new page impression ID shared by all ad events on that screen visit. Replaces the removed `onScreenResumed`. See [Screen reporting](#step-2--screen-reporting). |
 | `getAdUnitConfig`                   | `configId: String`, `callback: (RemoteAdUnitConfig?) -> Unit`                                                                                                                       | Fetches a remote ad unit configuration by its ID. The SDK must have been initialized via `initializeRemoteSdk` first.                                                                                                                                                                         |
 | `setAppVolume`                      | `volume: Float`                                                                                                                                                                     | Sets the global app volume for Google Mobile Ads ad audio. Range: 0.0 (muted) – 1.0 (full device volume). Can be called at any time after SDK initialization.                                                                                                                                 |
 | `addStoredBidResponse`              | `bidder: String`, `responseId: String`                                                                                                                                              | Adds a stored bid response.                                                                                                                                                                                                                                                                   |
@@ -895,7 +902,7 @@ ad-bearing screen (see [Step 2](#step-2--track-screen-impressions-required)).
 
 | Event | When it fires |
 |---|---|
-| `pageImpression` | A screen showing ads is opened/resumed (you trigger this via `pageImpression`) |
+| `pageImpression` | A navigation visit is reported explicitly, including ad-free screens; app resume is not a new visit |
 | `bidRequest` | A Prebid bid request is sent for a slot (also on each auto-refresh) |
 | `bidResponse` | Prebid returns a result |
 | `bidWon` | A Prebid bid wins — carries `cpm`, `currency`, `creative_id`, `auction_id`, `ad_id`, `bidder_code` |
@@ -924,10 +931,9 @@ leaving pauses them.
 Two forms. Pass the screen object and the name is derived from it, or pass a name of your own:
 
 ```kotlin
-// Activity
-override fun onResume() { super.onResume(); AudienzzPrebidMobile.pageImpression(this) }
-// Fragment — the same call; a Fragment, Dialog or Context all derive their own name
-override fun onResume() { super.onResume(); AudienzzPrebidMobile.pageImpression(this) }
+// Your navigation callback reports the destination (Activity/Fragment/Dialog).
+// A bare onResume also fires on app return, so do not report from it unconditionally.
+AudienzzPrebidMobile.pageImpression(destinationScreen)
 // A screen with no object to point at (a Compose destination, a custom router)
 AudienzzPrebidMobile.pageImpression("home")
 // An object, but your own analytics name for it

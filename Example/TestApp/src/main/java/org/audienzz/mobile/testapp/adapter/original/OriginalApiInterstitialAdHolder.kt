@@ -34,7 +34,15 @@ class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) 
         button.isEnabled = true
         button.setOnClickListener {
             displayInterstitial?.destroy()
-            displayInterstitial = AudienzzRemoteConfigInterstitial(adContainer.context, INTERSTITIAL_CONFIG_ID)
+            displayInterstitial = AudienzzRemoteConfigInterstitial(adContainer.context, INTERSTITIAL_CONFIG_ID,
+                object : AudienzzRemoteConfigInterstitial.Events {
+                    override fun onLoaded() {}
+                    override fun onFailed(loadError: LoadAdError) {}
+                    override fun onOpened() { org.audienzz.mobile.testapp.App.onFullscreenAdOpened() }
+                    override fun onClosed() {}
+                    override fun onClicked() {}
+                    override fun onFailedToShow(adError: com.google.android.gms.ads.AdError) {}
+                })
             displayInterstitial?.prefetchAndShow()
         }
     }

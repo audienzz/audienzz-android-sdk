@@ -45,7 +45,7 @@ class ScreenAdCoordinator @Inject constructor() {
     val activeScreen: Any?
         get() = activeScreenRef?.get()
 
-    /** Name reported with the active screen, reused for the foreground re-impression. */
+    /** Name reported with the active screen, retained through foreground recovery. */
     @Volatile
     var activeScreenName: String? = null
         private set
@@ -86,7 +86,7 @@ class ScreenAdCoordinator @Inject constructor() {
     /**
      * Hard page transition. Every call releases every banner that is not on the incoming page and
      * recreates the ones that are — including when the same screen resumes again (back navigation,
-     * app foreground) or another instance of the same class appears. Runs on the main thread.
+     * explicit repeat) or another instance of the same class appears. Runs on the main thread.
      */
     fun onScreenResumed(screen: Any, name: String? = null) {
         // The sweep touches View state (visibility blanking), Prebid timers and the GAM ad view, all
@@ -109,17 +109,29 @@ class ScreenAdCoordinator @Inject constructor() {
                 "page", "transition",
                 "name" to name, "epoch" to epoch, "slots" to registry.size,
             )
-            for (handler in registry) {
-                val active = handler.isHostedBy(screen)
-                AudienzzDiagnostics.log(
-                    "slot", if (active) "recreate" else "release",
-                    "unit" to handler.diagnosticLabel(),
-                    "page" to name,
-                    "epoch" to epoch,
-                    "reason" to if (active) null else "otherPage",
-                )
-                handler.onPageActiveChanged(active, epoch)
-            }
+            refreshBanners(screen, name)
+        }
+    }
+
+    /** Reload ads on the current page without resetting its identity, slots or request counters. */
+    internal fun recoverActivePage() {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        val screen = activeScreen ?: return
+        AudienzzDiagnostics.log("page", "recovered", "name" to activeScreenName, "epoch" to epoch)
+        synchronized(registry) { refreshBanners(screen, activeScreenName) }
+    }
+
+    private fun refreshBanners(screen: Any, name: String?) {
+        for (handler in registry) {
+            val active = handler.isHostedBy(screen)
+            AudienzzDiagnostics.log(
+                "slot", if (active) "recreate" else "release",
+                "unit" to handler.diagnosticLabel(),
+                "page" to name,
+                "epoch" to epoch,
+                "reason" to if (active) null else "otherPage",
+            )
+            handler.onPageActiveChanged(active, epoch)
         }
     }
 

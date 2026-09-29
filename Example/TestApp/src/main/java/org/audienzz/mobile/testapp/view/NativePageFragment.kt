@@ -1,5 +1,6 @@
 package org.audienzz.mobile.testapp.view
 
+import org.audienzz.mobile.testapp.App
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -35,7 +36,7 @@ class NativePageFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         if (AudienzzPrebidMobile.isSdkInitialized) {
-            AudienzzPrebidMobile.pageImpression(this)
+            App.reportScreenIfChanged(this)
         }
     }
 

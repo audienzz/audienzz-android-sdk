@@ -48,7 +48,7 @@ class LegacyAdsPageFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         if (AudienzzPrebidMobile.isSdkInitialized) {
-            AudienzzPrebidMobile.pageImpression(this)
+            App.reportScreenIfChanged(this)
         }
     }
 

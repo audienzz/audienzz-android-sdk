@@ -32,7 +32,7 @@ class SchedulerIntegrationReviewTest {
         AudienzzPrebidMobile.sdkInitializedOverride = true
         AppForegroundMonitor.resetForTesting()
         screenAdCoordinatorOverride = ScreenAdCoordinator()
-        AudienzzPrebidMobile.observeForegroundReimpression()
+        AudienzzPrebidMobile.observeForegroundRecovery()
         AudienzzPrebidMobile.pageImpression("A")
         host = mockk(relaxed = true)
         view = mockk(relaxed = true)

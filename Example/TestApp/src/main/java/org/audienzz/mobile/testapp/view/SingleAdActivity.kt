@@ -2,6 +2,7 @@ package org.audienzz.mobile.testapp.view
 
 import android.content.Context
 import android.content.Intent
+import org.audienzz.mobile.testapp.App
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.databinding.DataBindingUtil
@@ -35,7 +36,7 @@ class SingleAdActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (AudienzzPrebidMobile.isSdkInitialized) {
-            AudienzzPrebidMobile.pageImpression(this)
+            App.reportScreenIfChanged(this)
         }
     }
 

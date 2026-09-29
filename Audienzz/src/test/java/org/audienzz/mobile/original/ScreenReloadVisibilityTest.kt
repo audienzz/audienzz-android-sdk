@@ -27,6 +27,7 @@ class ScreenReloadVisibilityTest {
     private lateinit var observer: ViewTreeObserver
     private var listener: AdListener = object : AdListener() {}
     private val responses = mutableListOf<(AudienzzResultCode?) -> Unit>()
+    private val requests = mutableListOf<com.google.android.gms.ads.admanager.AdManagerAdRequest>()
     private var googleLoads = 0
     private var inViewport = true
     private var viewVisibility = View.VISIBLE
@@ -47,7 +48,7 @@ class ScreenReloadVisibilityTest {
         oldV2 = AudienzzPrebidMobile.smartRefreshV2Override
         AppForegroundMonitor.resetForTesting()
         screenAdCoordinatorOverride = ScreenAdCoordinator()
-        AudienzzPrebidMobile.observeForegroundReimpression()
+        AudienzzPrebidMobile.observeForegroundRecovery()
         AudienzzPrebidMobile.pageImpression("remote")
         observer = View(RuntimeEnvironment.getApplication()).viewTreeObserver
         view = mockk(relaxed = true)
@@ -93,7 +94,7 @@ class ScreenReloadVisibilityTest {
     private fun loadVisibleBanner(blank: Boolean, v2: Boolean) {
         AudienzzPrebidMobile.blankOnScreenReload = blank
         AudienzzPrebidMobile.smartRefreshV2Override = v2
-        handler.load(withLazyLoading = false) { _, _ -> googleLoads++ }
+        handler.load(withLazyLoading = false) { request, _ -> googleLoads++; requests += request }
         handler.enableSmartRefresh()
         assertEquals(1, responses.size)
         responses[0](AudienzzResultCode.NO_BIDS)
@@ -417,5 +418,61 @@ class ScreenReloadVisibilityTest {
     @Test fun `v2 a cancelled replacement releases its temporary blank`() = cancelledReplacementRecovers(v2 = true)
 
     @Test fun `v1 a cancelled replacement releases its temporary blank`() = cancelledReplacementRecovers(v2 = false)
+
+    private val foregroundHost = mockk<android.app.Activity>(relaxed = true)
+    private fun backgroundAndRecover() {
+        val host = foregroundHost
+        AppForegroundMonitor.onActivityStopped(host)
+        AppForegroundMonitor.onActivityStarted(host)
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+            .idleFor(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    @Test fun `foreground blanks and reloads once without resetting request targeting`() {
+        loadVisibleBanner(blank = true, v2 = true)
+        val page = requests.single().customTargeting.getString("au_page_seq")
+        val slot = requests.single().customTargeting.getString("au_slot")
+        assertNotNull(page); assertNotNull(slot)
+        repeat(2) { index ->
+            backgroundAndRecover()
+            assertEquals(index + 2, responses.size)
+            assertEquals(View.INVISIBLE, creativeVisibility)
+            assertEquals(1, screenAdCoordinatorOverride!!.epoch)
+            responses.last()(AudienzzResultCode.NO_BIDS)
+            listener.onAdLoaded()
+            assertEquals(View.VISIBLE, creativeVisibility)
+            val request = requests.last().customTargeting
+            assertEquals(page, request.getString("au_page_seq"))
+            assertEquals(slot, request.getString("au_slot"))
+            assertEquals((index + 1).toString(), request.getString("hb_refresh_count"))
+        }
+        assertEquals(3, googleLoads)
+    }
+
+    @Test fun `foreground offscreen replacement waits then recovers without another page`() {
+        loadVisibleBanner(blank = true, v2 = true)
+        inViewport = false; observer.dispatchOnPreDraw()
+        backgroundAndRecover()
+        assertEquals(1, responses.size)
+        assertEquals(View.INVISIBLE, creativeVisibility)
+        assertEquals(1, screenAdCoordinatorOverride!!.epoch)
+        inViewport = true; observer.dispatchOnPreDraw()
+        assertEquals(2, responses.size)
+        responses.last()(AudienzzResultCode.NO_BIDS); listener.onAdLoaded()
+        assertEquals(2, googleLoads); assertEquals(View.VISIBLE, creativeVisibility)
+    }
+
+    @Test fun `foreground cannot reactivate a banner on another page or undo publisher pause`() {
+        loadVisibleBanner(blank = true, v2 = true)
+        handler.stopAutoRefresh()
+        backgroundAndRecover()
+        assertEquals(1, responses.size)
+        assertTrue(handler.refreshController.blockReasons.contains(RefreshBlockReason.PUBLISHER))
+        AudienzzPrebidMobile.pageImpression("other")
+        backgroundAndRecover()
+        assertEquals(1, responses.size)
+        assertTrue(handler.refreshController.blockReasons.contains(RefreshBlockReason.PAGE_INACTIVE))
+        assertEquals(2, screenAdCoordinatorOverride!!.epoch)
+    }
 
 }

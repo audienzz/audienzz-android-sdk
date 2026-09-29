@@ -17,6 +17,7 @@ object FullscreenAdUtils {
 
             override fun onAdShowedFullScreenContent() {
                 super.onAdShowedFullScreenContent()
+                org.audienzz.mobile.testapp.App.onFullscreenAdOpened()
                 Log.d(logTag, "Ad was shown")
             }
 

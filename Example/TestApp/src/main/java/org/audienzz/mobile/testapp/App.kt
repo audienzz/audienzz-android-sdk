@@ -66,6 +66,20 @@ class App : Application() {
         const val PUBLISHER_ID = "35"
         private const val REMOTE_CONFIG_URL = "https://api.adnz.co/api/ws-sdk-config/public/v1"
 
+        // Demo navigation state, separate from application foreground state. Every destination
+        // calls this, so Back/tab changes report again but Home -> same screen does not.
+        private var reportedScreen: java.lang.ref.WeakReference<Any>? = null
+
+        fun reportScreenIfChanged(screen: Any) {
+            if (reportedScreen?.get() === screen) return
+            reportedScreen = java.lang.ref.WeakReference(screen)
+            AudienzzPrebidMobile.pageImpression(screen)
+        }
+
+        // Fullscreen ad returns intentionally keep the demo's existing explicit new-visit policy.
+        // Mark only a confirmed presentation, not a failed show or a mere prefetch.
+        fun onFullscreenAdOpened() { reportedScreen = null }
+
         /** Main thread only — every caller is a fragment callback. */
         private var isSdkReady = false
         private val pending = mutableListOf<() -> Unit>()

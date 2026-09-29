@@ -355,7 +355,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         }
 
         // The impression owner must be registered before the banner's recovery listener.
-        AudienzzPrebidMobile.observeForegroundReimpression()
+        AudienzzPrebidMobile.observeForegroundRecovery()
         AppForegroundMonitor.addListener(foregroundListener)
         if (!adView.isAttachedToWindow) refreshController.block(RefreshBlockReason.DETACHED)
         if (!AppForegroundMonitor.isForeground) refreshController.block(RefreshBlockReason.APP_BACKGROUND)
@@ -389,7 +389,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * GAM-loading indefinitely, producing requests that can never become impressions. (iOS gets this
      * for free: its refresh is a main-RunLoop `Timer`, which the OS freezes on backgrounding.)
      *
-     * Coming back to the foreground is normally handled as a fresh page impression, which recreates
+     * Coming back to the foreground is handled by a current-page recovery sweep, which recreates
      * the active page's banners. An app that never calls `pageImpression` has no such transition, so
      * this restores its refresh directly — otherwise backgrounding once would silently kill refresh
      * for the rest of the process, changing behaviour for apps that don't use page impressions at
@@ -421,7 +421,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             runCatching { adView.resume() }
                 .onFailure { Log.w(TAG, "adView.resume() failed for adUnitId=${adView.adUnitId}", it) }
             // Decide ownership BEFORE unblocking can schedule an overdue periodic request.
-            if (AudienzzPrebidMobile.hasPendingForegroundReimpression) return
+            if (AudienzzPrebidMobile.hasPendingForegroundRecovery) return
             refreshController.unblock(RefreshBlockReason.APP_BACKGROUND, schedule = false)
             resumeEligibleWork()
 
@@ -879,7 +879,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         // cheap and because a future exemption widened by accident would otherwise go unnoticed
         // here rather than at the one place the decision is made.
         if (refreshController.isDestroyed || !screenActive || !AppForegroundMonitor.isForeground) return false
-        if (AudienzzPrebidMobile.hasPendingForegroundReimpression) return false
+        if (AudienzzPrebidMobile.hasPendingForegroundRecovery) return false
         // Prebid is initialized asynchronously, and a slot that is already on screen fires its
         // first load immediately — so an above-the-fold banner routinely races it. Prebid does not
         // fail politely when it loses that race: it logs "SDK wasn't initialized. Context is null."

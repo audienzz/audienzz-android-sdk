@@ -144,7 +144,8 @@ returns or an explicit content change on one route. Give each navigation transit
 
 With the SDK's Flutter navigator observer or React Native navigation integration, let that helper
 report the transition; do not also call the manual API. Custom navigation must report itself.
-Native SDKs automatically re-report the active page after an app background/foreground transition.
+Native SDKs automatically recover the active page’s ads after a background/foreground transition,
+keeping the page ID and sending no additional pageImpression. Do not report solely on app resume.
 The managed bridge interstitial flow also handles return to the current page; do not add another
 publisher page impression for the same dismissal. A page change in fullscreen must remain owned
 by navigation, rather than resurrecting the page that launched the ad.
@@ -413,3 +414,22 @@ worker threads, not UI blocking time or measurements of physical-device battery 
   of every production lifecycle or of dashboard ingestion.
 - No Android device was connected for live collector verification. Client rollout dates and
   the historical NZZ/La Liberté mappings still require publisher/backend confirmation.
+
+
+### App background and foreground
+
+A real background/foreground round trip recovers ads on the active page without emitting a
+`pageImpression` or changing `page_impression_id`, screen name, `au_page_seq`, or banner positions.
+Request counters continue within that page; each admitted replacement still gets a fresh auction ID.
+Blanking (when enabled), lazy loading, visibility gates, publisher pause, stale-callback retirement
+and Google-load serialization remain in force. Navigation during the recovery delay supersedes it.
+
+The legacy `pageImpressionObserver` callback is a **UI lifecycle signal**, used for both navigation
+and foreground recovery. Its Flutter/RN echoes (`onPageImpression` / `AudienzzPageImpression`) may
+advance a local view revision without emitting analytics or incrementing `au_page_seq`. Published
+bridges already consume this signal; they only need the native release containing this change.
+
+Publishers report actual navigation, including back navigation and ad-free destinations; they
+must not report a new page solely from app-resume callbacks. Explicit `pageImpression` calls
+remain unconditional, even for the same screen. Existing explicit interstitial-return reports
+are unchanged. With no reported page, foreground recovery does not invent a page identity.

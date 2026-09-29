@@ -149,7 +149,7 @@ object AudienzzPrebidMobile {
         // An explicit report always wins over a pending automatic foreground one, and claims this
         // foreground visit so an activation arriving afterwards doesn't schedule a duplicate.
         reportedInThisForegroundVisit = true
-        cancelPendingForegroundReimpression()
+        cancelPendingForegroundRecovery()
         eventLogger?.onScreenResumed(screenName)
         // Ads are page-scoped unconditionally. This is NOT gated on isSmartRefreshV2Enabled(), which
         // now only selects the viewport gate used for scroll pause/resume: every page impression
@@ -167,12 +167,12 @@ object AudienzzPrebidMobile {
     }
 
     /**
-     * Delay before an automatic foreground re-impression fires. An app that reports its own page
+     * Delay before an automatic foreground recovery fires. An app that reports its own page
      * impression on resume cancels the pending one within this window, so the two orderings —
      * `onActivityStarted` (which drives the foreground callback) before `onResume` (where apps
-     * typically report) — both end in exactly one page impression.
+     * typically report) — both end in exactly one ad recovery.
      */
-    private const val FOREGROUND_REIMPRESSION_DELAY_MS = 400L
+    private const val FOREGROUND_RECOVERY_DELAY_MS = 400L
 
     /**
      * Whether the app reported a page impression itself during the current foreground visit. Reset
@@ -182,49 +182,40 @@ object AudienzzPrebidMobile {
     private var reportedInThisForegroundVisit: Boolean = false
 
     /**
-     * Notified after every page impression, including the automatic one fired on returning to the
-     * foreground.
-     *
-     * The Flutter and React Native bridges need to know a page transition happened so they can
-     * remount platform views and page-scope the ad types the native coordinator doesn't track. They
-     * used to observe their own app lifecycle and report a page impression themselves, which meant
-     * two independent owners each scheduling and de-duplicating — no ordering of the two ever came
-     * out right. Native owns foreground reporting; the bridges just listen.
+     * Page lifecycle notification after explicit navigation OR foreground ad recovery.
+     * The routing key is unchanged during recovery. Despite the legacy name, this is not an
+     * analytics event: Flutter/RN use it to remount views and refresh rendering banners.
+     * Their local view revision may advance without changing page_impression_id or au_page_seq.
      */
     @JvmStatic
     var pageImpressionObserver: ((String) -> Unit)? = null
 
     private val foregroundHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var pendingForegroundReimpression: Runnable? = null
+    private var pendingForegroundRecovery: Runnable? = null
 
     /**
-     * True while an automatic foreground page impression is scheduled. A banner whose auction the
-     * gate deferred consults this: the impression recreates every banner on the active page, so it
+     * True while an automatic foreground recovery is scheduled. A banner whose auction the
+     * gate deferred consults this: the recovery recreates every banner on the active page, so it
      * owns the recovery and a deferred retry must stand down rather than auction as well.
      */
-    internal val hasPendingForegroundReimpression: Boolean
-        get() = pendingForegroundReimpression != null
+    internal val hasPendingForegroundRecovery: Boolean
+        get() = pendingForegroundRecovery != null
 
-    private fun cancelPendingForegroundReimpression() {
-        pendingForegroundReimpression?.let { foregroundHandler.removeCallbacks(it) }
-        pendingForegroundReimpression = null
+    private fun cancelPendingForegroundRecovery() {
+        pendingForegroundRecovery?.let { foregroundHandler.removeCallbacks(it) }
+        pendingForegroundRecovery = null
     }
 
     /**
-     * Returning from the background is a new page impression for the screen the user comes back to:
-     * its banners reload so the creative is fresh at the moment it's looked at, and any banner left
-     * over from an earlier screen is released.
-     *
-     * Suppressed when the app itself reported a page impression within
-     * [FOREGROUND_REIMPRESSION_DEBOUNCE_MS] of the activation (the common case, where the resumed
-     * Activity/Fragment also calls pageImpression), so a restore never double-auctions.
+     * Refresh the active page after a real background return without starting another analytics
+     * page. An explicit navigation report owns recovery if it arrives before this delayed sweep.
      */
-    private val foregroundReimpressionListener = object : org.audienzz.mobile.util.AppForegroundMonitor.Listener {
+    private val foregroundRecoveryListener = object : org.audienzz.mobile.util.AppForegroundMonitor.Listener {
         override fun onEnterBackground() {
-            // Backgrounding again inside the scheduling window must drop the pending re-impression,
+            // Backgrounding again inside the scheduling window must drop the pending recovery,
             // or it would fire while backgrounded and recreate the whole active page — auctions that
             // would pass the response guard because they carry the current generation.
-            cancelPendingForegroundReimpression()
+            cancelPendingForegroundRecovery()
             // A new foreground visit starts when we come back, and nothing has been reported for it.
             reportedInThisForegroundVisit = false
         }
@@ -232,34 +223,39 @@ object AudienzzPrebidMobile {
         override fun onEnterForeground() {
             val coordinator = org.audienzz.mobile.screen.screenAdCoordinator ?: return
             val screen = coordinator.activeScreen ?: run {
-                android.util.Log.d(TAG, "pageImpression: foreground — no active screen yet, skipping")
+                android.util.Log.d(TAG, "foregroundRecovery: — no active screen yet, skipping")
                 return
             }
             val name = coordinator.activeScreenName ?: screen.javaClass.name
             // Cancelling covers only "activation first". An app that reports during activity
             // creation reports BEFORE onActivityStarted, so there is nothing pending to cancel and
-            // scheduling here would emit a second page impression 400ms later.
+            // scheduling here would reload the ads again 400ms later.
             //
             // Deliberately not an elapsed-time test. Age and ownership are different questions, and
             // conflating them fails both ways: a slow start makes a report from this visit look old
             // enough to ignore, and a quick background/return makes a report from the PREVIOUS visit
             // look recent enough to suppress this one.
             if (reportedInThisForegroundVisit) {
-                android.util.Log.d(TAG, "pageImpression: foreground — app already reported \"$name\" this visit, skipping")
+                android.util.Log.d(TAG, "foregroundRecovery: — app already reported \"$name\" this visit, skipping")
                 return
             }
-            cancelPendingForegroundReimpression()
+            cancelPendingForegroundRecovery()
+            val recoveryEpoch = coordinator.epoch
             val runnable = Runnable {
-                pendingForegroundReimpression = null
+                pendingForegroundRecovery = null
                 if (!org.audienzz.mobile.util.AppForegroundMonitor.isForeground) {
-                    android.util.Log.d(TAG, "pageImpression: foreground → no longer foreground, skipping")
+                    android.util.Log.d(TAG, "foregroundRecovery: → no longer foreground, skipping")
                     return@Runnable
                 }
-                android.util.Log.d(TAG, "pageImpression: foreground → re-firing \"$name\"")
-                notifyScreenResumed(screen, name)
+                // Recover only this visit. Explicit navigation cancels the pending work and
+                // starts its own page; it must never be overwritten by an old foreground task.
+                if (coordinator.epoch != recoveryEpoch) return@Runnable
+                coordinator.recoverActivePage()
+                // Compatibility signal for Flutter/RN remounts, not an analytics page impression.
+                pageImpressionObserver?.invoke(screen as? String ?: name)
             }
-            pendingForegroundReimpression = runnable
-            foregroundHandler.postDelayed(runnable, FOREGROUND_REIMPRESSION_DELAY_MS)
+            pendingForegroundRecovery = runnable
+            foregroundHandler.postDelayed(runnable, FOREGROUND_RECOVERY_DELAY_MS)
         }
     }
 
@@ -765,20 +761,20 @@ object AudienzzPrebidMobile {
     }
 
     /**
-     * Subscribes the automatic foreground re-impression to the lifecycle monitor. Separated from
+     * Subscribes the automatic foreground recovery to the lifecycle monitor. Separated from
      * [registerActivityCallbacks] so a unit test can exercise the foreground decision without
      * standing up an Application.
      */
     @androidx.annotation.VisibleForTesting
-    internal fun observeForegroundReimpression() {
-        org.audienzz.mobile.util.AppForegroundMonitor.addListener(foregroundReimpressionListener)
+    internal fun observeForegroundRecovery() {
+        org.audienzz.mobile.util.AppForegroundMonitor.addListener(foregroundRecoveryListener)
     }
 
     private fun registerActivityCallbacks(context: Context) {
         val app = context.applicationContext as? Application ?: return
         app.registerActivityLifecycleCallbacks(CURRENT_ACTIVITY_TRACKER)
         app.registerActivityLifecycleCallbacks(org.audienzz.mobile.util.AppForegroundMonitor)
-        observeForegroundReimpression()
+        observeForegroundRecovery()
     }
 
     /**
