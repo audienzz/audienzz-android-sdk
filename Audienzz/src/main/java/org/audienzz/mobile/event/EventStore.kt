@@ -9,12 +9,14 @@ import java.io.FileOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Single-worker durable journal. Never evicts an unacknowledged event to admit a newer one. */
+/** Single-worker durable journal. Never evicts a pending deliverable event to admit a newer one. */
 @Singleton
 internal class EventStore(
     context: Context,
     private val maxBytes: Int,
     private val json: Json,
+    private val quarantineMaxBytes: Int = 1024 * 1024,
+    private val quarantineMaxCount: Int = 100,
 ) {
     @Inject constructor(context: Context) : this(context, MAX_BYTES, Json { ignoreUnknownKeys = true })
     enum class Admission { STORED, FULL, IO_ERROR }
@@ -22,6 +24,7 @@ internal class EventStore(
     private var cached: LinkedHashMap<String, EventNetwork>? = null
     private val quarantined = linkedSetOf<String>()
     private var payloadBytes = 0
+    private var quarantineBytes = 0
     private var removals = 0
 
     @Synchronized fun loadAll(): List<EventNetwork> = records().filterKeys { it !in quarantined }.values.toList()
@@ -32,7 +35,7 @@ internal class EventStore(
         if (records.containsKey(event.eventId)) return Admission.STORED
         val line = json.encodeToString(EventNetwork.serializer(), event)
         val bytes = line.toByteArray(Charsets.UTF_8).size
-        if (payloadBytes.toLong() + bytes > maxBytes) return Admission.FULL
+        if (payloadBytes.toLong() - quarantineBytes + bytes > maxBytes) return Admission.FULL
         if (!appendLine(line)) return Admission.IO_ERROR
         records[event.eventId] = event
         payloadBytes += bytes
@@ -47,19 +50,23 @@ internal class EventStore(
         if (present.isEmpty()) return true
         if (!appendLine(buildJsonObject { put("_au_ack_ids", JsonArray(present.map(::JsonPrimitive))) }.toString())) return false
         for (id in present) {
-            records.remove(id)?.let { payloadBytes -= json.encodeToString(EventNetwork.serializer(), it).toByteArray(Charsets.UTF_8).size }
-            quarantined.remove(id)
+            records.remove(id)?.let {
+                val bytes = encodedSize(it)
+                payloadBytes -= bytes
+                if (quarantined.remove(id)) quarantineBytes -= bytes
+            }
         }
         removals += present.size
         checkpointIfNeeded()
         return true
     }
 
-    /** Rejected singletons stay on disk, but no longer block delivery of valid events. */
+    /** Rejected singletons enter bounded diagnostic retention, outside the pending-delivery quota. */
     @Synchronized fun quarantine(id: String): Boolean {
+        val event = records()[id] ?: return true
         if (id in quarantined) return true
         if (!appendLine(buildJsonObject { put("_au_quarantine", id) }.toString())) return false
-        quarantined.add(id)
+        quarantined.add(id); quarantineBytes += encodedSize(event)
         checkpointIfNeeded()
         return true
     }
@@ -80,7 +87,8 @@ internal class EventStore(
                         val value = json.parseToJsonElement(line).jsonObject
                         when {
                             "_au_ack" in value -> { records.remove(value.getValue("_au_ack").jsonPrimitive.content); removals++ }
-                            "_au_ack_ids" in value -> value.getValue("_au_ack_ids").jsonArray.forEach {
+                            "_au_ack_ids" in value || "_au_discard_ids" in value ->
+                                (value["_au_ack_ids"] ?: value.getValue("_au_discard_ids")).jsonArray.forEach {
                                 val id = it.jsonPrimitive.content
                                 records.remove(id); rejected.remove(id); removals++
                             }
@@ -95,8 +103,10 @@ internal class EventStore(
             throw error // Never replace an unreadable backlog with an empty cache.
         }
         cached = records
-        quarantined.addAll(rejected)
-        payloadBytes = records.values.sumOf { json.encodeToString(EventNetwork.serializer(), it).toByteArray(Charsets.UTF_8).size }
+        quarantined.addAll(rejected.filter { it in records })
+        payloadBytes = records.values.sumOf(::encodedSize)
+        quarantineBytes = records.filterKeys { it in quarantined }.values.sumOf(::encodedSize)
+        trimQuarantine()
         // Legacy files may exceed the new cap: drain them, never truncate them on upgrade.
         if (damaged || removals >= maxOf(64, records.size / 4)) compact()
         return records
@@ -112,8 +122,34 @@ internal class EventStore(
         true
     } catch (_: Exception) { persistenceFailed(); false }
 
+    private fun encodedSize(event: EventNetwork) = json.encodeToString(EventNetwork.serializer(), event).toByteArray(Charsets.UTF_8).size
+
+    /** Rejected payloads are bounded diagnostics, not owed delivery. Never trim pending events. */
+    private fun trimQuarantine() {
+        val records = cached ?: return
+        if (quarantined.size <= quarantineMaxCount && quarantineBytes <= quarantineMaxBytes) return
+        var bytes = 0
+        var count = 0
+        val discard = records.values.toList().asReversed().filter { it.eventId in quarantined }.mapNotNull {
+            val size = encodedSize(it)
+            if (count < quarantineMaxCount && bytes.toLong() + size <= quarantineMaxBytes) {
+                count++; bytes += size; null
+            } else it.eventId
+        }
+        // A distinct durable discard marker: these events were rejected, never delivered.
+        if (!appendLine(buildJsonObject { put("_au_discard_ids", JsonArray(discard.map(::JsonPrimitive))) }.toString())) return
+        discard.forEach { id ->
+            records.remove(id)?.let { val size = encodedSize(it); payloadBytes -= size; quarantineBytes -= size }
+            quarantined.remove(id)
+        }
+        removals += discard.size
+        AudienzzDiagnostics.log("analytics", "quarantinePruned", "count" to discard.size)
+    }
+
     private fun checkpointIfNeeded() {
-        if (cached?.isEmpty() == true || removals >= maxOf(64, (cached?.size ?: 0) / 4) || file.length() > maxBytes.toLong() + 1024 * 1024) compact()
+        trimQuarantine()
+        if (cached?.isEmpty() == true || removals >= maxOf(64, (cached?.size ?: 0) / 4) ||
+            file.length() > maxBytes.toLong() + quarantineMaxBytes + 1024 * 1024) compact()
     }
 
     private fun compact() {

@@ -46,9 +46,38 @@ remain separate verification work.
 
 See [the field and delivery contract](analytics-contract.md) for the precise event semantics.
 
+## Follow-up batching review
+
+The external review found no P0/P1 and independently reproduced the 314 Android / 342 iOS
+auction-batching baseline. Its four P2 observations were valid:
+
+- The flush regression only covered an event arriving during HTTP, missing an arrival while a
+  forced batch waited for request spacing. Both platforms now test B at t=2s, A1 + flush at
+  t=2.1s, A2 at t=2.5s: the t=4s POST must contain only A1. Production filtering was already correct.
+- Quarantine could permanently consume all capacity. Rejected payloads now have separate bounded
+  diagnostic retention (100 events / 1 MiB); durable discard markers prune only rejected records.
+  Pending deliverable events keep the 20 MiB quota and are never evicted for newer events.
+- Restored backlog could delay fresh events for the full drain. Due restored/fresh groups now
+  alternate while preserving auction grouping, debounce, caps, one HTTP request and spacing.
+  Failed HTTP plans keep their backoff/priority; this does not promise a two-second delivery SLA.
+- A failed local acknowledgement retried an already-accepted POST. Known HTTP successes now retry
+  only local acknowledgement, with capped backoff, while other persisted events can proceed.
+  The durable copy stays intact until acknowledgement; process death can still cause replay.
+
+Foreground recovery/page-impression semantics are explicitly outside this follow-up. Flutter/RN
+code and native release versions are unchanged. Collector atomic acceptance and ID deduplication
+remain required; client tests do not independently establish the live backend implementation.
+
 ## Validation
 
-- Full native suites: **306 Android tests and 334 iOS tests passed**.
+- Producer/lifecycle baseline: **306 Android / 334 iOS**; auction-batching baseline: **314 / 342**.
+- Follow-up full suites: **321 Android / 349 iOS passed**, zero failures.
+- Mutation verification on both platforms: sending the whole auction during an early flush,
+  restoring backlog-first scheduling/HTTP retries after acknowledgement failure, and removing
+  quarantine quota isolation/retention each fail the corresponding new regressions. Sources
+  were restored before the successful full-suite runs.
+- Persistent acknowledgement failure is tested over ten simulated minutes. Physical journal
+  reopen tests cover process death after HTTP acceptance but before local acknowledgement.
 - Regressions drive the handlers' installed Google callbacks, real page transitions and lifecycle
   notifications, with controlled demand/network/visibility fixtures. No live ad requests are needed.
 - Mutation checks: removing Android impression deduplication produces three impressions instead

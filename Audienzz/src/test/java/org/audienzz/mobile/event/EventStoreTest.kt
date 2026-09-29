@@ -223,4 +223,42 @@ internal class EventStoreTest {
         assertTrue(!file().exists())
     }
 
+    @Test fun `quarantine cannot consume pending delivery capacity even after restart`() {
+        val bytes = Json.encodeToString(EventNetwork.serializer(), event("a")).toByteArray().size
+        val first = store(bytes)
+        assertEquals(EventStore.Admission.STORED, first.append(event("a")))
+        assertTrue(first.quarantine("a"))
+        val reopened = store(bytes)
+        assertEquals(EventStore.Admission.STORED, reopened.append(event("b")))
+        assertEquals(EventStore.Admission.FULL, reopened.append(event("c")))
+        assertEquals(listOf("b"), store(bytes).loadAll().map { it.eventId })
+        assertEquals(setOf("a"), store(bytes).quarantinedIds())
+    }
+
+    @Test fun `quarantine retention bounds count and bytes without trimming pending events`() {
+        val bytes = Json.encodeToString(EventNetwork.serializer(), event("a")).toByteArray().size
+        fun limited(count: Int, budget: Int) = EventStore(context, bytes * 10, Json { ignoreUnknownKeys = true }, budget, count)
+        val first = limited(2, bytes * 10)
+        assertEquals(EventStore.Admission.STORED, first.append(event("owed")))
+        for (id in listOf("a", "b", "c")) {
+            assertEquals(EventStore.Admission.STORED, first.append(event(id))); assertTrue(first.quarantine(id))
+        }
+        assertEquals(setOf("b", "c"), limited(2, bytes * 10).quarantinedIds())
+        assertEquals(listOf("owed"), limited(2, bytes).loadAll().map { it.eventId })
+        assertEquals(setOf("c"), limited(2, bytes).quarantinedIds())
+        // Discard markers survive reopen and checkpoint; they never masquerade as success.
+        val reopened = limited(2, bytes)
+        assertTrue(reopened.acknowledge(listOf("owed")))
+        assertTrue(limited(2, bytes).loadAll().isEmpty())
+        assertEquals(setOf("c"), limited(2, bytes).quarantinedIds())
+        assertTrue(file().readText().contains("_au_discard_ids"))
+    }
+
+    @Test fun `oversized quarantined diagnostic is discarded while owed events remain`() {
+        val first = EventStore(context, EventStore.MAX_BYTES, Json, 1, 100)
+        first.append(event("owed")); first.append(event("bad")); assertTrue(first.quarantine("bad"))
+        assertEquals(listOf("owed"), store().loadAll().map { it.eventId })
+        assertTrue(store().quarantinedIds().isEmpty())
+    }
+
 }

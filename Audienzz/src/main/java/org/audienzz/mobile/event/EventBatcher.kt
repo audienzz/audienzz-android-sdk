@@ -54,7 +54,7 @@ internal class EventBatcher internal constructor(
 
     init {
         AppForegroundMonitor.addListener(this)
-        // Connectivity is only a flush hint; the sender still owns every deadline.
+        // Connectivity only wakes the worker; the sender still owns every deadline.
         val connectivity = context?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) = wake()
@@ -82,6 +82,13 @@ internal class EventBatcher internal constructor(
         val arrived = mutableMapOf<String, Long>()
         // Flush/recovery applies only to events already queued, never to later arrivals.
         val flushIds = mutableSetOf<String>()
+        val restoredIds = mutableSetOf<String>()
+        // Accepted by HTTP, but still owed a durable local acknowledgement. Never POST these
+        // again in this process; a restart may replay them with the same IDs.
+        val acceptedIds = linkedSetOf<String>()
+        var ackRetryAt = 0L
+        var ackFailures = 0
+        var lastWasBacklog = false
         val plans = ArrayDeque<List<EventNetwork>>()
         var restored = false
         var inFlight = false
@@ -96,14 +103,30 @@ internal class EventBatcher internal constructor(
         fun auction(event: EventNetwork) = event.attributes["auction_id"]?.trim()?.takeIf { it.isNotEmpty() }
         fun later(at: Long) {
             wake?.cancel()
-            wake = launch { delay((at - now()).coerceIn(1, 86_400_000)); wakeSignals.send(Unit) }
+            val deadline = minOf(at, if (acceptedIds.isNotEmpty()) ackRetryAt else Long.MAX_VALUE)
+            wake = launch { delay((deadline - now()).coerceIn(1, 86_400_000)); wakeSignals.send(Unit) }
+        }
+        fun forget(id: String) {
+            pending.remove(id); arrived.remove(id); flushIds.remove(id); restoredIds.remove(id)
+        }
+        fun persistAcknowledgements() {
+            if (acceptedIds.isEmpty() || now() < ackRetryAt) return
+            val ids = acceptedIds.toList()
+            if (runCatching { store.acknowledge(ids) }.getOrDefault(false)) {
+                ids.forEach(::forget); acceptedIds.clear(); ackFailures = 0
+            } else {
+                ackFailures = (ackFailures + 1).coerceAtMost(21)
+                val delay = (config.retryBaseMs shl (ackFailures - 1)).coerceAtMost(config.retryMaxMs)
+                ackRetryAt = now() + delay
+                AudienzzDiagnostics.log("analytics", "ackRetryScheduled", "count" to ids.size, "delayMs" to delay)
+            }
         }
         fun persist() {
             if (now() < storageRetryAt) return
             try {
                 if (!restored) {
                     store.loadAll().forEach {
-                        pending[it.eventId] = it; arrived[it.eventId] = now(); flushIds.add(it.eventId)
+                        pending[it.eventId] = it; arrived[it.eventId] = now(); flushIds.add(it.eventId); restoredIds.add(it.eventId)
                     }
                     restored = true
                     if (pending.isNotEmpty()) AudienzzDiagnostics.log("analytics", "restored",
@@ -121,10 +144,16 @@ internal class EventBatcher internal constructor(
         }
         fun pump() {
             wake?.cancel(); wake = null
+            persistAcknowledgements()
             persist()
-            if (inFlight) return
-            if (pending.isEmpty()) {
+            if (inFlight) {
+                if (acceptedIds.isNotEmpty()) later(ackRetryAt)
+                return
+            }
+            val ready = pending.values.filter { it.eventId !in acceptedIds }
+            if (ready.isEmpty()) {
                 if (unsaved.isNotEmpty() || !restored) later(storageRetryAt)
+                else if (acceptedIds.isNotEmpty()) later(ackRetryAt)
                 return
             }
             val batchSize = AnalyticsBatchSettings.resolve(backendBatchSize?.invoke() ?: config.batchSize)
@@ -138,13 +167,16 @@ internal class EventBatcher internal constructor(
                 // Independent trailing-edge debounce per auction, including one no-auction bucket.
                 // Select the earliest due group, not the first event in the global queue: a busy
                 // auction must not hold up another auction that has already gone quiet.
-                val groups = pending.values.groupBy(::auction)
-                val latest = mutableMapOf<String?, Long>()
-                for (event in pending.values + unsaved.values) {
-                    val key = auction(event)
+                // Alternate restored and fresh work when both are due. Separate lanes even for
+                // the same auction prevent a large restored group from burying its new events.
+                fun groupKey(event: EventNetwork) = auction(event) to (event.eventId in restoredIds)
+                val groups = ready.groupBy(::groupKey)
+                val latest = mutableMapOf<Pair<String?, Boolean>, Long>()
+                for (event in ready + unsaved.values) {
+                    val key = groupKey(event)
                     latest[key] = maxOf(latest[key] ?: Long.MIN_VALUE, arrived[event.eventId] ?: now())
                 }
-                fun due(group: Map.Entry<String?, List<EventNetwork>>): Long {
+                fun due(group: Map.Entry<Pair<String?, Boolean>, List<EventNetwork>>): Long {
                     val quietAt = (latest[group.key] ?: now()) + config.batchDelayMs
                     // Use when the cap became due, not a permanently privileged "now/zero": a
                     // continuously full auction must eventually yield to other overdue auctions.
@@ -152,7 +184,8 @@ internal class EventBatcher internal constructor(
                     val forcedAt = group.value.firstOrNull { it.eventId in flushIds }?.let { arrived[it.eventId] } ?: Long.MAX_VALUE
                     return minOf(quietAt, fullAt, forcedAt)
                 }
-                val group = groups.entries.minByOrNull(::due)!!
+                val otherLane = groups.entries.filter { due(it) <= now() && it.key.second != lastWasBacklog }
+                val group = (otherLane.ifEmpty { groups.entries.toList() }).minByOrNull(::due)!!
                 deadline = due(group)
                 val quiet = now() >= (latest[group.key] ?: now()) + config.batchDelayMs
                 val candidates = if (!quiet && group.value.size < batchSize && group.value.any { it.eventId in flushIds })
@@ -168,7 +201,7 @@ internal class EventBatcher internal constructor(
                 if (selected.isEmpty()) {
                     val id = candidates.first().eventId
                     if (store.quarantine(id)) {
-                        pending.remove(id); arrived.remove(id); flushIds.remove(id)
+                        forget(id)
                         AudienzzDiagnostics.log("analytics", "quarantined", "reason" to "payloadTooLarge", "count" to 1)
                         later(now() + 1)
                     } else later(now() + config.retryBaseMs)
@@ -180,6 +213,7 @@ internal class EventBatcher internal constructor(
             if (now() < allowed) { later(minOf(allowed, if (unsaved.isNotEmpty()) storageRetryAt else Long.MAX_VALUE)); return }
             if (plans.isNotEmpty()) plans.removeFirst()
             inFlight = true; lastStart = now()
+            lastWasBacklog = batch.first().eventId in restoredIds
             AudienzzDiagnostics.log("analytics", "sending", "count" to batch.size, "attempt" to failures + 1,
                 "oldestEventTimestamp" to batch.minOf { it.eventTimestamp })
             launch {
@@ -208,20 +242,21 @@ internal class EventBatcher internal constructor(
                     lastStart = result.startedAt
                     val ids = result.events.map { it.eventId }
                     val error = result.error
-                    if (error == null && store.acknowledge(ids)) {
-                        ids.forEach { pending.remove(it); arrived.remove(it); flushIds.remove(it) }
+                    if (error == null) {
+                        acceptedIds.addAll(ids)
+                        persistAcknowledgements()
                         failures = 0; retryAt = 0
                         AudienzzDiagnostics.log("analytics", "sent", "count" to ids.size)
                     } else {
                         val status = (error as? HttpException)?.code()
                         AudienzzDiagnostics.log("analytics", "failed", "count" to ids.size, "status" to status,
-                            "reason" to (error?.javaClass?.simpleName ?: "ackPersistence"))
+                            "reason" to error.javaClass.simpleName)
                         if (status in listOf(400, 413, 422)) {
                             if (ids.size > 1) {
                                 val halves = result.events.chunked((ids.size + 1) / 2)
                                 halves.asReversed().forEach { plans.addFirst(it) }
                             } else if (store.quarantine(ids.single())) {
-                                pending.remove(ids.single()); arrived.remove(ids.single()); flushIds.remove(ids.single())
+                                forget(ids.single())
                                 AudienzzDiagnostics.log("analytics", "quarantined", "count" to 1, "status" to status)
                             } else plans.addFirst(result.events)
                         } else plans.addFirst(result.events)

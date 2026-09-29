@@ -370,17 +370,96 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
     }
 
-    @Test fun `failed ack write replays same IDs without acknowledging events behind batch`() = runTest {
+    @Test fun `failed ack write retries locally while another auction proceeds`() = runTest {
         every { store.acknowledge(any()) } returns false
         val sender = sender(testScheduler)
         sender.enqueue(event(0)); sender.flush(); runCurrent()
-        sender.enqueue(event(1)); runCurrent()
-        every { store.acknowledge(any()) } returns true
+        val b = auctionEvent(1, "B")
+        sender.enqueue(b); runCurrent()
+        advanceTimeBy(600_000); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
+        coVerify(exactly = 1) { repository.submitBatch(listOf(b)) }
+        coVerify(exactly = 2) { repository.submitBatch(any()) }
+        verify(atLeast = 2, atMost = 20) { store.acknowledge(any()) }
+        val acknowledged = mutableListOf<List<String>>()
+        every { store.acknowledge(capture(acknowledged)) } returns true
+        advanceTimeBy(60_000); runCurrent()
+        assertEquals(listOf(listOf("0", "1")), acknowledged)
+        // Nothing is resent after either local acknowledgement eventually succeeds.
+        advanceTimeBy(60_000); runCurrent()
+        coVerify(exactly = 2) { repository.submitBatch(any()) }
+    }
+
+    @Test fun `accepted batch replays after process death before local acknowledgement`() = runTest {
+        val directory = java.nio.file.Files.createTempDirectory("accepted-restart").toFile()
+        val context = mockk<android.content.Context>()
+        every { context.filesDir } returns directory
+        val parent = java.io.File(directory, "audienzz")
+        val backup = java.io.File(directory, "saved")
+        store = EventStore(context)
+        val done = CompletableDeferred<Unit>()
+        coEvery { repository.submitBatch(any()) } coAnswers { done.await() }
+        val first = sender(testScheduler)
+        try {
+            first.enqueue(event(0)); first.flush(); runCurrent()
+            assertTrue(parent.renameTo(backup)); parent.writeText("unwritable")
+            done.complete(Unit); runCurrent() // HTTP succeeded, durable local ack fails.
+            coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
+            first.cancel(); runCurrent()
+            assertTrue(parent.delete()); assertTrue(backup.renameTo(parent))
+            store = EventStore(context)
+            assertEquals(listOf(event(0)), store.loadAll())
+            coEvery { repository.submitBatch(any()) } returns Unit
+            val second = sender(testScheduler); runCurrent()
+            coVerify(exactly = 2) { repository.submitBatch(listOf(event(0))) }
+            assertTrue(EventStore(context).loadAll().isEmpty())
+            second.cancel()
+        } finally { first.cancel(); directory.deleteRecursively() }
+    }
+
+    @Test fun `late same auction event does not ride along with a scheduled flush`() = runTest {
+        val sender = sender(testScheduler)
+        val b = auctionEvent(0, "B"); val a1 = auctionEvent(1, "A"); val a2 = auctionEvent(2, "A")
+        sender.enqueue(b); runCurrent(); advanceTimeBy(2000); runCurrent()
+        advanceTimeBy(100); sender.enqueue(a1); sender.flush(); runCurrent()
+        advanceTimeBy(400); sender.enqueue(a2); runCurrent()
+        advanceTimeBy(1500); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(a1)) }
+        coVerify(exactly = 2) { repository.submitBatch(any()) }
+        advanceTimeBy(1999); runCurrent()
+        coVerify(exactly = 2) { repository.submitBatch(any()) }
+        advanceTimeBy(1); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(a2)) }
+    }
+
+    @Test fun `restored and fresh auctions both progress without waiting for the whole backlog`() = runTest {
+        val backlog = (100..159).map { auctionEvent(it, "old-$it") }
+        every { store.loadAll() } returns backlog
+        val sender = sender(testScheduler); runCurrent()
+        val fresh = (0..9).map { auctionEvent(it, "fresh-$it") }
+        fresh.forEach(sender::enqueue); runCurrent()
         advanceTimeBy(2000); runCurrent()
-        coVerify(exactly = 2) { repository.submitBatch(listOf(event(0))) }
-        verify(exactly = 0) { store.acknowledge(listOf("1")) }
+        coVerify(exactly = 1) { repository.submitBatch(listOf(fresh[0])) }
         advanceTimeBy(2000); runCurrent()
-        verify(exactly = 1) { store.acknowledge(listOf("1")) }
+        coVerify(exactly = 1) { repository.submitBatch(listOf(backlog[1])) }
+        advanceTimeBy(2000); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(fresh[1])) }
+        advanceTimeBy(140_000); runCurrent()
+        val sent = mutableListOf<List<EventNetwork>>()
+        coVerify(exactly = 70) { repository.submitBatch(capture(sent)) }
+        assertEquals((backlog + fresh).map { it.eventId }.toSet(), sent.flatten().map { it.eventId }.toSet())
+    }
+
+    @Test fun `new events in the same restored auction get their own fair turn`() = runTest {
+        every { store.loadAll() } returns (100..159).map(::event)
+        val sender = sender(testScheduler); runCurrent()
+        sender.enqueue(event(0)); runCurrent()
+        advanceTimeBy(1999); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(any()) }
+        advanceTimeBy(1); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
+        advanceTimeBy(2000); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch((110..119).map(::event)) }
     }
 
     @Test fun `invalid batch is split and rejected singleton quarantined not deleted`() = runTest {

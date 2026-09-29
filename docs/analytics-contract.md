@@ -214,8 +214,8 @@ that forwarding change and the matching native releases must ship together.
 | Request start spacing | At least 2 seconds, including retries and backlog draining |
 | HTTP timeout | 30 seconds per attempt |
 | Retry | Exponential 2/4/8/16/32/60-second ceiling, randomized to 50–100%; honor longer `Retry-After` |
-| Durable capacity | 20 MiB of pending + quarantined event payloads; journal metadata and an atomic checkpoint need additional space |
-| Retention | No automatic age expiry or retry-count limit; acknowledged events removed, rejected singletons retained |
+| Durable capacity | 20 MiB of pending payloads + separate quarantine retention (100 events / 1 MiB); journal metadata and atomic checkpoints need additional space |
+| Retention | No age expiry/retry limit for pending delivery; acknowledged events removed; rejected diagnostics bounded separately |
 | Overflow | Reject newest admission with `dropped reason=storageCapacity`; never evict already owed events |
 
 The publisher response from ws-sdk-config accepts the top-level field `analyticsBatchSize`:
@@ -235,14 +235,19 @@ Configuration updates do not reset auction inactivity deadlines, request spacing
 with a synchronized journal write before an event becomes eligible for HTTP. Each auction has
 an independent two-second inactivity window. A new event resets only its auction's deadline;
 re-enqueuing an already-pending event ID does not. Each POST contains events from one auction,
-in enqueue order, and never exceeds the configured event cap or 128 KiB. The cap is per auction,
+in enqueue order within its recovery/fresh group, and never exceeds the configured event cap or 128 KiB. The cap is per auction,
 not the total queue size. A late click or impression after a batch was sent starts another window
 for the same auction; the SDK does not wait for every possible event in the ad's lifetime.
 
 Events with a missing/blank auction ID, including `pageImpression`, share a separate debounced
 bucket. They are not dropped, assigned a fabricated auction ID or mixed into an auction's POST.
-Among due groups, the oldest due group sends first; an active or continuously full auction cannot
-continually overtake older due groups. One serial worker owns all groups and has no timer when empty.
+When restored backlog and fresh work are both due, successful sends alternate between them.
+Within each lane, the oldest due auction sends first. Restored and newly generated events remain
+separate groups even when their auction IDs match, so fresh events are not buried behind a large
+restored auction. A lane that is not due does not delay the other. Existing failed-batch retries
+still have priority and respect server backoff. An active or continuously full auction cannot
+continually overtake older due groups within its lane. One serial worker owns all groups and has
+no timer when there is no delivery or acknowledgement work.
 Two-second request-start spacing, one in-flight POST, retry backoff and persistence failures can
 delay actual sending beyond a group's debounce deadline.
 
@@ -266,13 +271,24 @@ split a rejected batch into smaller batches, respecting backoff and spacing. A r
 is marked **quarantined** in the journal, never counted as delivered; other events can proceed.
 A singleton exceeding 128 KiB is also quarantined. There is no automatic replay of quarantine:
 it requires investigation and an explicit repair/migration, so a persistently invalid payload
-cannot consume requests forever. Quarantined payloads still count toward the 20 MiB capacity.
+cannot consume requests forever. Rejected payloads use a separate diagnostic quota: at most
+100 events and 1 MiB of retained payloads, keeping the newest that fit. Older/oversized rejected
+payloads are pruned with a durable discard marker, never recorded as delivered. This quota does
+not consume the 20 MiB for pending deliverable events. Existing journals are normalized on load;
+no pending deliverable event is pruned. Physical journal overhead is reclaimed at checkpoints,
+and failed disk writes remain a limitation of both persistence and retention enforcement.
 
-**Delivery is at least once.** If the server accepts a batch and its reply is lost, or a local
-acknowledgement write fails, the same IDs are retried. The collector must deduplicate by `event_id`,
-not `auction_id` or slot. Order analytically by `session_seq`, not HTTP arrival.
+**Delivery is at least once.** If the server accepts a batch and its reply is lost, the same IDs
+are retried. After a known HTTP success, a failed local acknowledgement retries only the disk
+write (2/4/8/16/32/60-second capped backoff). Those accepted IDs remain durable, consume pending
+capacity until acknowledged, and are excluded from further POSTs in the current process. Other
+persisted events may proceed. The `sent` diagnostic means HTTP acceptance; it does not promise
+that the local acknowledgement has already been persisted. A restart before acknowledgement
+can replay the same IDs, so the collector must still deduplicate by `event_id`, not `auction_id`
+or slot. Order analytically by `session_seq`, not HTTP arrival.
 
-The existing JSONL format is preserved, with batched acknowledgement and quarantine markers.
+The JSONL journal keeps reading legacy events/acknowledgements, with batched acknowledgement,
+quarantine and rejected-payload discard markers.
 Checkpoints run after at least 64 acknowledged events (one quarter of the remaining backlog
 for large queues), when empty, or to bound journal overhead. Writes
 are synchronized off the UI thread; checkpoints replace files atomically. An unreadable store is
@@ -288,10 +304,16 @@ claim is made from host/simulator timings.
 
 ### Batching verification (September 29, 2026)
 
-- Auction-debounce update: full native suites pass (314 Android / 342 iOS). Removing auction
+- Follow-up review fixes: **321 Android / 349 iOS tests passed**, zero failures. New tests cover
+  flush spacing with a later same-auction arrival, restored/fresh fairness (including one shared
+  auction), persistent acknowledgement-write failure, crash replay after HTTP success, and
+  separate bounded quarantine retention. Reverting the relevant behavior fails the regressions
+  on both platforms. No live-device/collector validation was performed for this follow-up.
+
+- Auction-debounce baseline: full native suites passed (314 Android / 342 iOS). Removing auction
   grouping and reverting to the first event's deadline fails the interleaving and inactivity
   regression tests on both platforms. No on-device or live-collector claim is made from these tests.
-- Full native suites: 293 Android tests and 320 iOS tests pass.
+- Initial durable-batching baseline: 293 Android tests and 320 iOS tests passed.
 - Queue tests exercise the real sender with a controlled clock and fake HTTP completion; store
   tests reopen the real journal to check restart recovery, torn writes, capacity and quarantine.
 - Transport tests serialize real event arrays through Retrofit / URLSession and stub responses;
@@ -329,7 +351,9 @@ With SDK diagnostics enabled (already enabled in the examples), filter device lo
 * `sending`: a batch is being submitted, with count, attempt number and oldest `event_timestamp`.
 * `sent`: the HTTP request succeeded. This does not prove downstream dashboard ingestion.
 * `failed`: the HTTP status or transport error code/type; `retryScheduled` gives the cooldown.
-* `quarantined`: a rejected/oversized singleton is retained for inspection.
+* `quarantined`: a rejected/oversized singleton is excluded from delivery and enters bounded diagnostic retention.
+* `quarantinePruned`: rejected diagnostic payloads exceeded their retention budget; count only.
+* `ackRetryScheduled`: HTTP succeeded but its local acknowledgement still needs saving; count and delay only.
 * `dropped`: new admission exceeded capacity; `persistenceFailed`: a local write failed.
 
 These lines omit payloads, identifiers, targeting and consent strings, and are disabled when
@@ -348,7 +372,9 @@ restore/send diagnostics expose backlog age without logging event payloads or id
 Successful local acknowledgement removes exactly the delivered IDs; they must not reappear on
 restart. Tests restore a September 25 event, verify its unchanged payload, acknowledge it, reopen
 the actual disk store and verify no resend. If the server accepted a POST but its response was
-lost, or local acknowledgement could not be saved, delivery can repeat with the **same** event ID.
+lost, or the process restarted before a failed local acknowledgement could be saved, delivery can
+repeat with the **same** event ID. Within the current process, a known HTTP success only retries
+its local acknowledgement.
 The collector must deduplicate that ID and distinguish ingestion time from event time. Different
 event IDs require examining producer callbacks and auction IDs; an old date alone does not prove
 duplicates. The reported September 25 traffic cannot be diagnosed conclusively without payloads.
