@@ -47,8 +47,6 @@ class AudienzzRewardedVideoAdHandler(
     // SDK-generated auction id, minted at auction start and reused across every event of that auction.
     private var currentAuctionId: String? = null
 
-    // Full-screen viewability (viewability.start / viewability.success); cancelled on dismiss.
-    private var viewabilityTimer: FullScreenViewabilityTimer? = null
 
     /**
      * @param fullScreenContentCallback use for work with callbacks from Rewarded ad
@@ -73,7 +71,8 @@ class AudienzzRewardedVideoAdHandler(
         val requestAuctionId = currentAuctionId
         val requestPage = eventLogger?.capturePageContext() ?: AnalyticsPageContext()
         val requestStartMs = System.currentTimeMillis()
-        eventLogger?.bidRequest(
+        val runPrebid = !AudienzzPrebidMobile.prebidUnavailable
+        if (runPrebid) eventLogger?.bidRequest(
             pageContext = requestPage,
             adUnitId = adUnitId,
             adType = AdType.REWARDED,
@@ -94,6 +93,13 @@ class AudienzzRewardedVideoAdHandler(
         // Global targeting and the SDK's keys go onto the built request, never the publisher's
         // builder (see AudienzzAdRequestContext.buildPublisherRequest).
         val request = AudienzzAdRequestContext.buildPublisherRequest(gamRequestBuilder)
+        if (!runPrebid) {
+            // No Prebid attempt happened. Keep Google's render funnel, without a synthetic noBid.
+            resultCallback(null, request, connectCallbacks(adLoadCallback, fullScreenContentCallback,
+                RenderEconomics(bidderCode = AD_SERVER_BIDDER, auctionId = requestAuctionId,
+                    slotReload = 0, pageContext = requestPage)))
+            return
+        }
         adUnit.fetchDemand(request) { resultCode ->
             val timeToRespond = System.currentTimeMillis() - requestStartMs
             // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
@@ -126,6 +132,7 @@ class AudienzzRewardedVideoAdHandler(
                 lastRenderEconomics = null
             }
             eventLogger?.bidResponse(
+                auctionId = requestAuctionId,
                 pageContext = requestPage,
                 adUnitId = adUnitId,
                 adType = AdType.REWARDED,
@@ -183,18 +190,24 @@ class AudienzzRewardedVideoAdHandler(
         renderSnapshot: RenderEconomics,
     ): AudienzzRewardedAdLoadCallback {
         return object : AudienzzRewardedAdLoadCallback() {
+            private var settled = false
             override fun onAdLoaded(rewardedAd: RewardedAd) {
-                adLoadCallback?.onAdLoaded(rewardedAd)
+                if (settled) return
+                settled = true
                 // H5: delegate to the publisher's own FullScreenContentCallback if they set one on
                 // the ad inside their onAdLoaded (GAM-documented pattern) instead of clobbering it;
                 // fall back to the callback passed to load().
-                val publisherDirectCallback = rewardedAd.fullScreenContentCallback
-                rewardedAd.fullScreenContentCallback =
-                    object : FullScreenContentCallback() {
+                var publisherDirectCallback = rewardedAd.fullScreenContentCallback
+                val wrapper = object : FullScreenContentCallback() {
+                        private var impressionRecorded = false
+                        private var presented = false
+                        private var terminal = false
+                        private var viewabilityTimer: FullScreenViewabilityTimer? = null
                         override fun onAdClicked() {
+                            if (terminal) return
                             super.onAdClicked()
                             if (publisherDirectCallback != null) {
-                                publisherDirectCallback.onAdClicked()
+                                publisherDirectCallback?.onAdClicked()
                             } else {
                                 fullScreenContentCallback?.onAdClicked()
                             }
@@ -209,9 +222,12 @@ class AudienzzRewardedVideoAdHandler(
                         }
 
                         override fun onAdDismissedFullScreenContent() {
+                            if (terminal) return
+                            terminal = true
+                            viewabilityTimer?.cancel()
                             super.onAdDismissedFullScreenContent()
                             if (publisherDirectCallback != null) {
-                                publisherDirectCallback.onAdDismissedFullScreenContent()
+                                publisherDirectCallback?.onAdDismissedFullScreenContent()
                             } else {
                                 fullScreenContentCallback?.onAdDismissedFullScreenContent()
                             }
@@ -219,9 +235,12 @@ class AudienzzRewardedVideoAdHandler(
                         }
 
                         override fun onAdFailedToShowFullScreenContent(error: AdError) {
+                            if (terminal) return
+                            terminal = true
+                            viewabilityTimer?.cancel()
                             super.onAdFailedToShowFullScreenContent(error)
                             if (publisherDirectCallback != null) {
-                                publisherDirectCallback.onAdFailedToShowFullScreenContent(error)
+                                publisherDirectCallback?.onAdFailedToShowFullScreenContent(error)
                             } else {
                                 fullScreenContentCallback?.onAdFailedToShowFullScreenContent(error)
                             }
@@ -229,9 +248,11 @@ class AudienzzRewardedVideoAdHandler(
                         }
 
                         override fun onAdImpression() {
+                            if (terminal || impressionRecorded) return
+                            impressionRecorded = true
                             super.onAdImpression()
                             if (publisherDirectCallback != null) {
-                                publisherDirectCallback.onAdImpression()
+                                publisherDirectCallback?.onAdImpression()
                             } else {
                                 fullScreenContentCallback?.onAdImpression()
                             }
@@ -249,12 +270,15 @@ class AudienzzRewardedVideoAdHandler(
                         }
 
                         override fun onAdShowedFullScreenContent() {
+                            if (terminal || presented) return
+                            presented = true
                             super.onAdShowedFullScreenContent()
                             if (publisherDirectCallback != null) {
-                                publisherDirectCallback.onAdShowedFullScreenContent()
+                                publisherDirectCallback?.onAdShowedFullScreenContent()
                             } else {
                                 fullScreenContentCallback?.onAdShowedFullScreenContent()
                             }
+                            if (terminal) return
                             FullScreenViewabilityTimer(
                                 onStart = {
                                     eventLogger?.viewabilityStart(
@@ -279,9 +303,17 @@ class AudienzzRewardedVideoAdHandler(
                             ).also { viewabilityTimer = it }.onShown()
                         }
                     }
+                rewardedAd.fullScreenContentCallback = wrapper
+                adLoadCallback?.onAdLoaded(rewardedAd)
+                if (rewardedAd.fullScreenContentCallback !== wrapper) {
+                    publisherDirectCallback = rewardedAd.fullScreenContentCallback
+                    rewardedAd.fullScreenContentCallback = wrapper
+                }
             }
 
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
+                if (settled) return
+                settled = true
                 super.onAdFailedToLoad(loadAdError)
                 adLoadCallback?.onAdFailedToLoad(loadAdError)
             }

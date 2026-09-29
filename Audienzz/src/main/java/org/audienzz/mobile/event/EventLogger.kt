@@ -65,7 +65,7 @@ private fun EventDomain.applyEconomics(ec: RenderEconomics?): EventDomain =
             cpm = ec.cpm,
             currency = ec.currency,
             creativeId = ec.creativeId,
-            auctionId = ec.auctionId,
+            auctionId = auctionId ?: ec.auctionId,
             adId = ec.adId,
             timeToRespond = timeToRespond ?: ec.timeToRespond,
             slotReload = ec.slotReload,
@@ -127,11 +127,13 @@ internal fun EventLogger.bidResponse(
     adUnitCode: String? = null,
     economics: RenderEconomics? = null,
     pageContext: AnalyticsPageContext? = null,
+    auctionId: String? = null,
 ) {
     logEvent(
         EventDomain(
             pageContext = pageContext,
             eventType = BID_RESPONSE,
+            auctionId = auctionId,
             adUnitId = adUnitId,
             adViewId = adViewId,
             resultCode = resultCode,

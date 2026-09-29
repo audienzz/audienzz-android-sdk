@@ -137,6 +137,11 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     // reported value, so a slot that refreshed four times emitted slot_reload 0,1,2,3 — the
     // collector's contract is "first load or not".
     private var slotReloadCount: Int = 0
+    private var requestSlotReload = 0
+    private var displayedImpressionRecorded = false
+    private var displayedResponseId: String? = null
+    private var lastImpressionResponseId: String? = null
+    private var hostReportedHidden = false
 
     // Economics of the creative CURRENTLY ON SCREEN, snapshotted when Google confirmed it rendered.
     //
@@ -224,6 +229,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * released banner in the meantime.
      */
     internal fun onPageActiveChanged(active: Boolean, epoch: Int) {
+        viewabilityTracker?.stop()
+        viewabilityTracker = null
         screenActive = active
         val host = resolveHostScreen()?.javaClass?.simpleName ?: "none"
         if (active) {
@@ -476,6 +483,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         // Do not take ownership of visibility the publisher already set to hidden.
         if (adView.visibility != View.VISIBLE) return
         if (adView.childCount == 0) return
+        viewabilityTracker?.stop()
+        viewabilityTracker = null
         for (i in 0 until adView.childCount) {
             adView.getChildAt(i).visibility = View.INVISIBLE
         }
@@ -694,7 +703,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         smartRefreshListener = adView.addContinuousVisibilityListener(
             useDirectionalGate = useV2,
             onBecameVisible = {
-                resumeSmartRefresh()
+                clearViewportBlock()
             },
             onBecameHidden = {
                 refreshController.block(RefreshBlockReason.NOT_VISIBLE)
@@ -745,6 +754,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     }
 
     fun pauseSmartRefresh() {
+        hostReportedHidden = true
+        viewabilityTracker?.refreshVisibility()
         Log.d(TAG, "pauseSmartRefresh() adUnitId=${adView.adUnitId} — viewport pause")
         refreshController.block(RefreshBlockReason.NOT_VISIBLE)
     }
@@ -759,6 +770,12 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * resets Prebid's timer to 0, ignoring however long the ad has already been displayed.
      */
     fun resumeSmartRefresh() {
+        hostReportedHidden = false
+        viewabilityTracker?.refreshVisibility()
+        clearViewportBlock()
+    }
+
+    private fun clearViewportBlock() {
         if (storedCallback == null) {
             Log.w(TAG, "resumeSmartRefresh() adUnitId=${adView.adUnitId} — not loaded yet (no callback), skipping")
             return
@@ -994,6 +1011,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         currentAuctionId = UUID.randomUUID().toString()
         val requestPage = eventLogger?.capturePageContext() ?: AnalyticsPageContext()
         currentAnalyticsPage = requestPage
+        requestSlotReload = emittedSlotReload
         if (!headerBiddingEnabled || AudienzzPrebidMobile.prebidUnavailable) {
             // No Prebid, so none of its analytics either: a bidRequest with no response — or a
             // noBid for a slot that never bid — would put an auction that never happened into the
@@ -1037,9 +1055,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         // the previous auction loop.
         adUnit.destroy()
 
-        // Prebid re-invokes this listener on every auto-refresh without re-entering fetchDemand().
-        // The first invocation pairs with the bidRequest above; each later one is a refresh auction
-        // that emits its own bidRequest so the bidRequest/bidResponse funnel stays balanced.
+        // One accepted demand completion pairs with the bidRequest above. Prebid timers are off;
+        // duplicate or retired callbacks must not emit another response or hand off to Google.
         val generationAtRequest = auctionGeneration
         var responseDelivered = false
         adUnit.fetchDemand(request) { resultCode ->
@@ -1100,6 +1117,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             }
 
             eventLogger?.bidResponse(
+                auctionId = currentAuctionId,
                 pageContext = requestPage,
                 adViewId = adView.adViewId,
                 adUnitId = adView.adUnitId,
@@ -1246,8 +1264,11 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             }
 
             override fun onAdImpression() {
-                if (!acceptsGoogleEvents) return
-                actualListener?.onAdImpression()
+                if (!acceptsGoogleEvents || displayedImpressionRecorded) return
+                val responseId = adView.responseInfo?.responseId
+                if (responseId != null && responseId == lastImpressionResponseId) return
+                displayedImpressionRecorded = true
+                lastImpressionResponseId = responseId
                 eventLogger?.adImpression(
                     adUnitId = adView.adUnitId,
                     adType = AdType.BANNER,
@@ -1257,6 +1278,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                     economics = renderEconomics(),
                 )
                 startViewabilityTracking()
+                actualListener?.onAdImpression()
             }
 
             override fun onAdFailedToLoad(error: LoadAdError) {
@@ -1281,8 +1303,11 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * `viewability.success` once it stays ≥50% visible for one continuous second.
      */
     private fun startViewabilityTracking() {
-        val tracker = viewabilityTracker ?: ViewabilityTracker(
+        viewabilityTracker?.stop()
+        val economics = renderEconomics()
+        val tracker = ViewabilityTracker(
             view = adView,
+            isEligible = { acceptsGoogleEvents && !blankedForReload && !hostReportedHidden },
             onStart = {
                 eventLogger?.viewabilityStart(
                     adUnitId = adView.adUnitId,
@@ -1290,7 +1315,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                     adSubtype = adUnit.adFormats.adSubtype,
                     apiType = ApiType.ORIGINAL,
                     adUnitCode = adUnit.configId,
-                    economics = renderEconomics(),
+                    economics = economics,
                 )
             },
             onSuccess = {
@@ -1300,7 +1325,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                     adSubtype = adUnit.adFormats.adSubtype,
                     apiType = ApiType.ORIGINAL,
                     adUnitCode = adUnit.configId,
-                    economics = renderEconomics(),
+                    economics = economics,
                 )
             },
         ).also { viewabilityTracker = it }
@@ -1322,12 +1347,19 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * auction — and a replacement that never arrives changes nothing at all.
      */
     private fun commitDisplayedCreative() {
+        val responseId = adView.responseInfo?.responseId
+        // A repeated load callback for the same creative must not cancel its exposure timer.
+        if (responseId != null && responseId == displayedResponseId) return
+        displayedResponseId = responseId
+        viewabilityTracker?.stop()
+        viewabilityTracker = null
+        displayedImpressionRecorded = false
         val base = lastRenderEconomics ?: RenderEconomics()
         displayedEconomics = base.copy(
             auctionId = base.auctionId ?: currentAuctionId,
             pageContext = currentAnalyticsPage,
             // The reported flag is binary and belongs to the creative, not the slot's current count.
-            slotReload = base.slotReload ?: emittedSlotReload,
+            slotReload = base.slotReload ?: requestSlotReload,
         )
         displayedPrebidBidder = prebidWinningBidder
         displayedPrebidLineItemWon = prebidLineItemWon

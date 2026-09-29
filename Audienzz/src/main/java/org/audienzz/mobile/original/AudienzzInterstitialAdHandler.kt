@@ -46,8 +46,6 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
     // SDK-generated auction id, minted at auction start and reused across every event of that auction.
     private var currentAuctionId: String? = null
 
-    // Full-screen viewability (viewability.start / viewability.success); cancelled on dismiss.
-    private var viewabilityTimer: FullScreenViewabilityTimer? = null
 
     /**
      * @param fullScreenContentCallback use for work with callbacks from Interstitial ad
@@ -76,7 +74,8 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
         val requestAuctionId = currentAuctionId
         val requestPage = eventLogger?.capturePageContext() ?: AnalyticsPageContext()
         val requestStartMs = System.currentTimeMillis()
-        eventLogger?.bidRequest(
+        val runPrebid = !AudienzzPrebidMobile.prebidUnavailable
+        if (runPrebid) eventLogger?.bidRequest(
             pageContext = requestPage,
             adUnitId = adUnitId,
             adType = AdType.INTERSTITIAL,
@@ -97,6 +96,13 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
         // Global targeting and the SDK's keys go onto the built request, never the publisher's
         // builder (see AudienzzAdRequestContext.buildPublisherRequest).
         val request = requestContext.buildRequest(gamRequestBuilder, isInterstitial = true)
+        if (!runPrebid) {
+            // No Prebid attempt happened. Keep Google's render funnel, without a synthetic noBid.
+            resultCallback(null, request, connectCallbacks(adLoadCallback, fullScreenContentCallback,
+                RenderEconomics(bidderCode = AD_SERVER_BIDDER, auctionId = requestAuctionId,
+                    slotReload = 0, pageContext = requestPage)))
+            return
+        }
         adUnit.fetchDemand(request) { resultCode ->
             val timeToRespond = System.currentTimeMillis() - requestStartMs
             // Prebid reports SUCCESS even for an empty/error response (e.g. STORED_REQUEST_NOT_FOUND).
@@ -129,6 +135,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                 lastRenderEconomics = null
             }
             eventLogger?.bidResponse(
+                auctionId = requestAuctionId,
                 pageContext = requestPage,
                 adUnitId = adUnitId,
                 adType = AdType.INTERSTITIAL,
@@ -186,12 +193,20 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
         renderSnapshot: RenderEconomics,
     ): AudienzzInterstitialAdLoadCallback {
         return object : AudienzzInterstitialAdLoadCallback() {
+            private var settled = false
             override fun onAdLoaded(adManagerInterstitialAd: AdManagerInterstitialAd) {
+                if (settled) return
+                settled = true
                 super.onAdLoaded(adManagerInterstitialAd)
                 // Install before onAdLoaded: remote/native publishers may show synchronously there.
                 var publisherDirectCallback = adManagerInterstitialAd.fullScreenContentCallback
                 val wrapper = object : FullScreenContentCallback() {
+                        private var impressionRecorded = false
+                        private var presented = false
+                        private var terminal = false
+                        private var viewabilityTimer: FullScreenViewabilityTimer? = null
                         override fun onAdClicked() {
+                            if (terminal) return
                             super.onAdClicked()
                             if (publisherDirectCallback != null) {
                                 publisherDirectCallback?.onAdClicked()
@@ -209,6 +224,9 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                         }
 
                         override fun onAdDismissedFullScreenContent() {
+                            if (terminal) return
+                            terminal = true
+                            viewabilityTimer?.cancel()
                             super.onAdDismissedFullScreenContent()
                             if (publisherDirectCallback != null) {
                                 publisherDirectCallback?.onAdDismissedFullScreenContent()
@@ -219,6 +237,9 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                         }
 
                         override fun onAdFailedToShowFullScreenContent(error: AdError) {
+                            if (terminal) return
+                            terminal = true
+                            viewabilityTimer?.cancel()
                             super.onAdFailedToShowFullScreenContent(error)
                             if (publisherDirectCallback != null) {
                                 publisherDirectCallback?.onAdFailedToShowFullScreenContent(error)
@@ -229,6 +250,8 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                         }
 
                         override fun onAdImpression() {
+                            if (terminal || impressionRecorded) return
+                            impressionRecorded = true
                             super.onAdImpression()
                             if (publisherDirectCallback != null) {
                                 publisherDirectCallback?.onAdImpression()
@@ -249,12 +272,15 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                         }
 
                         override fun onAdShowedFullScreenContent() {
+                            if (terminal || presented) return
+                            presented = true
                             super.onAdShowedFullScreenContent()
                             if (publisherDirectCallback != null) {
                                 publisherDirectCallback?.onAdShowedFullScreenContent()
                             } else {
                                 fullScreenContentCallback?.onAdShowedFullScreenContent()
                             }
+                            if (terminal) return
                             FullScreenViewabilityTimer(
                                 onStart = {
                                     eventLogger?.viewabilityStart(
@@ -289,6 +315,8 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
             }
 
             override fun onAdFailedToLoad(loadAdError: LoadAdError) {
+                if (settled) return
+                settled = true
                 super.onAdFailedToLoad(loadAdError)
                 adLoadCallback?.onAdFailedToLoad(loadAdError)
             }

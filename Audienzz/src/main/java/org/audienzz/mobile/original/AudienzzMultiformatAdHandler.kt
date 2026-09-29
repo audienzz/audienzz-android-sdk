@@ -78,6 +78,7 @@ class AudienzzMultiformatAdHandler(
         adUnit.fetchDemand(request, prebidRequest) { bidInfo ->
             callback.invoke(bidInfo, request)
             eventLogger?.bidResponse(
+                auctionId = requestAuctionId,
                 pageContext = requestPage,
                 adUnitId = adUnitId,
                 sizes = prebidRequest.getAdSizes().audienzzSizesJson,

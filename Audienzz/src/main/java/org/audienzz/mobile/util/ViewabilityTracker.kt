@@ -2,123 +2,92 @@ package org.audienzz.mobile.util
 
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.view.View
 import android.view.ViewTreeObserver
 
-/**
- * Tracks viewability for a single ad [view] and reports two events through [onStart] / [onSuccess].
- *
- * Rules (per measurement session):
- * - [onStart] fires every time the visible fraction of [view] crosses **up** through
- *   [thresholdFraction] (default 50%), as long as [onSuccess] has not fired yet. This means a
- *   scroll-away before the success threshold followed by a scroll-back re-fires start.
- * - [onSuccess] fires **once**, when [view] stays at least [thresholdFraction] visible for
- *   [successDurationMs] continuous milliseconds (default 1s). The timer is cancelled if the view
- *   drops below the threshold before it elapses.
- * - After [onSuccess] fires the session is terminal — neither event fires again until [start] is
- *   called for a new creative (e.g. after a refresh).
- *
- * Visibility is sampled on every pre-draw of the view tree, and the success timer runs
- * independently on the main thread so it elapses even when the view is static. The tracker stops
- * itself when [view] is detached from the window.
- */
+/** One creative's continuous exposure. Starts can repeat after an interruption; success is terminal. */
 internal class ViewabilityTracker(
     private val view: View,
-    private val thresholdFraction: Float = DEFAULT_THRESHOLD,
-    private val successDurationMs: Long = DEFAULT_SUCCESS_DURATION_MS,
+    private val thresholdFraction: Float = 0.5f,
+    private val successDurationMs: Long = 1_000L,
+    private val isEligible: () -> Boolean = { true },
     private val onStart: () -> Unit,
     private val onSuccess: () -> Unit,
 ) : AppForegroundMonitor.Listener {
-
     private val handler = Handler(Looper.getMainLooper())
-    private var preDrawListener: ViewTreeObserver.OnPreDrawListener? = null
-    private var attachListener: View.OnAttachStateChangeListener? = null
-
+    private var observer: ViewTreeObserver? = null
+    private var running = false
     private var aboveThreshold = false
-    private var successSent = false
-
-    private val successRunnable: Runnable = Runnable {
-        successSent = true
-        onSuccess()
-        // Session is terminal until the next start() call. stop() also clears this callback.
-        stop()
+    private var generation = 0
+    private var pending: Runnable? = null
+    private val preDraw = ViewTreeObserver.OnPreDrawListener { refreshVisibility(); true }
+    private val attach = object : View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(v: View) {
+            observeDrawing()
+            refreshVisibility()
+        }
+        override fun onViewDetachedFromWindow(v: View) {
+            interruptExposure()
+            removeDrawingObserver()
+        }
     }
 
-    /** Begins — or restarts — a viewability session for the current creative. */
     fun start() {
         stop()
-        successSent = false
-        aboveThreshold = false
-
-        val preDraw = ViewTreeObserver.OnPreDrawListener {
-            evaluate()
-            true
-        }
-        preDrawListener = preDraw
-        view.viewTreeObserver.addOnPreDrawListener(preDraw)
-
-        val attach = object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(v: View) = Unit
-            override fun onViewDetachedFromWindow(v: View) = stop()
-        }
-        attachListener = attach
+        running = true
         view.addOnAttachStateChangeListener(attach)
-
-        // A pending success must not elapse while the app is backgrounded (the pre-draw listener
-        // goes quiet but the posted timer would still fire). Pause on background, re-arm on return.
+        observeDrawing()
         AppForegroundMonitor.addListener(this)
-
-        // Evaluate immediately in case the ad is already on screen.
-        evaluate()
+        refreshVisibility()
     }
 
-    override fun onEnterBackground() {
-        if (successSent) return
-        // Cancel the pending success and drop below threshold so the next foreground pre-draw
-        // re-crosses it, re-firing start and rescheduling the full continuous-view timer.
-        handler.removeCallbacks(successRunnable)
-        aboveThreshold = false
-    }
+    private fun visible(): Boolean = running && AppForegroundMonitor.isForeground &&
+        view.isAttachedToWindow && isEligible() && view.visibleHeightFraction() >= thresholdFraction
 
-    override fun onEnterForeground() {
-        // The window redraws on resume, firing the pre-draw listener which calls evaluate() and
-        // re-arms if the ad is still ≥ threshold. Nothing to do here.
-    }
-
-    private fun evaluate() {
-        if (successSent) return
-        val isAbove = view.visibleHeightFraction() >= thresholdFraction
-        if (isAbove && !aboveThreshold) {
+    fun refreshVisibility() {
+        if (!running) return
+        if (!visible()) {
+            interruptExposure()
+        } else if (!aboveThreshold) {
             aboveThreshold = true
-            Log.d(TAG, "viewability.start — ${view.javaClass.simpleName} crossed ${(thresholdFraction * 100).toInt()}%")
+            val token = generation
             onStart()
-            handler.postDelayed(successRunnable, successDurationMs)
-        } else if (!isAbove && aboveThreshold) {
-            aboveThreshold = false
-            Log.d(TAG, "viewability — dropped below threshold before success, cancelling timer")
-            handler.removeCallbacks(successRunnable)
+            if (!running || token != generation) return
+            val action = Runnable {
+                if (!running || token != generation) return@Runnable
+                // A timer is not proof the creative remained visible or on the active page.
+                if (!visible()) { interruptExposure(); return@Runnable }
+                stop()
+                onSuccess()
+            }
+            pending = action
+            handler.postDelayed(action, successDurationMs)
         }
     }
 
-    /** Stops the current session and releases listeners. Safe to call multiple times. */
-    fun stop() {
-        AppForegroundMonitor.removeListener(this)
-        handler.removeCallbacks(successRunnable)
-        preDrawListener?.let {
-            if (view.viewTreeObserver.isAlive) {
-                view.viewTreeObserver.removeOnPreDrawListener(it)
-            }
-        }
-        preDrawListener = null
-        attachListener?.let { view.removeOnAttachStateChangeListener(it) }
-        attachListener = null
+    override fun onEnterBackground() = interruptExposure()
+    override fun onEnterForeground() = refreshVisibility()
+
+    private fun interruptExposure() {
+        generation++
+        pending?.let(handler::removeCallbacks)
+        pending = null
         aboveThreshold = false
     }
-
-    companion object {
-        private const val TAG = "ViewabilityTracker"
-        private const val DEFAULT_THRESHOLD = 0.5f
-        private const val DEFAULT_SUCCESS_DURATION_MS = 1_000L
+    private fun observeDrawing() {
+        if (!running) return
+        removeDrawingObserver()
+        observer = view.viewTreeObserver.also { it.addOnPreDrawListener(preDraw) }
+    }
+    private fun removeDrawingObserver() {
+        observer?.takeIf { it.isAlive }?.removeOnPreDrawListener(preDraw)
+        observer = null
+    }
+    fun stop() {
+        running = false
+        interruptExposure()
+        AppForegroundMonitor.removeListener(this)
+        removeDrawingObserver()
+        view.removeOnAttachStateChangeListener(attach)
     }
 }

@@ -220,6 +220,26 @@ internal class EventBatcherTest {
         } finally { first.cancel(); directory.deleteRecursively() }
     }
 
+    @Test fun `September 25 backlog keeps its timestamp and does not return after acknowledgement`() = runTest {
+        val directory = java.nio.file.Files.createTempDirectory("batch-old-events").toFile()
+        val context = mockk<android.content.Context>()
+        every { context.filesDir } returns directory
+        val old = event(25).copy(eventTimestamp = "2026-09-25T12:00:00.000Z")
+        try {
+            assertEquals(EventStore.Admission.STORED, EventStore(context).append(old))
+            store = EventStore(context)
+            val first = sender(testScheduler); runCurrent()
+            coVerify(exactly = 1) { repository.submitBatch(listOf(old)) }
+            assertTrue(EventStore(context).loadAll().isEmpty())
+            first.cancel(); runCurrent()
+            store = EventStore(context)
+            val restarted = sender(testScheduler); runCurrent()
+            advanceTimeBy(86_400_000); runCurrent()
+            coVerify(exactly = 1) { repository.submitBatch(any()) }
+            restarted.cancel()
+        } finally { directory.deleteRecursively() }
+    }
+
     @Test fun `unwritable store retains event in memory and retries persistence before HTTP`() = runTest {
         every { store.append(any()) } returns EventStore.Admission.IO_ERROR
         val sender = sender(testScheduler)

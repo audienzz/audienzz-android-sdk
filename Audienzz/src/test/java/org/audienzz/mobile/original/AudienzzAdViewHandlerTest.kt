@@ -65,6 +65,7 @@ class AudienzzAdViewHandlerTest {
 
         adView = mockk(relaxed = true)
         every { adView.isAttachedToWindow } returns true
+        every { adView.responseInfo } returns null
         every { adView.adListener } answers { googleListener }
         every { adView.adListener = any() } answers { googleListener = firstArg() }
         adUnit = mockk(relaxed = true)
@@ -587,7 +588,8 @@ class AudienzzAdViewHandlerTest {
         openPage("A") // Replacement is now deferred by the publisher pause.
         googleListener.onAdClicked(); googleListener.onAdImpression()
         verify(exactly = 2) { publisher.onAdClicked() }
-        verify(exactly = 2) { publisher.onAdImpression() }
+        // The second callback is still for the same received creative.
+        verify(exactly = 1) { publisher.onAdImpression() }
         openPage("B")
         googleListener.onAdClicked()
         verify(exactly = 2) { publisher.onAdClicked() }

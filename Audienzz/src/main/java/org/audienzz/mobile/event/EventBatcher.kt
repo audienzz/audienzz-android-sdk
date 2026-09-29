@@ -102,6 +102,8 @@ internal class EventBatcher internal constructor(
                     store.loadAll().forEach { pending[it.eventId] = it; arrived[it.eventId] = now() }
                     restored = true
                     drain = pending.isNotEmpty()
+                    if (pending.isNotEmpty()) AudienzzDiagnostics.log("analytics", "restored",
+                        "count" to pending.size, "oldestEventTimestamp" to pending.values.minOf { it.eventTimestamp })
                 }
                 for ((id, event) in unsaved.toMap()) {
                     when (store.append(event)) {
@@ -155,7 +157,8 @@ internal class EventBatcher internal constructor(
             if (now() < allowed) { later(minOf(allowed, if (unsaved.isNotEmpty()) storageRetryAt else Long.MAX_VALUE)); return }
             if (plans.isNotEmpty()) plans.removeFirst()
             inFlight = true; drain = true; lastStart = now()
-            AudienzzDiagnostics.log("analytics", "sending", "count" to batch.size, "attempt" to failures + 1)
+            AudienzzDiagnostics.log("analytics", "sending", "count" to batch.size, "attempt" to failures + 1,
+                "oldestEventTimestamp" to batch.minOf { it.eventTimestamp })
             launch {
                 val startedAt = now()
                 val error = try { remoteRepository.submitBatch(batch); null }

@@ -1,8 +1,9 @@
 # Audienzz clickstream analytics — field contract
 
-Canonical for Android, iOS, Flutter and React Native. Updated September 28, 2026 for the
-`feature/page-impression-api` branch. New changes below require new native releases and bridge
-updates; the existing iOS 0.4.0 / Android 0.3.0 pins do not contain them.
+Canonical for Android, iOS, Flutter and React Native. Updated September 29, 2026 for
+`feature/durable-analytics-batching`. The published baseline is Android 0.3.1 / iOS 0.4.1;
+batching and the September 29 lifecycle corrections below require new native releases and
+bridge dependency updates.
 
 Each event is flat JSON with top-level envelope fields and an `attributes` map. Attribute values
 remain JSON **strings**, including CPM and counters. The collector endpoint is
@@ -99,10 +100,14 @@ Non-finite or negative values are omitted.
   gets a new `auction_id`; coalesced/rejected requests do not.
 - `noBid` is aggregate. Stock Prebid does not expose a list of individual non-bidders here, so
   `bidder_code` is absent. Google is not fabricated as a bidder for this event.
+- Each accepted Prebid completion emits one `bidResponse` and either `bidWon` or `noBid`, with
+  the request's `auction_id`, even without winning-bid economics. A success with no bidder is
+  `noBid` with `result_code=NO_BIDS`. Retired completions are discarded. Bypassing unavailable
+  Prebid and going directly to Google emits no synthetic Prebid request/response/no-bid events.
 - `bidder_code=test` is a real server seat/test response, not a SDK placeholder. Use
   `environment=test` for new QA traffic; historical filtering still needs known bundles/configs.
 - `adImpression` comes from Google's recorded-impression callback, not a blank placeholder,
-  loading state, timer or a page impression. iOS now guards repeat callbacks per displayed
+  loading state, timer or a page impression. Both platforms guard repeat callbacks per displayed
   creative; a real replacement can report its own impression. Starting a replacement auction
   alone does not reopen the previous creative's impression or change its identity.
 - Banner render attribution uses GAM's `Prebid` app event. Without that ad-ops signal, the banner
@@ -110,6 +115,17 @@ Non-finite or negative values are omitted.
   not independent proof that this bid won the Google auction.
 - `slot_reload` is the string `"0"` for the first slot load, `"1"` after that. It is distinct from
   the numeric request-targeting `hb_refresh_count`, which resets with a page visit.
+- `viewability.start` marks each exposure attempt, so leaving visibility and returning can emit
+  another start for the same creative. `viewability.success` is terminal: at most one per creative
+  after a continuous second at ≥50% visible (or a foreground fullscreen presentation).
+  Backgrounding, concealment or detachment interrupts exposure. Page release, destruction and a
+  received replacement cancel the previous creative's measurement. A duplicate Google load for
+  the same known response ID preserves it. Starting a replacement auction alone does not cancel
+  a still-visible creative. These are SDK measurements, not a substitute for Google's Active View.
+- Fullscreen measurement belongs to the loaded ad, including iOS remote interstitials and
+  rewarded ads. Reusing the loader cannot change an earlier ad's page/auction attribution.
+  Viewability events capture the creative's economics at measurement start; late paid values
+  need not appear in them.
 
 Two duplicate cases must be separated in production: identical `event_id` means replay/transport
 retry (collector dedup required); distinct IDs for the same delivery can mean repeated callbacks.
@@ -121,6 +137,10 @@ and delivery IDs to establish their exact cause; matching slot/timestamp alone i
 Report each actual screen visit, including return navigation and screens with no ads. An article
 is a new page when it is a new route/visit. Do not report from `build`, layout, scrolling, every ad
 request, or every refresh timer.
+
+An explicit report is an instruction to start a new visit, including when its screen name matches
+the previous one. There is no time-based same-screen debounce: it would suppress legitimate
+returns or an explicit content change on one route. Give each navigation transition one owner.
 
 With the SDK's Flutter navigator observer or React Native navigation integration, let that helper
 report the transition; do not also call the manual API. Custom navigation must report itself.
@@ -288,7 +308,8 @@ With SDK diagnostics enabled (already enabled in the examples), filter device lo
 `AUDZ analytics`. The current branch reports:
 
 * `queued`: the native queue received an event, with its type only.
-* `sending`: a batch is being submitted, with count and attempt number.
+* `restored`: pending events were recovered from disk, with count and oldest `event_timestamp`.
+* `sending`: a batch is being submitted, with count, attempt number and oldest `event_timestamp`.
 * `sent`: the HTTP request succeeded. This does not prove downstream dashboard ingestion.
 * `failed`: the HTTP status or transport error code/type; `retryScheduled` gives the cooldown.
 * `quarantined`: a rejected/oversized singleton is retained for inspection.
@@ -298,6 +319,22 @@ These lines omit payloads, identifiers, targeting and consent strings, and are d
 SDK diagnostics are off. If `sending` appears without a decrypted request in Charles, check the
 device proxy, certificate trust and capture filters. If `failed` appears, its status/code identifies
 the transport failure without needing the event payload.
+
+### Old timestamps and duplicate deliveries
+
+`event_timestamp` is when the event was created, not when a POST succeeds. An event created on
+September 25 can legitimately arrive on September 29 after offline time or a blocked/stalled
+collector connection. The queue deliberately preserves its original payload, event ID, page ID
+and timestamp. It does not expire owed events or relabel them as today's activity. The new
+restore/send diagnostics expose backlog age without logging event payloads or identifiers.
+
+Successful local acknowledgement removes exactly the delivered IDs; they must not reappear on
+restart. Tests restore a September 25 event, verify its unchanged payload, acknowledge it, reopen
+the actual disk store and verify no resend. If the server accepted a POST but its response was
+lost, or local acknowledgement could not be saved, delivery can repeat with the **same** event ID.
+The collector must deduplicate that ID and distinguish ingestion time from event time. Different
+event IDs require examining producer callbacks and auction IDs; an old date alone does not prove
+duplicates. The reported September 25 traffic cannot be diagnosed conclusively without payloads.
 
 The released iOS 0.4.1 also fixes a queue stall in the 0.4.0 transport: an empty or non-JSON reply
 could leave a batch in flight forever. All 2xx acknowledgements now settle successfully, including
