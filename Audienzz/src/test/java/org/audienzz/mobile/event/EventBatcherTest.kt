@@ -35,6 +35,12 @@ internal class EventBatcherTest {
         senders.forEach { it.cancel(); AppForegroundMonitor.removeListener(it) }
         unmockkStatic(Log::class)
     }
+    // runTest drains scheduled work before JUnit @After runs. Cancel even after an assertion
+    // fails, otherwise a perpetual HTTP/storage/ack retry makes that cleanup advance forever.
+    private fun batcherTest(block: suspend TestScope.() -> Unit) = runTest {
+        try { block() } finally { senders.forEach { it.cancel() } }
+    }
+
     private fun sender(scheduler: TestCoroutineScheduler, config: EventBatcher.Config = EventBatcher.Config(), backend: (() -> Int?)? = null) =
         EventBatcher(repository, store, StandardTestDispatcher(scheduler), config, { scheduler.currentTime }, { 1.0 }, backendBatchSize = backend).also { senders.add(it) }
 
@@ -72,7 +78,7 @@ internal class EventBatcherTest {
     private fun auctionEvent(index: Int, auction: String?) = event(index).copy(
         attributes = auction?.let { mapOf("auction_id" to it) } ?: emptyMap())
 
-    @Test fun `busy auction cannot delay another auction and batches never mix auction ids`() = runTest {
+    @Test fun `busy auction cannot delay another auction and batches never mix auction ids`() = batcherTest {
         val sender = sender(testScheduler)
         val a = auctionEvent(0, "A"); val b = auctionEvent(1, "B")
         val a2 = auctionEvent(2, "A"); val a3 = auctionEvent(3, "A")
@@ -90,7 +96,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 2) { repository.submitBatch(any()) }
     }
 
-    @Test fun `missing and blank auction ids use a separate debounced bucket`() = runTest {
+    @Test fun `missing and blank auction ids use a separate debounced bucket`() = batcherTest {
         val sender = sender(testScheduler)
         val page = auctionEvent(0, null).copy(eventType = "pageImpression")
         val blank = auctionEvent(1, " ")
@@ -104,7 +110,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 2) { repository.submitBatch(any()) }
     }
 
-    @Test fun `duplicate enqueue does not extend an auction debounce`() = runTest {
+    @Test fun `duplicate enqueue does not extend an auction debounce`() = batcherTest {
         val sender = sender(testScheduler)
         sender.enqueue(event(0)); runCurrent()
         advanceTimeBy(1500); sender.enqueue(event(0)); runCurrent()
@@ -112,7 +118,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
         verify(exactly = 1) { store.append(event(0)) }
     }
-    @Test fun `cap counts events per auction instead of across the entire queue`() = runTest {
+    @Test fun `cap counts events per auction instead of across the entire queue`() = batcherTest {
         val sender = sender(testScheduler)
         val a = (0..8).map { auctionEvent(it, "A") }
         val b = (9..17).map { auctionEvent(it, "B") }
@@ -126,7 +132,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 2) { repository.submitBatch(any()) }
     }
 
-    @Test fun `continuously full auction yields to an older quiet auction`() = runTest {
+    @Test fun `continuously full auction yields to an older quiet auction`() = batcherTest {
         val sender = sender(testScheduler)
         (0..9).forEach { sender.enqueue(event(it)) }; runCurrent()
         advanceTimeBy(100); val b = auctionEvent(100, "B"); sender.enqueue(b); runCurrent()
@@ -141,7 +147,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch((20..29).map(::event)) }
     }
 
-    @Test fun `restored backlog regroups by auction and new events still debounce`() = runTest {
+    @Test fun `restored backlog regroups by auction and new events still debounce`() = batcherTest {
         val oldA = auctionEvent(100, "A"); val oldB = auctionEvent(101, "B")
         val oldA2 = auctionEvent(102, "A")
         every { store.loadAll() } returns listOf(oldA, oldB, oldA2)
@@ -159,7 +165,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 3) { repository.submitBatch(any()) }
     }
 
-    @Test fun `late event during an in flight post gets its own debounce`() = runTest {
+    @Test fun `late event during an in flight post gets its own debounce`() = batcherTest {
         val done = CompletableDeferred<Unit>()
         coEvery { repository.submitBatch(any()) } coAnswers { done.await() }
         val sender = sender(testScheduler)
@@ -175,7 +181,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch(listOf(event(1))) }
     }
 
-    @Test fun `background flush only forces events already queued`() = runTest {
+    @Test fun `background flush only forces events already queued`() = batcherTest {
         val done = CompletableDeferred<Unit>()
         coEvery { repository.submitBatch(any()) } coAnswers { done.await() }
         val sender = sender(testScheduler)
@@ -191,7 +197,7 @@ internal class EventBatcherTest {
     }
 
 
-    @Test fun `persist first and debounce two seconds from latest event in the auction`() = runTest {
+    @Test fun `persist first and debounce two seconds from latest event in the auction`() = batcherTest {
         val sender = sender(testScheduler)
         sender.enqueue(event(0))
         verify(exactly = 0) { store.append(any()) }
@@ -208,7 +214,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch(any()) }
     }
 
-    @Test fun `count threshold sends at once but burst drains at most once per two seconds`() = runTest {
+    @Test fun `count threshold sends at once but burst drains at most once per two seconds`() = batcherTest {
         val done = CompletableDeferred<Unit>()
         coEvery { repository.submitBatch(any()) } coAnswers { done.await() }
         val sender = sender(testScheduler)
@@ -227,7 +233,7 @@ internal class EventBatcherTest {
         verify(exactly = 3) { store.acknowledge(any()) }
     }
 
-    @Test fun backendCannotExceedFifteen() = runTest {
+    @Test fun backendCannotExceedFifteen() = batcherTest {
         val sender = sender(testScheduler, backend = { 100 })
         repeat(14) { sender.enqueue(event(it)) }; runCurrent()
         coVerify(exactly = 0) { repository.submitBatch(any()) }
@@ -235,7 +241,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch((0..14).map(::event)) }
     }
 
-    @Test fun backendReductionSplitsRetryWithoutLosingEvents() = runTest {
+    @Test fun backendReductionSplitsRetryWithoutLosingEvents() = batcherTest {
         var limit: Int? = 10
         val done = CompletableDeferred<Unit>()
         coEvery { repository.submitBatch(any()) } coAnswers { done.await(); throw IOException("offline") }
@@ -255,7 +261,7 @@ internal class EventBatcherTest {
         assertTrue(sent.drop(1).all { it.size <= 3 })
     }
 
-    @Test fun removingBackendFieldRestoresDefaultTen() = runTest {
+    @Test fun removingBackendFieldRestoresDefaultTen() = batcherTest {
         var limit: Int? = 15
         val sender = sender(testScheduler, backend = { limit })
         repeat(9) { sender.enqueue(event(it)) }; runCurrent()
@@ -264,7 +270,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch((0..9).map(::event)) }
     }
 
-    @Test fun `byte threshold respects serialized UTF8 size and quarantines oversized singleton`() = runTest {
+    @Test fun `byte threshold respects serialized UTF8 size and quarantines oversized singleton`() = batcherTest {
         val sender = sender(testScheduler, EventBatcher.Config(batchBytes = 2000))
         val large = event(0).copy(attributes = mapOf("value" to "ж".repeat(1000)))
         sender.enqueue(large); sender.enqueue(event(1)); sender.enqueue(event(2)); runCurrent()
@@ -274,7 +280,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch(listOf(event(1), event(2))) }
     }
 
-    @Test fun `retry after overrides backoff and flush enqueue cannot bypass it`() = runTest {
+    @Test fun `retry after overrides backoff and flush enqueue cannot bypass it`() = batcherTest {
         val error = retrofit2.HttpException(retrofit2.Response.error<Unit>(
             okhttp3.ResponseBody.create(null, ""), okhttp3.Response.Builder()
                 .request(okhttp3.Request.Builder().url("https://example.invalid").build())
@@ -294,7 +300,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch(listOf(event(1))) }
     }
 
-    @Test fun `failure retries indefinitely with capped backoff and original payload`() = runTest {
+    @Test fun `failure retries indefinitely with capped backoff and original payload`() = batcherTest {
         coEvery { repository.submitBatch(any()) } throws IOException("offline")
         val sender = sender(testScheduler)
         sender.enqueue(event(0)); sender.flush(); runCurrent()
@@ -309,7 +315,7 @@ internal class EventBatcherTest {
         sender.cancel()
     }
 
-    @Test fun `restart replays unacknowledged batch before newer events`() = runTest {
+    @Test fun `restart replays unacknowledged batch before newer events`() = batcherTest {
         every { store.loadAll() } returns listOf(event(100), event(101))
         val sender = sender(testScheduler)
         sender.enqueue(event(0)); runCurrent()
@@ -318,7 +324,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
     }
 
-    @Test fun `actual journal replays a lost acknowledgement after process restart`() = runTest {
+    @Test fun `actual journal replays a lost acknowledgement after process restart`() = batcherTest {
         val directory = java.nio.file.Files.createTempDirectory("batch-restart").toFile()
         val context = mockk<android.content.Context>()
         every { context.filesDir } returns directory
@@ -340,7 +346,7 @@ internal class EventBatcherTest {
         } finally { first.cancel(); directory.deleteRecursively() }
     }
 
-    @Test fun `September 25 backlog keeps its timestamp and does not return after acknowledgement`() = runTest {
+    @Test fun `September 25 backlog keeps its timestamp and does not return after acknowledgement`() = batcherTest {
         val directory = java.nio.file.Files.createTempDirectory("batch-old-events").toFile()
         val context = mockk<android.content.Context>()
         every { context.filesDir } returns directory
@@ -360,7 +366,7 @@ internal class EventBatcherTest {
         } finally { directory.deleteRecursively() }
     }
 
-    @Test fun `unwritable store retains event in memory and retries persistence before HTTP`() = runTest {
+    @Test fun `unwritable store retains event in memory and retries persistence before HTTP`() = batcherTest {
         every { store.append(any()) } returns EventStore.Admission.IO_ERROR
         val sender = sender(testScheduler)
         sender.enqueue(event(0)); sender.flush(); runCurrent()
@@ -370,17 +376,33 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
     }
 
-    @Test fun `failed ack write retries locally while another auction proceeds`() = runTest {
-        every { store.acknowledge(any()) } returns false
+    @Test fun `failed ack write retries locally while another auction proceeds`() = batcherTest {
+        val ackAttempts = mutableListOf<Long>()
+        every { store.acknowledge(any()) } answers { ackAttempts.add(testScheduler.currentTime); false }
         val sender = sender(testScheduler)
         sender.enqueue(event(0)); sender.flush(); runCurrent()
+        val expectedAttempts = mutableListOf(0L)
+        assertEquals(expectedAttempts, ackAttempts)
         val b = auctionEvent(1, "B")
         sender.enqueue(b); runCurrent()
-        advanceTimeBy(600_000); runCurrent()
-        coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
-        coVerify(exactly = 1) { repository.submitBatch(listOf(b)) }
-        coVerify(exactly = 2) { repository.submitBatch(any()) }
-        verify(atLeast = 2, atMost = 20) { store.acknowledge(any()) }
+        assertEquals(expectedAttempts, ackAttempts)
+        coVerify(exactly = 1) { repository.submitBatch(any()) }
+        // Count actual writes before and at every deadline, including repeated capped retries.
+        // Flush/wake must not create extra attempts between those deadlines.
+        val delays = listOf(2000L, 4000L, 8000L, 16000L, 32000L) + List(8) { 60_000L }
+        for (delay in delays) {
+            advanceTimeBy(delay - 1); sender.wake(); sender.flush(); runCurrent()
+            assertEquals(expectedAttempts, ackAttempts)
+            coVerify(exactly = if (expectedAttempts.size == 1) 1 else 2) { repository.submitBatch(any()) }
+            advanceTimeBy(1); runCurrent()
+            expectedAttempts.add(expectedAttempts.last() + delay)
+            assertEquals(expectedAttempts, ackAttempts)
+            coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
+            coVerify(exactly = 1) { repository.submitBatch(listOf(b)) }
+            coVerify(exactly = 2) { repository.submitBatch(any()) }
+        }
+        advanceTimeBy(600_000 - testScheduler.currentTime); runCurrent()
+        assertEquals(expectedAttempts, ackAttempts)
         val acknowledged = mutableListOf<List<String>>()
         every { store.acknowledge(capture(acknowledged)) } returns true
         advanceTimeBy(60_000); runCurrent()
@@ -390,7 +412,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 2) { repository.submitBatch(any()) }
     }
 
-    @Test fun `accepted batch replays after process death before local acknowledgement`() = runTest {
+    @Test fun `accepted batch replays after process death before local acknowledgement`() = batcherTest {
         val directory = java.nio.file.Files.createTempDirectory("accepted-restart").toFile()
         val context = mockk<android.content.Context>()
         every { context.filesDir } returns directory
@@ -417,7 +439,7 @@ internal class EventBatcherTest {
         } finally { first.cancel(); directory.deleteRecursively() }
     }
 
-    @Test fun `late same auction event does not ride along with a scheduled flush`() = runTest {
+    @Test fun `late same auction event does not ride along with a scheduled flush`() = batcherTest {
         val sender = sender(testScheduler)
         val b = auctionEvent(0, "B"); val a1 = auctionEvent(1, "A"); val a2 = auctionEvent(2, "A")
         sender.enqueue(b); runCurrent(); advanceTimeBy(2000); runCurrent()
@@ -432,7 +454,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch(listOf(a2)) }
     }
 
-    @Test fun `restored and fresh auctions both progress without waiting for the whole backlog`() = runTest {
+    @Test fun `restored and fresh auctions both progress without waiting for the whole backlog`() = batcherTest {
         val backlog = (100..159).map { auctionEvent(it, "old-$it") }
         every { store.loadAll() } returns backlog
         val sender = sender(testScheduler); runCurrent()
@@ -450,7 +472,7 @@ internal class EventBatcherTest {
         assertEquals((backlog + fresh).map { it.eventId }.toSet(), sent.flatten().map { it.eventId }.toSet())
     }
 
-    @Test fun `new events in the same restored auction get their own fair turn`() = runTest {
+    @Test fun `new events in the same restored auction get their own fair turn`() = batcherTest {
         every { store.loadAll() } returns (100..159).map(::event)
         val sender = sender(testScheduler); runCurrent()
         sender.enqueue(event(0)); runCurrent()
@@ -462,7 +484,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 1) { repository.submitBatch((110..119).map(::event)) }
     }
 
-    @Test fun `invalid batch is split and rejected singleton quarantined not deleted`() = runTest {
+    @Test fun `invalid batch is split and rejected singleton quarantined not deleted`() = batcherTest {
         val bad = retrofit2.HttpException(retrofit2.Response.error<Unit>(422, okhttp3.ResponseBody.create(null, "")))
         coEvery { repository.submitBatch(any()) } coAnswers {
             if (firstArg<List<EventNetwork>>().any { it.eventId == "1" }) throw bad
@@ -477,7 +499,7 @@ internal class EventBatcherTest {
         coVerify(exactly = 5) { repository.submitBatch(any()) }
     }
 
-    @Test fun `full store does not evict existing or send unpersisted event`() = runTest {
+    @Test fun `full store does not evict existing or send unpersisted event`() = batcherTest {
         every { store.append(any()) } returns EventStore.Admission.FULL
         val sender = sender(testScheduler)
         sender.enqueue(event(0)); sender.flush(); runCurrent()

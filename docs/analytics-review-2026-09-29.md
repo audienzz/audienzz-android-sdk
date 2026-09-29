@@ -72,10 +72,11 @@ remain required; client tests do not independently establish the live backend im
 
 - Producer/lifecycle baseline: **306 Android / 334 iOS**; auction-batching baseline: **314 / 342**.
 - Follow-up full suites: **321 Android / 349 iOS passed**, zero failures.
-- Mutation verification on both platforms: sending the whole auction during an early flush,
-  restoring backlog-first scheduling/HTTP retries after acknowledgement failure, and removing
-  quarantine quota isolation/retention each fail the corresponding new regressions. Sources
-  were restored before the successful full-suite runs.
+- September 29 mutation checks covered early-flush filtering, backlog scheduling and quarantine
+  quota isolation/retention. The earlier summary overstated the Android acknowledgement-isolation
+  result: an assertion failure could hang `runTest` cleanup rather than complete as a failed test.
+  The September 30 follow-up below replaces that claim with independently rerun M4/M5/M6 results.
+  These earlier mutation results are historical; this follow-up only reruns the listed mutations.
 - Persistent acknowledgement failure is tested over ten simulated minutes. Physical journal
   reopen tests cover process death after HTTP acceptance but before local acknowledgement.
 - Regressions drive the handlers' installed Google callbacks, real page transitions and lifecycle
@@ -89,3 +90,38 @@ remain required; client tests do not independently establish the live backend im
   acknowledgement are checked separately.
 - No device/live-collector validation was performed for these changes. Queue delivery remains
   at-least-once, and full Rendering-API event coverage is outside this review's scope.
+
+## Test-quality follow-up — September 30, 2026
+
+Production behavior is unchanged. Only queue tests and this review document were edited.
+
+- Every Android queue test now cancels all its batchers in `finally` inside `runTest`, before
+  coroutine-test cleanup advances virtual time. This covers failed assertions with persistent
+  HTTP, storage or acknowledgement retries, including tests with multiple/restarted senders.
+  The separate transport integration fixture already cancels in `finally`.
+- Both acknowledgement-failure fixtures now assert actual failed-write attempt times before
+  and at every deadline: 0, 2, 6, 14, 30, 62, 122, 182 seconds and repeated 60-second intervals
+  through ten simulated minutes. Intervening flush/wake calls and the second HTTP success
+  cannot create extra attempts. Only the two expected POSTs are allowed.
+- Android counts calls to the failing store mock. iOS keeps the real unwritable-directory
+  fixture and counts the store's existing `persistenceFailed` diagnostics under a lock;
+  all event appends finish before failure injection, so these are acknowledgement writes.
+  Its diagnostic sink/enabled state is restored with `defer`. A missing second POST now
+  leaves an assertion failure instead of an out-of-bounds crash.
+
+Mutations rerun independently on both platforms (not combined):
+
+| Mutation | Android | iOS |
+|---|---|---|
+| M4 — Accepted IDs included in HTTP-ready work | Assertion failure, 0.098 s | Assertion failure, 1.368 s |
+| M5 — Pending local acknowledgements block every send | Assertion failure, 0.117 s | Assertion failure, 1.129 s |
+| M6 — Acknowledgement retry ignores its deadline | Assertion failure, 0.113 s | Assertion failure, 1.555 s |
+
+These are failing-test execution durations, excluding build/runner startup. All six runs
+completed without timeout, hang or test-process crash. Each restored its production source
+before the next mutation/final suite. The process-restart test was also run as a control and
+passed under these mutations; the persistent-ack test is what catches M4/M5/M6.
+
+Final restored-source full suites: **321/321 Android and 349/349 iOS passed**, zero failures.
+Counts are unchanged because existing tests were strengthened. No production code, native
+versions, bridge code or foreground/page-impression behavior changed. Nothing was pushed.
