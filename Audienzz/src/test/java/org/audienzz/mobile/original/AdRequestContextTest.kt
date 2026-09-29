@@ -71,9 +71,9 @@ class AdRequestContextTest {
         return Slot(handler, requests, { response!!(AudienzzResultCode.NO_BIDS) }, { listener.onAdLoaded() })
     }
 
-    private fun assertRequest(request: AdManagerAdRequest, page: Int, slot: Int, refresh: Int) {
+    private fun assertRequest(request: AdManagerAdRequest, page: Int, slot: Int?, refresh: Int) {
         assertEquals(page.toString(), request.customTargeting.getString("au_page_seq"))
-        assertEquals(slot.toString(), request.customTargeting.getString("au_slot"))
+        assertEquals(slot?.toString(), request.customTargeting.getString("au_slot"))
         assertEquals(refresh.toString(), request.customTargeting.getString("hb_refresh_count"))
     }
 
@@ -121,6 +121,22 @@ class AdRequestContextTest {
         assertEquals(AdRequestSnapshot(7, 2, 1), ledger.nextRequest(second))
         ledger.beginPage(8, listOf(second, first))
         assertEquals(AdRequestSnapshot(8, 2, 0), ledger.nextRequest(second))
+    }
+
+    @Test fun `interstitial never consumes a banner position and clears stale slot targeting`() {
+        val overlay = AudienzzAdRequestContext.forInterstitial("overlay")
+        val builder = AdManagerAdRequest.Builder().addCustomTargeting("au_slot", "999")
+            .addCustomTargeting("category", "sport")
+        val first = overlay.buildRequest(builder, isInterstitial = true)
+        assertRequest(first, 1, null, 0)
+        assertRequest(AudienzzAdRequestContext.forSlot("top").buildRequest(AdManagerAdRequest.Builder()), 1, 1, 0)
+        assertRequest(overlay.buildRequest(builder, isInterstitial = true), 1, null, 1)
+        assertRequest(AudienzzAdRequestContext.forSlot("bottom").buildRequest(AdManagerAdRequest.Builder()), 1, 2, 0)
+        assertEquals("sport", first.customTargeting.getString("category"))
+        coordinator.onScreenResumed("next")
+        assertRequest(overlay.buildRequest(builder, isInterstitial = true), 2, null, 0)
+        assertRequest(first, 1, null, 0)
+        assertEquals("999", builder.build().customTargeting.getString("au_slot"))
     }
 
     @Test fun `bridge replacements share one slot but different ad objects do not`() {

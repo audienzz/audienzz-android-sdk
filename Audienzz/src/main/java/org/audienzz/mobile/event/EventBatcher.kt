@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
@@ -13,32 +14,19 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
-import kotlinx.coroutines.withTimeoutOrNull
 import org.audienzz.mobile.di.qualifier.IO
 import org.audienzz.mobile.event.network.entity.EventNetwork
 import org.audienzz.mobile.event.repository.remote.RemoteEventRepository
 import org.audienzz.mobile.util.AppForegroundMonitor
+import org.audienzz.mobile.util.AudienzzDiagnostics
+import retrofit2.HttpException
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * In-memory batching queue for clickstream events.
- *
- * Events are enriched + sequenced by [EventLoggerImpl] and handed here. Instead of one POST per
- * event, a single consumer coroutine coalesces them and POSTs a batch to `/submit/batch` when the
- * buffer reaches [MAX_BATCH_SIZE], after [FLUSH_INTERVAL_MS] of inactivity, or on an explicit
- * [flush] (app background/foreground). Failed batches are retried with exponential backoff up to
- * [MAX_RETRIES], then dropped.
- *
- * Ordering is safe to reorder/retry because `session_seq` is assigned at event creation
- * ([EventLoggerImpl.logEvent]); the backend orders by sequence, not arrival. The channel is capped
- * at [MAX_QUEUE_SIZE] with drop-oldest overflow.
- *
- * The buffer is mirrored to disk by [EventStore], so it survives process death: events are appended
- * as they arrive and the file is rewritten once a batch settles. What is on disk is always what is
- * still owed to the collector — which is why events are handed here already mapped to
- * [EventNetwork]: the payload is frozen at creation time, so a restored event keeps the app version
- * and device context it was actually produced under rather than the restarted process's.
+ * Immediate delivery with a durable outbox. The internal name is retained for DI compatibility;
+ * each POST now contains ONE event, with no batching timer. One consumer owns persistence/state,
+ * and at most one HTTP request is in flight. No caller performs disk or network I/O.
  */
 @Singleton
 internal class EventBatcher @Inject constructor(
@@ -46,121 +34,101 @@ internal class EventBatcher @Inject constructor(
     private val store: EventStore,
     @IO dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : CoroutineScope, AppForegroundMonitor.Listener {
-
     override val coroutineContext = dispatcher + SupervisorJob() +
-        CoroutineExceptionHandler { _, throwable ->
-            Log.e(TAG, "Unexpected coroutine error", throwable)
-        }
+        CoroutineExceptionHandler { _, error -> Log.e(TAG, "Unexpected delivery error", error) }
 
-    private val events = Channel<EventNetwork>(
-        capacity = MAX_QUEUE_SIZE,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
-
-    /** Conflated: a pending flush request coalesces; delivering it breaks the fill loop early. */
-    private val flushSignals = Channel<Unit>(capacity = Channel.CONFLATED)
+    private val events = Channel<EventNetwork>(EventStore.MAX_LINES, BufferOverflow.DROP_OLDEST,
+        onUndeliveredElement = {
+            AudienzzDiagnostics.log("analytics", "dropped", "count" to 1, "reason" to "capacity")
+        })
+    private val flushSignals = Channel<Unit>(Channel.CONFLATED)
+    private val retrySignals = Channel<Unit>(Channel.CONFLATED)
+    private val completions = Channel<Completion>(Channel.CONFLATED)
+    private data class Completion(val event: EventNetwork, val error: Throwable?)
 
     init {
         AppForegroundMonitor.addListener(this)
         startConsumer()
     }
 
-    /** Enqueue an already-enriched event. Non-suspending; drops the oldest buffered event on overflow. */
-    fun enqueue(event: EventNetwork) {
-        // Persist before buffering: a crash between the two loses nothing, the reverse loses the
-        // event entirely.
-        store.append(event)
-        events.trySend(event)
-    }
-
-    /** Ask the consumer to send whatever it has buffered now (no-op if the buffer is empty). */
-    fun flush() {
-        flushSignals.trySend(Unit)
-    }
-
+    fun enqueue(event: EventNetwork) { events.trySend(event) }
+    fun flush() { flushSignals.trySend(Unit) }
     override fun onEnterBackground() = flush()
-
     override fun onEnterForeground() = flush()
 
     private fun startConsumer() = launch {
-        // Anything the previous process did not get to send is owed to the collector. Send it
-        // first, before accepting anything new.
-        val restored = store.loadAll()
-        if (restored.isNotEmpty()) {
-            restored.chunked(MAX_BATCH_SIZE).forEach { chunk ->
-                sendWithRetry(chunk)
-                store.removeOldest(chunk.size)
+        // Restore once BEFORE processing new events. Producers no longer write concurrently with
+        // restore, which previously could put the same event in both the restored list and channel.
+        val pending = store.loadAll().associateByTo(linkedMapOf()) { it.eventId }
+        var inFlight: String? = null
+        var retryJob: Job? = null
+        var failures = 0
+
+        fun sendIfReady() {
+            if (inFlight != null || retryJob != null) return
+            val event = pending.values.firstOrNull() ?: return
+            inFlight = event.eventId
+            AudienzzDiagnostics.log("analytics", "sending", "count" to 1, "attempt" to failures + 1)
+            launch {
+                val error = try {
+                    remoteRepository.submitBatch(listOf(event))
+                    null
+                } catch (cancel: CancellationException) {
+                    throw cancel
+                } catch (error: Throwable) {
+                    error
+                }
+                completions.send(Completion(event, error))
             }
         }
 
-        val batch = ArrayList<EventNetwork>(MAX_BATCH_SIZE)
+        sendIfReady()
         while (isActive) {
-            // Block until the first event of the next batch arrives.
-            batch.add(events.receive())
-            // Fill up to MAX_BATCH_SIZE, or until the flush interval elapses, or an explicit flush.
-            var flushNow = false
-            withTimeoutOrNull(FLUSH_INTERVAL_MS) {
-                while (batch.size < MAX_BATCH_SIZE && !flushNow) {
-                    select {
-                        events.onReceive { batch.add(it) }
-                        flushSignals.onReceive { flushNow = true }
+            select<Unit> {
+                events.onReceive { event ->
+                    if (!pending.containsKey(event.eventId)) {
+                        // Decide eviction here, before append reaches the store's own safety cap.
+                        // Retry rotation can give memory a different order from the disk journal.
+                        while (pending.size >= EventStore.MAX_LINES) {
+                            val oldest = pending.keys.first { it != inFlight }
+                            pending.remove(oldest)
+                            store.remove(oldest)
+                            AudienzzDiagnostics.log("analytics", "dropped", "count" to 1, "reason" to "capacity")
+                        }
+                        store.append(event, protectedId = inFlight) // BEFORE any HTTP attempt.
+                        pending[event.eventId] = event
+                        AudienzzDiagnostics.log("analytics", "queued", "type" to event.eventType)
                     }
                 }
-            }
-            sendWithRetry(ArrayList(batch))
-            // Settled either way — delivered, or given up on after the retries — so it is no longer
-            // owed. These are the oldest lines in the file; anything enqueued meanwhile was appended
-            // behind them and is untouched.
-            store.removeOldest(batch.size)
-            batch.clear()
-        }
-    }
-
-    private suspend fun sendWithRetry(batch: List<EventNetwork>) {
-        var attempt = 0
-        while (true) {
-            try {
-                remoteRepository.submitBatch(batch)
-                Log.d(TAG, "batch sent (${batch.size} events)")
-                return
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (throwable: Throwable) {
-                if (attempt >= MAX_RETRIES) {
-                    Log.e(TAG, "batch dropped after $MAX_RETRIES retries (${batch.size} events)", throwable)
-                    return
+                completions.onReceive { result ->
+                    inFlight = null
+                    val event = result.event
+                    val error = result.error
+                    if (error == null) {
+                        failures = 0
+                        pending.remove(event.eventId)
+                        store.remove(event.eventId) // Identity, never a position shifted by overflow.
+                        AudienzzDiagnostics.log("analytics", "sent", "count" to 1)
+                    } else {
+                        failures++
+                        // Rotate failed events so a permanently rejected payload cannot strand
+                        // every later event. The whole sender still observes the retry cooldown.
+                        pending.remove(event.eventId)
+                        pending[event.eventId] = event
+                        AudienzzDiagnostics.log("analytics", "failed", "count" to 1,
+                            "attempt" to failures, "status" to (error as? HttpException)?.code(),
+                            "reason" to error.javaClass.simpleName)
+                        val delayMs = (2_000L shl (failures - 1).coerceAtMost(20)).coerceAtMost(60_000L)
+                        retryJob = launch { delay(delayMs); retrySignals.send(Unit) }
+                        AudienzzDiagnostics.log("analytics", "retryScheduled", "delayMs" to delayMs)
+                    }
                 }
-                attempt++
-                val delayMs = RETRY_BASE_DELAY_MS shl (attempt - 1) // 2s, 4s, 8s
-                Log.w(TAG, "batch failed, retry $attempt/$MAX_RETRIES in ${delayMs}ms: ${throwable.message}")
-                delay(delayMs)
+                retrySignals.onReceive { retryJob = null }
+                flushSignals.onReceive { /* A lifecycle hint must not bypass retryJob. */ }
             }
+            sendIfReady()
         }
     }
 
-    companion object {
-
-        private const val TAG = "EventBatcher"
-
-        // Kept in sync with the iOS AUEventQueue.
-
-        /**
-         * A ceiling on POST size, not a target: one ad slot emits roughly six events per auction
-         * (bidRequest, bidResponse/noBid, bidWon, adImpression, viewability start/success), so a
-         * busy screen reaches it well inside the flush interval. Kept moderate deliberately — a
-         * larger batch is a larger unit to lose or resend when a send fails.
-         */
-        private const val MAX_BATCH_SIZE = 20
-
-        /**
-         * The ceiling on how long an event waits when traffic is too thin to fill a batch. This is
-         * what actually governs how chatty the SDK is: at 5s a trickle of one or two events still
-         * cost a request every five seconds. Backgrounding still flushes immediately, so this
-         * delays delivery rather than risking it — and the buffer is on disk while it waits.
-         */
-        private const val FLUSH_INTERVAL_MS = 15_000L
-        private const val MAX_QUEUE_SIZE = 500
-        private const val MAX_RETRIES = 3
-        private const val RETRY_BASE_DELAY_MS = 2000L
-    }
+    companion object { private const val TAG = "EventBatcher" }
 }

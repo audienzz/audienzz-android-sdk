@@ -32,7 +32,7 @@ class App : Application() {
         )
 
         AudienzzPrebidMobile.initializeRemoteSdk(this, "YOUR_PUBLISHER_ID") { status ->
-            if (status != AudienzzInitializationStatus.SUCCEEDED) {
+            if (status == AudienzzInitializationStatus.FAILED) {
                 Log.e(TAG, "Audienzz init failed: $status")
             }
         }
@@ -194,20 +194,27 @@ signals.
 
 Initialize SDK
 -------
-First of all, SDK needs to be initialized with context. It's done asynchronously, so after callback
-is triggered with `SUCCEEDED` status, SDK is ready to use.
+Initialize the SDK with a context. The asynchronous callback returns `SUCCEEDED`,
+`SERVER_STATUS_WARNING`, or `FAILED`. Both success and warning allow Original API / remote
+Google ads to load. A warning can mean Prebid is unavailable: Google demand continues without
+header bidding. Only `FAILED` should block ad creation.
 
 ```kotlin
 AudienzzPrebidMobile.initializeSdk(applicationContext, COMPANY_ID) { status ->
-    if (status == AudienzzInitializationStatus.SUCCEEDED) {
-        Log.d(App.TAG, "SDK was initialized successfully")
+    if (status != AudienzzInitializationStatus.FAILED) {
+        Log.d(App.TAG, "SDK ready: $status — ${status.description}")
     } else {
         Log.e(App.TAG, "Error during SDK initialization: $status")
     }
 }
 ```
 CompanyId is provided by Audienzz, usually - it is id of the company in ad console.
-You can always check sdk initialization status by checking `isSdkInitialized` property.
+`isSdkInitialized` reports **Prebid** readiness; it can remain false during Google-only fallback.
+Use the initialization callback above to decide whether to create Original API / remote ads.
+After an initialization failure in Prebid, retry SDK initialization to restore header bidding.
+For individual auctions, Prebid errors or a missing callback hand off to Google once; a missing
+callback is bounded by the configured Prebid timeout plus 250 ms. Page/background/destroy guards
+still apply. This does not bypass unavailable placement configuration, Google errors, or TLS validation.
 
 Lazy Loading
 -------
@@ -755,8 +762,8 @@ AudienzzPrebidMobile.initializeRemoteSdk(
     context = applicationContext,
     publisherId = "YOUR_PUBLISHER_ID"
 ) { status ->
-    if (status == AudienzzInitializationStatus.SUCCEEDED) {
-        Log.d(TAG, "SDK was initialized successfully with remote config")
+    if (status != AudienzzInitializationStatus.FAILED) {
+        Log.d(TAG, "SDK ready with remote config: $status — ${status.description}")
     } else {
         Log.e(TAG, "Error during SDK initialization: $status")
     }
@@ -902,8 +909,9 @@ Banner, interstitial and rewarded ads on the Original API are all covered.
 
 ### Step 1 — Initialize the SDK
 
-Analytics is keyed on your **Company ID** (provided by Audienzz), supplied when you initialize the
-SDK. Nothing is reported until initialization succeeds. See [Initialize SDK](#initialize-sdk).
+Analytics uses the **publisher ID** from remote configuration as `publisher_id`; the collector
+resolves company and website IDs. Direct integrations can supply the publisher through
+`configureAnalytics`. See [the analytics contract](docs/analytics-contract.md).
 
 ### Step 2 — Screen reporting
 
@@ -1209,6 +1217,16 @@ prefetching when practical. Do not create owners or requests on rebuild, rotatio
 
 ### Automatic request counters
 
-Original and remote banners/interstitials automatically include `au_page_seq`, `au_slot` and
-`hb_refresh_count` in GAM custom targeting. See [the request targeting contract](docs/ad-request-targeting.md)
+Original and remote banners include `au_page_seq`, `au_slot` and `hb_refresh_count` in GAM
+custom targeting. Interstitials include only `au_page_seq` and `hb_refresh_count`; they never
+consume a banner position. See [the request targeting contract](docs/ad-request-targeting.md)
 for page resets, automatic slot ordering and request-count semantics. No new publisher parameter is required.
+
+### Analytics environments and publisher identity
+
+Remote initialization supplies the ws-sdk-config `publisher_id` automatically (including Flutter).
+The collector resolves company and website IDs. Analytics defaults to `environment=production`;
+set `test` or `staging` before initializing a non-production app. Our examples use `test`.
+See [the analytics contract](docs/analytics-contract.md) for configuration, currency provenance,
+missing Prebid metadata and release requirements. These additions require the upcoming native
+releases; current published native pins do not provide them.

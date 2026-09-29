@@ -6,7 +6,11 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class EventNetwork(
     @SerialName("event_type") val eventType: String,
-    @SerialName("company_id") val companyId: String?,
+    @SerialName("company_id") val companyId: String? = null,
+    // Defaults allow already-persisted payloads to be replayed without inventing missing metadata.
+    @SerialName("publisher_id") val publisherId: String? = null,
+    @SerialName("environment") val environment: String? = null,
+    @SerialName("os_version") val osVersion: String? = null,
     @SerialName("source") val source: String,
     @SerialName("event_id") val eventId: String,
     @SerialName("page_impression_id") val pageImpressionId: String?,

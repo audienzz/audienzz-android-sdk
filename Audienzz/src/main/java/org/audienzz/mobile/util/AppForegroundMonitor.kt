@@ -6,7 +6,7 @@ import android.os.Bundle
 import java.util.concurrent.CopyOnWriteArraySet
 
 /**
- * Process-wide foreground/background signal, driven by activity start/stop counts.
+ * Process-wide foreground/background signal, driven by started activity identities.
  *
  * Registered once alongside the current-activity tracker in `AudienzzPrebidMobile`. Viewability
  * timers observe it so a pending `viewability.success` never elapses while the app is backgrounded
@@ -100,8 +100,13 @@ internal object AppForegroundMonitor : Application.ActivityLifecycleCallbacks {
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
-    override fun onActivityResumed(activity: Activity) = Unit
-    override fun onActivityPaused(activity: Activity) = Unit
+    // Initialization from Dart/JS can miss the host's first onStart. A translucent AdActivity
+    // then pauses that host without stopping it. If only the ad is tracked, stopping the ad
+    // falsely backgrounds the whole process, and a resumed host never receives another onStart.
+    // Both callbacks prove the activity has started. Seed its identity idempotently; only onStop
+    // removes it. This also preserves the host when the overlay stops before the host resumes.
+    override fun onActivityResumed(activity: Activity) = onActivityStarted(activity)
+    override fun onActivityPaused(activity: Activity) = onActivityStarted(activity)
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
     override fun onActivityDestroyed(activity: Activity) = Unit
 }

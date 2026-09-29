@@ -45,7 +45,7 @@ internal interface MainComponent {
 
         private const val TAG = "MainComponent"
 
-        private var instance: MainComponent? = null
+        @Volatile private var instance: MainComponent? = null
 
         val eventLogger: EventLogger?
             get() = instance?.getEventLogger().also {
@@ -75,7 +75,11 @@ internal interface MainComponent {
                 }
             }
 
+        @Synchronized
         fun init(context: Context) {
+            // Keep one analytics sender/store (and one set of singleton services) per process.
+            // A retry of SDK initialization must not leave two workers writing the same outbox.
+            if (instance != null) return
             // M4: bind the application context, not the caller's context. Callers pass an Activity
             // to initializeSdk; binding it here pinned that Activity for the process lifetime via
             // the @Singleton graph.

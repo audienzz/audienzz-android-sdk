@@ -47,10 +47,9 @@ internal class EventLoggerImpl @Inject constructor(
     private val sessionSequence = AtomicInteger(0)
 
     @Volatile
-    private var currentPageImpressionId: String? = null
+    private var currentPageContext = AnalyticsPageContext()
 
-    @Volatile
-    private var currentScreenName: String? = null
+    override fun capturePageContext(): AnalyticsPageContext = currentPageContext
 
     override val coroutineContext = dispatcher + SupervisorJob() +
         CoroutineExceptionHandler { _, throwable ->
@@ -68,11 +67,12 @@ internal class EventLoggerImpl @Inject constructor(
     }
 
     override fun onScreenResumed(screenName: String) {
-        currentPageImpressionId = generateUuidString()
-        currentScreenName = screenName
+        val page = AnalyticsPageContext(generateUuidString(), screenName)
+        currentPageContext = page
         logEvent(
             EventDomain(
                 eventType = EventType.PAGE_IMPRESSION,
+                pageContext = page,
                 screenName = screenName,
                 // Guarded: reading Prebid targeting touches org.json, which is unavailable in plain
                 // JVM unit tests; never let analytics setup crash a screen visit.
@@ -82,17 +82,20 @@ internal class EventLoggerImpl @Inject constructor(
     }
 
     override fun logEvent(event: EventDomain) {
-        // Safety net: if an ad event fires before any onScreenResumed (e.g. a banner prefetches
-        // before the host Activity/Fragment's onResume), lazily start a page-impression id so the
-        // event is never orphaned. onScreenResumed normally sets this first, so this rarely triggers.
-        if (currentPageImpressionId == null && event.eventType != EventType.PAGE_IMPRESSION) {
-            currentPageImpressionId = generateUuidString()
-        }
+        // Only an actual pageImpression creates an ID. Late ad callbacks carry their request's
+        // snapshot, including the absence of a page when the integration loaded too early.
+        val page = event.pageContext ?: capturePageContext()
         // Assign the sequence synchronously, in call order, before the coroutine launches.
-        val sequencedEvent = event.copy(sessionSequence = sessionSequence.getAndIncrement())
+        val context = AnalyticsContext.snapshot()
+        val sequencedEvent = event.copy(
+            sessionSequence = sessionSequence.getAndIncrement(),
+            pageImpressionId = event.pageImpressionId ?: page.pageImpressionId,
+            screenName = event.screenName ?: page.screenName,
+            publisherId = context.publisherId,
+            environment = context.environment,
+        )
         // Inject ids off the main thread (adId lookup can block), then map to the wire payload and
-        // hand it to the batcher, which coalesces events and POSTs them to /submit/batch on
-        // size/time/background triggers.
+        // hand it to the durable sender, which persists it and attempts delivery immediately.
         //
         // Mapping here rather than at send time freezes the device/app context at event creation,
         // which matters once the batcher persists across process death: a restored event must carry
@@ -108,13 +111,9 @@ internal class EventLoggerImpl @Inject constructor(
         copy(
             uuid = generateUuidString(),
             visitorId = preferences.getVisitorId(),
-            companyId = companyIdProvider.getCompanyId(),
             sessionId = this@EventLoggerImpl.sessionId,
             sessionStartTimestamp = this@EventLoggerImpl.sessionStartTimestamp,
             deviceId = adIdProvider.getAdId(),
-            pageImpressionId = currentPageImpressionId,
-            screenName = screenName ?: currentScreenName,
-            websiteId = websiteId ?: runCatching { AudienzzPrebidMobile.publisherId }.getOrNull(),
         )
 
     companion object {

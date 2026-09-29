@@ -170,4 +170,43 @@ internal class EventStoreTest {
         assertEquals(emptyList<String>(), store().loadAll().map { it.eventId })
         assertEquals(0, store().count())
     }
+    @Test fun `ID acknowledgements are durable without rewriting every pending payload`() {
+        val store = store()
+        repeat(100) { store.append(event(it.toString())) }
+        store.remove("37"); store.remove("0")
+        val journal = file().readText()
+        assertTrue(journal.contains("_au_ack"))
+        assertEquals((1..99).filter { it != 37 }.map(Int::toString), store().loadAll().map { it.eventId })
+        (1..69).forEach { store.remove(it.toString()) }
+        assertEquals((70..99).map(Int::toString), store().loadAll().map { it.eventId })
+        assertTrue(file().length() < journal.length)
+    }
+
+    @Test fun `overflow protects the in flight identity and acknowledgements do not shift`() {
+        val store = store(maxLines = 3)
+        store.append(event("a"))
+        listOf("b", "c", "d", "e").forEach { store.append(event(it), protectedId = "a") }
+        assertEquals(listOf("a", "d", "e"), store().loadAll().map { it.eventId })
+        store.remove("a")
+        assertEquals(listOf("d", "e"), store().loadAll().map { it.eventId })
+    }
+
+    @Test fun `a torn tail cannot swallow the next event after restart`() {
+        store().append(event("old"))
+        file().appendText("{" )
+        store().append(event("new"))
+        assertEquals(listOf("old", "new"), store().loadAll().map { it.eventId })
+    }
+
+    @Test fun `measure a bounded backlog without per-event full rewrites`() {
+        val store = store()
+        val start = System.nanoTime()
+        repeat(500) { store.append(event(it.toString()).copy(attributes = mapOf("payload" to "x".repeat(2048)))) }
+        repeat(500) { store.remove(it.toString()) }
+        val elapsed = (System.nanoTime() - start) / 1_000_000.0
+        println("Analytics storage benchmark: 500 persisted events + acknowledgements = $elapsed ms (JVM host filesystem)")
+        assertTrue(store().loadAll().isEmpty())
+        assertTrue(!file().exists())
+    }
+
 }

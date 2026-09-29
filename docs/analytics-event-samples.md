@@ -1,9 +1,15 @@
 # Audienzz Analytics — Event Samples (Android)
 
+> Historical capture, not the current payload schema. Today's branch uses top-level
+> `publisher_id`, `environment`, `os_version` and omits company/website guesses and unknown IDs.
+> Currency must accompany its own monetary source. See [the current contract](analytics-contract.md).
+
+
 One representative payload per event type, captured from the Audienzz Test App
 (SDK `0.1.4`, `dev-analytics`, banner + rewarded on `MainActivity`).
 
-Each event is a flat JSON object POSTed individually to
+Each sample below is a flat event object. Current-branch delivery POSTs an array containing
+one such event to
 `https://api.adnz.co/api/ws-clickstream-collector/submit/batch`.
 
 **Event flow per screen visit:**

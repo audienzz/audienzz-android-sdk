@@ -1,48 +1,40 @@
 package org.audienzz.mobile.event
 
 import android.util.Log
-import io.mockk.MockKAnnotations
-import io.mockk.coEvery
-import io.mockk.coVerify
-import io.mockk.every
-import io.mockk.mockk
-import io.mockk.mockkStatic
-import io.mockk.verify
+import io.mockk.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.test.*
 import org.audienzz.mobile.event.network.entity.EventNetwork
 import org.audienzz.mobile.event.repository.remote.RemoteEventRepository
-import org.junit.Assert.assertEquals
+import org.audienzz.mobile.util.AppForegroundMonitor
+import org.junit.Assert.*
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import java.io.IOException
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class EventBatcherTest {
-
     private lateinit var repository: RemoteEventRepository
     private lateinit var store: EventStore
-
-    @Before
-    fun setUp() {
-        MockKAnnotations.init(this)
+    private val senders = mutableListOf<EventBatcher>()
+    @Before fun setUp() {
         mockkStatic(Log::class)
-        every { Log.v(any(), any()) } returns 0
-        every { Log.d(any(), any()) } returns 0
-        every { Log.i(any(), any()) } returns 0
-        every { Log.w(any(), any<String>()) } returns 0
         every { Log.e(any(), any(), any()) } returns 0
         repository = mockk()
+        coEvery { repository.submitBatch(any()) } returns Unit
         store = mockk(relaxed = true)
         every { store.loadAll() } returns emptyList()
     }
+    @After fun tearDown() {
+        senders.forEach { it.cancel(); AppForegroundMonitor.removeListener(it) }
+        unmockkStatic(Log::class)
+    }
+    private fun sender(scheduler: TestCoroutineScheduler) =
+        EventBatcher(repository, store, StandardTestDispatcher(scheduler)).also { senders.add(it) }
 
-    /**
-     * The batcher now carries the finished wire payload, so the identifying field a test can assert
-     * on is `eventId` rather than a domain ad-unit id.
-     */
     private fun event(index: Int) = EventNetwork(
         eventType = "adClick",
         companyId = "company",
@@ -75,142 +67,112 @@ internal class EventBatcherTest {
         attributes = emptyMap(),
     )
 
-    @Test
-    fun `flushes a full batch by size`() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
+
+    @Test fun `one event sends immediately without advancing time and is persisted first`() = runTest {
+        val sender = sender(testScheduler)
+        coEvery { repository.submitBatch(any()) } coAnswers {
+            verify(exactly = 1) { store.append(match { it.eventId == "0" }, any()) }
+        }
+        sender.enqueue(event(0))
+        // enqueue itself must not do filesystem I/O on the caller (possibly main) thread.
+        verify(exactly = 0) { store.append(any(), any()) }
+        runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(match { it.map { e -> e.eventId } == listOf("0") }) }
+        verify(exactly = 1) { store.remove("0") }
+        assertEquals(0L, currentTime)
+    }
+
+    @Test fun `bursts remain individual requests with only one in flight`() = runTest {
+        val done = CompletableDeferred<Unit>()
+        coEvery { repository.submitBatch(any()) } coAnswers { done.await() }
+        val sender = sender(testScheduler)
+        repeat(30) { sender.enqueue(event(it)) }
+        runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(any()) }
+        verify(exactly = 30) { store.append(any(), any()) }
+        done.complete(Unit)
+        runCurrent()
+        coVerify(exactly = 30) { repository.submitBatch(match { it.size == 1 }) }
+        verify(exactly = 30) { store.remove(any()) }
+    }
+
+    @Test fun `failures survive more than three retries and lifecycle hints do not bypass backoff`() = runTest {
+        coEvery { repository.submitBatch(any()) } throws IOException("offline")
+        val sender = sender(testScheduler)
+        sender.enqueue(event(0))
+        runCurrent()
+        var attempts = 1
+        for (delay in listOf(2000L, 4000L, 8000L, 16000L, 32000L, 60000L, 60000L)) {
+            repeat(20) { sender.flush() }
+            advanceTimeBy(delay - 1); runCurrent()
+            coVerify(exactly = attempts) { repository.submitBatch(any()) }
+            advanceTimeBy(1); runCurrent()
+            attempts++
+            coVerify(exactly = attempts) { repository.submitBatch(match { it.single().eventId == "0" }) }
+            verify(exactly = 0) { store.remove(any()) }
+        }
+        sender.cancel()
+    }
+
+    @Test fun `new events during failure are persisted without bypassing cooldown`() = runTest {
+        coEvery { repository.submitBatch(any()) } throws IOException("offline")
+        val sender = sender(testScheduler)
+        sender.enqueue(event(0)); runCurrent()
+        sender.enqueue(event(1)); sender.flush(); runCurrent()
+        verify { store.append(match { it.eventId == "1" }, any()) }
+        coVerify(exactly = 1) { repository.submitBatch(any()) }
         coEvery { repository.submitBatch(any()) } returns Unit
-        val batcher = EventBatcher(repository, store, dispatcher)
-
-        repeat(20) { batcher.enqueue(event(it)) }
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { repository.submitBatch(match { it.size == 20 }) }
-    }
-
-    @Test
-    fun `flushes a partial batch after the flush interval`() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        coEvery { repository.submitBatch(any()) } returns Unit
-        val batcher = EventBatcher(repository, store, dispatcher)
-
-        repeat(3) { batcher.enqueue(event(it)) }
-        advanceUntilIdle() // lets the 5s debounce timer elapse in virtual time
-
-        coVerify(exactly = 1) { repository.submitBatch(match { it.size == 3 }) }
-    }
-
-    @Test
-    fun `explicit flush sends the pending buffer immediately`() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        coEvery { repository.submitBatch(any()) } returns Unit
-        val batcher = EventBatcher(repository, store, dispatcher)
-
-        repeat(2) { batcher.enqueue(event(it)) }
-        batcher.flush()
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { repository.submitBatch(match { it.size == 2 }) }
-    }
-
-    @Test
-    fun `retries a failed batch up to the cap then drops it`() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        coEvery { repository.submitBatch(any()) } throws IOException("no network")
-        val batcher = EventBatcher(repository, store, dispatcher)
-
-        batcher.enqueue(event(0))
-        batcher.flush()
-        advanceUntilIdle() // advances through the 2s/4s/8s backoff delays
-
-        // 1 initial attempt + 3 retries, then dropped.
-        coVerify(exactly = 4) { repository.submitBatch(any()) }
-    }
-
-    @Test
-    fun `drops oldest events when the queue overflows`() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
+        advanceTimeBy(2000); runCurrent()
         val sent = mutableListOf<List<EventNetwork>>()
-        coEvery { repository.submitBatch(capture(sent)) } returns Unit
-        val batcher = EventBatcher(repository, store, dispatcher)
-
-        // Enqueue 520 before the consumer runs (StandardTestDispatcher defers it): the 500-capacity
-        // drop-oldest channel keeps the most recent 500 (indices 20..519).
-        repeat(520) { batcher.enqueue(event(it)) }
-        advanceUntilIdle()
-
-        val delivered = sent.flatten().map { it.eventId }
-        assertEquals(500, delivered.size)
-        assertEquals((20..519).map { it.toString() }, delivered)
+        coVerify(exactly = 3) { repository.submitBatch(capture(sent)) }
+        assertEquals(listOf("0", "0", "1"), sent.flatten().map { it.eventId })
+        verify { store.remove("0"); store.remove("1") }
     }
 
-    // ── persistence ─────────────────────────────────────────────────────────
-
-    @Test
-    fun `an event is written to disk as soon as it is enqueued`() = runTest {
-        // Not on flush. The batcher already flushes on background, so the tidy path was never the
-        // lossy one — a foreground crash was, and only a write that already happened survives it.
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        coEvery { repository.submitBatch(any()) } returns Unit
-        val batcher = EventBatcher(repository, store, dispatcher)
-
-        batcher.enqueue(event(0))
-
-        // Deliberately BEFORE advancing: the consumer has not run, nothing has been sent.
-        verify(exactly = 1) { store.append(match { it.eventId == "0" }) }
-        advanceUntilIdle()
-    }
-
-    @Test
-    fun `a delivered batch is dropped from disk`() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        coEvery { repository.submitBatch(any()) } returns Unit
-        val batcher = EventBatcher(repository, store, dispatcher)
-
-        repeat(3) { batcher.enqueue(event(it)) }
-        advanceUntilIdle()
-
-        verify(exactly = 1) { store.removeOldest(3) }
-    }
-
-    @Test
-    fun `a batch given up on is also dropped from disk`() = runTest {
-        // Otherwise a permanently failing batch would be replayed by every future launch, and the
-        // store would never drain.
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        coEvery { repository.submitBatch(any()) } throws IOException("no network")
-        val batcher = EventBatcher(repository, store, dispatcher)
-
-        batcher.enqueue(event(0))
-        advanceUntilIdle()
-
-        verify(exactly = 1) { store.removeOldest(1) }
-    }
-
-    @Test
-    fun `events left by a previous process are sent on startup`() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        val sent = mutableListOf<List<EventNetwork>>()
-        coEvery { repository.submitBatch(capture(sent)) } returns Unit
+    @Test fun `restore runs before new events and sends every identity just once`() = runTest {
         every { store.loadAll() } returns listOf(event(100), event(101))
-
-        EventBatcher(repository, store, dispatcher)
-        advanceUntilIdle()
-
-        assertEquals(listOf("100", "101"), sent.flatten().map { it.eventId })
-        verify(exactly = 1) { store.removeOldest(2) }
-    }
-
-    @Test
-    fun `a restored backlog larger than one batch is sent in batches`() = runTest {
-        val dispatcher = StandardTestDispatcher(testScheduler)
+        val sender = sender(testScheduler)
+        sender.enqueue(event(0)) // Before the consumer runs: formerly vulnerable to restore races.
+        runCurrent()
         val sent = mutableListOf<List<EventNetwork>>()
-        coEvery { repository.submitBatch(capture(sent)) } returns Unit
-        every { store.loadAll() } returns (0 until 50).map { event(it) }
-
-        EventBatcher(repository, store, dispatcher)
-        advanceUntilIdle()
-
-        // 20 + 20 + 10, not one oversized POST.
-        assertEquals(listOf(20, 20, 10), sent.map { it.size })
+        coVerify(exactly = 3) { repository.submitBatch(capture(sent)) }
+        assertEquals(listOf("100", "101", "0"), sent.flatten().map { it.eventId })
     }
+
+    @Test fun `overflow cannot let an old acknowledgement remove newer events`() = runTest {
+        val done = CompletableDeferred<Unit>()
+        coEvery { repository.submitBatch(any()) } coAnswers { done.await() }
+        val sender = sender(testScheduler)
+        sender.enqueue(event(0)); runCurrent()
+        // Process each enqueue while 0 stays in flight, overflowing the persistent pending set.
+        for (i in 1..510) { sender.enqueue(event(i)); runCurrent() }
+        verify { store.append(match { it.eventId == "510" }, "0") }
+        verify(exactly = 0) { store.remove("0") }
+        done.complete(Unit); runCurrent()
+        val sent = mutableListOf<List<EventNetwork>>()
+        coVerify(exactly = 500) { repository.submitBatch(capture(sent)) }
+        assertEquals(listOf("0") + (12..510).map(Int::toString), sent.flatten().map { it.eventId })
+        verify(exactly = 1) { store.remove("0") }
+        verify(exactly = 1) { store.remove("510") }
+    }
+    @Test fun `retry rotation plus overflow removes exactly one persisted event`() = runTest {
+        val directory = java.nio.file.Files.createTempDirectory("analytics-overflow").toFile()
+        val context = mockk<android.content.Context>()
+        every { context.filesDir } returns directory
+        store = EventStore(context)
+        val sender = sender(testScheduler)
+        try {
+            coEvery { repository.submitBatch(any()) } throws IOException("offline")
+            sender.enqueue(event(0)); runCurrent()
+            for (i in 1..499) { sender.enqueue(event(i)); runCurrent() }
+            advanceTimeBy(2000); runCurrent() // 0 fails again and rotates behind 1..499.
+            sender.enqueue(event(500)); runCurrent()
+            val restored = EventStore(context).loadAll().map { it.eventId }.toSet()
+            assertEquals((0..500).filter { it != 1 }.map(Int::toString).toSet(), restored)
+        } finally {
+            sender.cancel()
+            directory.deleteRecursively()
+        }
+    }
+
 }

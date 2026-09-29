@@ -16,6 +16,7 @@ import org.audienzz.mobile.screen.screenAdCoordinatorOverride
 import org.audienzz.mobile.util.AppForegroundMonitor
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -81,6 +82,7 @@ class AudienzzAdViewHandlerTest {
 
     @After
     fun tearDown() {
+        AudienzzPrebidMobile.completePrebidInitialization(org.prebid.mobile.api.data.InitializationStatus.SUCCEEDED)
         AudienzzPrebidMobile.sdkInitializedOverride = null
         handler.destroy()
         org.audienzz.mobile.AudienzzPrebidMobile.pageImpression("cleanup")
@@ -119,6 +121,68 @@ class AudienzzAdViewHandlerTest {
     private fun background() = AppForegroundMonitor.onActivityStopped(hostActivity)
 
     private fun foreground() = AppForegroundMonitor.onActivityStarted(hostActivity)
+
+    private fun translucentInterstitialRoundTrip() {
+        val overlay: android.app.Activity = mockk(relaxed = true)
+        // The real device sequence: host init was late, so no host onStart was observed.
+        AppForegroundMonitor.onActivityPaused(hostActivity)
+        AppForegroundMonitor.onActivityStarted(overlay)
+        AppForegroundMonitor.onActivityResumed(hostActivity)
+        AppForegroundMonitor.onActivityStopped(overlay)
+    }
+
+    @Test fun `failed Prebid startup releases a pending banner into Google only mode`() {
+        AudienzzPrebidMobile.sdkInitializedOverride = false
+        openPage("home")
+        loadOn("home")
+        assertTrue(gamLoads.isEmpty())
+        assertTrue(responses.isEmpty())
+        AudienzzPrebidMobile.completePrebidInitialization(org.prebid.mobile.api.data.InitializationStatus.FAILED)
+        assertEquals(1, gamLoads.size)
+        assertTrue("do not call unavailable Prebid", responses.isEmpty())
+        googleListener.onAdLoaded()
+        idle(30_000)
+        assertEquals("normal refresh still reaches Google", 2, gamLoads.size)
+        assertTrue(responses.isEmpty())
+    }
+
+    @Test fun `failed bid still loads Google but a released page never does`() {
+        openPage("home")
+        loadOn("home")
+        responses.single()(AudienzzResultCode.NETWORK_ERROR)
+        assertEquals(1, gamLoads.size)
+        googleListener.onAdLoaded()
+        idle(30_000)
+        assertEquals(2, responses.size)
+        openPage("other")
+        responses.last()(AudienzzResultCode.TIMEOUT)
+        assertEquals(1, gamLoads.size)
+    }
+
+    @Test
+    fun `a test screen first load works after a translucent interstitial closes`() {
+        openPage("home")
+        translucentInterstitialRoundTrip()
+        openPage("test")
+        loadOn("test")
+        assertEquals("visible test screen must not be held as backgrounded", 1, responses.size)
+        respondTo(0)
+        assertEquals(1, gamLoads.size)
+    }
+
+    @Test
+    fun `returning home after an interstitial and test screen loads its replacement`() {
+        openPage("home")
+        loadOn("home")
+        respondTo(0)
+        translucentInterstitialRoundTrip()
+        openPage("test")
+        openPage("home")
+        idle(1_000)
+        assertEquals("home needs exactly one replacement", 2, responses.size)
+        respondTo(1)
+        assertEquals(2, gamLoads.size)
+    }
 
     // ── The auction gate ────────────────────────────────────────────────────
 
@@ -569,4 +633,70 @@ class AudienzzAdViewHandlerTest {
         idle(22_000); assertEquals(3, responses.size)
     }
 
+
+    @Test fun `banner request and rendered creative retain the page visit across refresh and return`() {
+        val logger = mockk<org.audienzz.mobile.event.EventLogger>(relaxed = true)
+        val events = mutableListOf<org.audienzz.mobile.event.entity.EventDomain>()
+        var page = org.audienzz.mobile.event.AnalyticsPageContext()
+        io.mockk.mockkObject(org.audienzz.mobile.di.MainComponent.Companion)
+        try {
+            every { org.audienzz.mobile.di.MainComponent.eventLogger } returns logger
+            every { logger.capturePageContext() } answers { page }
+            every { logger.onScreenResumed(any()) } answers {
+                page = org.audienzz.mobile.event.AnalyticsPageContext(java.util.UUID.randomUUID().toString(), firstArg())
+            }
+            every { logger.logEvent(capture(events)) } returns Unit
+            openPage("A")
+            val first = page
+            loadOn("A")
+            respondTo(0)
+            googleListener.onAdImpression()
+            handler.reloadAd()
+            assertEquals(2, responses.size)
+            respondTo(1)
+            googleListener.onAdImpression()
+            assertEquals(2, events.count { it.eventType == org.audienzz.mobile.event.entity.EventType.AD_IMPRESSION })
+            assertTrue(events.all { it.pageContext == first })
+            openPage("B")
+            openPage("A")
+            val returned = page
+            assertTrue(returned.pageImpressionId != first.pageImpressionId)
+            assertEquals(3, responses.size)
+            respondTo(2)
+            googleListener.onAdImpression()
+            assertEquals(returned, events.last { it.eventType == org.audienzz.mobile.event.entity.EventType.AD_IMPRESSION }.pageContext)
+            assertEquals(returned, events.last { it.eventType == org.audienzz.mobile.event.entity.EventType.BID_REQUEST }.pageContext)
+        } finally { io.mockk.unmockkObject(org.audienzz.mobile.di.MainComponent.Companion) }
+    }
+
+    @Test
+    fun `Google impression cannot inherit a losing Prebid bid amount`() {
+        val logger = mockk<org.audienzz.mobile.event.EventLogger>(relaxed = true)
+        val events = mutableListOf<org.audienzz.mobile.event.entity.EventDomain>()
+        io.mockk.mockkObject(org.audienzz.mobile.di.MainComponent.Companion)
+        try {
+            every { org.audienzz.mobile.di.MainComponent.eventLogger } returns logger
+            every { logger.logEvent(capture(events)) } returns Unit
+            every { adUnit.getWinningBid() } returns org.audienzz.mobile.AudienzzWinningBid(
+                1.42, "USD", "creative-A", "server-auction-A", "bid-A")
+            every { adUnit.fetchDemand(any(), any()) } answers {
+                val request = firstArg<AdManagerAdRequest>()
+                org.prebid.mobile.Util.apply(hashMapOf("hb_bidder" to "seat-A", "hb_pb" to "1.40"), request)
+                secondArg<(AudienzzResultCode?) -> Unit>().invoke(AudienzzResultCode.SUCCESS)
+            }
+            openPage("A")
+            loadOn("A")
+            googleListener.onAdLoaded()
+            googleListener.onAdImpression()
+            val bid = events.single { it.eventType == org.audienzz.mobile.event.entity.EventType.BID_WON }
+            assertEquals(1.42, bid.cpm)
+            assertEquals("USD", bid.currency)
+            val impression = events.single { it.eventType == org.audienzz.mobile.event.entity.EventType.AD_IMPRESSION }
+            assertEquals("google", impression.bidderCode)
+            assertEquals(null, impression.cpm)
+            assertEquals(null, impression.currency)
+            assertEquals(null, impression.creativeId)
+            assertEquals(null, impression.adId)
+        } finally { io.mockk.unmockkObject(org.audienzz.mobile.di.MainComponent.Companion) }
+    }
 }

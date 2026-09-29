@@ -19,6 +19,7 @@ import org.audienzz.mobile.event.adClick
 import org.audienzz.mobile.event.adImpression
 import org.audienzz.mobile.event.bidRequest
 import org.audienzz.mobile.event.bidResponse
+import org.audienzz.mobile.event.AnalyticsPageContext
 import org.audienzz.mobile.event.RenderEconomics
 import org.audienzz.mobile.event.bidWon
 import org.audienzz.mobile.event.entity.AdSubtype
@@ -129,6 +130,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     // auction (bidRequest → bidResponse/bidWon/noBid → adImpression/adClick/viewability). Prebid
     // only assigns its own id after the request, so we pre-generate one for full-funnel counting.
     private var currentAuctionId: String? = null
+    private var currentAnalyticsPage = AnalyticsPageContext()
     // How many times this slot has (re)loaded. Internal only.
     //
     // What is REPORTED is [emittedSlotReload], a binary flag. The counter itself used to be the
@@ -867,7 +869,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         // and never calls back, so the request stays forever in flight, rearmInitialLoad() refuses
         // to re-arm ("request in flight") and the slot is empty for the rest of the session.
         // Refusing here instead records the pending reason, and initialization resumes it.
-        if (!AudienzzPrebidMobile.isSdkInitialized) {
+        if (!AudienzzPrebidMobile.isOriginalApiReady) {
             Log.d(TAG, "canStartAuction() adUnitId=${adView.adUnitId} — Prebid not initialized yet, deferring $reason")
             return false
         }
@@ -990,7 +992,9 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         val requestStartMs = System.currentTimeMillis()
         // Mint the auction id up front so bidRequest and every later event of this auction share it.
         currentAuctionId = UUID.randomUUID().toString()
-        if (!headerBiddingEnabled) {
+        val requestPage = eventLogger?.capturePageContext() ?: AnalyticsPageContext()
+        currentAnalyticsPage = requestPage
+        if (!headerBiddingEnabled || AudienzzPrebidMobile.prebidUnavailable) {
             // No Prebid, so none of its analytics either: a bidRequest with no response — or a
             // noBid for a slot that never bid — would put an auction that never happened into the
             // header-bidding funnel. The GAM events that follow the load are still reported.
@@ -1009,6 +1013,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             return true
         }
         eventLogger?.bidRequest(
+            pageContext = requestPage,
             adViewId = adView.adViewId,
             adUnitId = adView.adUnitId,
             sizes = adView.adSizes?.asIterable()?.sizesJson,
@@ -1095,6 +1100,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             }
 
             eventLogger?.bidResponse(
+                pageContext = requestPage,
                 adViewId = adView.adViewId,
                 adUnitId = adView.adUnitId,
                 sizes = adView.adSizes?.asIterable()?.sizesJson,
@@ -1113,6 +1119,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             )
             if (economics != null) {
                 eventLogger?.bidWon(
+                    pageContext = requestPage,
                     adViewId = adView.adViewId,
                     adUnitId = adView.adUnitId,
                     sizes = adView.adSizes?.asIterable()?.sizesJson,
@@ -1127,6 +1134,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                 )
             } else {
                 eventLogger?.noBid(
+                    pageContext = requestPage,
                     adViewId = adView.adViewId,
                     adUnitId = adView.adUnitId,
                     sizes = adView.adSizes?.asIterable()?.sizesJson,
@@ -1317,6 +1325,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         val base = lastRenderEconomics ?: RenderEconomics()
         displayedEconomics = base.copy(
             auctionId = base.auctionId ?: currentAuctionId,
+            pageContext = currentAnalyticsPage,
             // The reported flag is binary and belongs to the creative, not the slot's current count.
             slotReload = base.slotReload ?: emittedSlotReload,
         )
@@ -1349,17 +1358,19 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * economics (only the ad-server bidder code).
      */
     private fun renderEconomics(): RenderEconomics {
-        // Always carry the winning-bid economics that were in play; bidder_code reflects the actual
-        // render winner (Prebid line item when its GAM app event fired, else the ad server).
+        // Bid economics belong to a render only when the Prebid line item actually won.
+        // A direct/Google fill must not inherit the losing bid's amount or IDs.
         // The DISPLAYED creative's snapshot, not the newest auction's. See [displayedEconomics].
         val base = displayedEconomics ?: RenderEconomics()
         val bidder = resolveBidderCode()
         return base.copy(
             bidderCode = bidder,
             // Ad server rendered — the Prebid bid's creative id would make the enricher misclassify a
-            // direct-sold impression as RTB. Report the GAM creative id when available, else the "0"
-            // stub (GMA exposes no served-creative id → "0").
-            creativeId = if (bidder == AD_SERVER_BIDDER) "0" else base.creativeId,
+            // direct-sold impression as RTB. GMA exposes no served-creative ID, so omit it.
+            creativeId = if (bidder == AD_SERVER_BIDDER) null else base.creativeId,
+            adId = if (bidder == AD_SERVER_BIDDER) null else base.adId,
+            cpm = if (bidder == AD_SERVER_BIDDER) null else base.cpm,
+            currency = if (bidder == AD_SERVER_BIDDER) null else base.currency,
             // Always carry the SDK-minted auction id, even on a direct fill with no Prebid economics.
             auctionId = base.auctionId ?: renderAuctionId,
         )
