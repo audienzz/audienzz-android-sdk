@@ -904,6 +904,18 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         }
     }
 
+    /** Independent SDK fullscreen hold; viewport and publisher pauses keep their owners. */
+    internal fun setInterstitialCovered(covered: Boolean) {
+        if (covered) {
+            refreshController.block(RefreshBlockReason.INTERSTITIAL)
+            viewabilityTracker?.refreshVisibility()
+        } else {
+            refreshController.unblock(RefreshBlockReason.INTERSTITIAL, schedule = false)
+            viewabilityTracker?.refreshVisibility()
+            resumeEligibleWork()
+        }
+    }
+
     /**
      * Prebid finished initializing: take the load that was deferred waiting for it.
      *
@@ -1307,7 +1319,10 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         val economics = renderEconomics()
         val tracker = ViewabilityTracker(
             view = adView,
-            isEligible = { acceptsGoogleEvents && !blankedForReload && !hostReportedHidden },
+            isEligible = {
+                acceptsGoogleEvents && !blankedForReload && !hostReportedHidden &&
+                    RefreshBlockReason.INTERSTITIAL !in refreshController.blockReasons
+            },
             onStart = {
                 eventLogger?.viewabilityStart(
                     adUnitId = adView.adUnitId,

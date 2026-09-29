@@ -98,16 +98,19 @@ class AudienzzInterstitialAdUnit(
         eventHandler.setAdUnit(this)
     }
 
+    private val pageRecovery = org.audienzz.mobile.screen.InterstitialPageRecovery()
+
     fun setInterstitialAdUnitListener(adUnitEventsListener: AudienzzInterstitialAdUnitListener?) {
-        prebidInterstitialAdUnit.setInterstitialAdUnitListener(
-            adUnitEventsListener?.let {
-                getInterstitialAdUnitListener(
-                    self = this,
-                    adUnitId = adUnitId,
-                    adUnitListener = it,
-                )
-            },
-        )
+        // The SDK still owns dismissal recovery when the publisher removes its listener.
+        prebidInterstitialAdUnit.setInterstitialAdUnitListener(getInterstitialAdUnitListener(
+            self = this, adUnitId = adUnitId,
+            adUnitListener = adUnitEventsListener ?: object : AudienzzInterstitialAdUnitListener {},
+        ))
+    }
+
+    override fun destroy() {
+        pageRecovery.finish(dismissed = false)
+        super.destroy()
     }
 
     fun setPluginEventListener(pluginEventListener: AudienzzPluginEventListener?) {
@@ -138,6 +141,7 @@ class AudienzzInterstitialAdUnit(
                 }
 
                 override fun onAdDisplayed(interstitialAdUnit: InterstitialAdUnit?) {
+                    self.pageRecovery.onShown()
                     adUnitListener.onAdDisplayed(self)
                 }
 
@@ -145,6 +149,7 @@ class AudienzzInterstitialAdUnit(
                     interstitialAdUnit: InterstitialAdUnit?,
                     exception: AdException?,
                 ) {
+                    self.pageRecovery.finish(dismissed = false)
                     adUnitListener.onAdFailed(
                         self,
                         exception?.let { e -> AudienzzAdException(e) },
@@ -157,6 +162,7 @@ class AudienzzInterstitialAdUnit(
                 }
 
                 override fun onAdClosed(interstitialAdUnit: InterstitialAdUnit?) {
+                    self.pageRecovery.finish(dismissed = true)
                     adUnitListener.onAdClosed(self)
                 }
             }

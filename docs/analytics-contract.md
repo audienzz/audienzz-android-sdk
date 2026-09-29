@@ -425,11 +425,23 @@ Blanking (when enabled), lazy loading, visibility gates, publisher pause, stale-
 and Google-load serialization remain in force. Navigation during the recovery delay supersedes it.
 
 The legacy `pageImpressionObserver` callback is a **UI lifecycle signal**, used for both navigation
-and foreground recovery. Its Flutter/RN echoes (`onPageImpression` / `AudienzzPageImpression`) may
-advance a local view revision without emitting analytics or incrementing `au_page_seq`. Published
-bridges already consume this signal; they only need the native release containing this change.
+foreground recovery and interstitial dismissal. Its Flutter/RN echoes (`onPageImpression` / `AudienzzPageImpression`) may
+advance a local view revision without emitting analytics or incrementing `au_page_seq`. The native continuity release and matching bridges must be deployed together: Flutter removes
+its previous explicit dismissal report, and RN iOS retains the original interstitial handler
+until Google's completed-dismissal callback.
 
 Publishers report actual navigation, including back navigation and ad-free destinations; they
 must not report a new page solely from app-resume callbacks. Explicit `pageImpression` calls
-remain unconditional, even for the same screen. Existing explicit interstitial-return reports
-are unchanged. With no reported page, foreground recovery does not invent a page identity.
+remain unconditional, even for the same screen. Do not report a page from interstitial dismissal or screen reappearance alone. With no reported page, foreground recovery does not invent a page identity.
+
+### Interstitial dismissal
+
+SDK interstitial presentation captures the active ad revision separately from the prefetch page
+used by its analytics. Banners (including newly registered ones) are held while the ad covers them.
+On dismissal, native recovers the active page before releasing that hold. Page ID, page sequence,
+slots and request counters continue; admitted replacements get new auction IDs. A navigation or
+foreground recovery during presentation already owns the replacement, so dismissal only unblocks
+it. A background dismissal waits for normal foreground recovery. Failed presentation releases the
+hold without forcing a page reload. Off-screen, detached, inactive-page and publisher holds remain.
+No reported page means no invented page identity or analytics page event. Rewarded dismissal is
+outside this change. Fullscreen ads themselves never auto-prefetch a replacement on dismissal.

@@ -104,7 +104,7 @@ class OriginalApiRewardedVideoAdHolder(parent: ViewGroup) : BaseAdHolder(parent)
                     }
                 }
             },
-            fullScreenContentCallback = FullscreenAdUtils.createFullScreenCallback(TAG),
+            fullScreenContentCallback = FullscreenAdUtils.createFullScreenCallback(TAG, rewarded = true),
             resultCallback = { resultCode, request, listener ->
                 errorTextView?.apply {
                     text = "Ad fetch error: code $resultCode"

@@ -89,7 +89,7 @@ abstract class AudienzzBaseInterstitialAdUnit internal constructor(
     /**
      * Cleans up resources when destroyed.
      */
-    fun destroy() {
+    open fun destroy() {
         adUnit.destroy()
     }
 

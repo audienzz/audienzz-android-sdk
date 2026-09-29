@@ -475,4 +475,145 @@ class ScreenReloadVisibilityTest {
         assertEquals(2, screenAdCoordinatorOverride!!.epoch)
     }
 
+    /** Run the installed Google callback wrapper, not the coordinator's helper in isolation. */
+    private fun loadedInterstitial(): com.google.android.gms.ads.FullScreenContentCallback {
+        val unit = mockk<org.audienzz.mobile.AudienzzInterstitialAdUnit>(relaxed = true)
+        every { unit.fetchDemand(any(), any()) } answers {
+            secondArg<(AudienzzResultCode?) -> Unit>()(AudienzzResultCode.NO_BIDS)
+        }
+        val ad = mockk<com.google.android.gms.ads.admanager.AdManagerInterstitialAd>(relaxed = true)
+        var callback: com.google.android.gms.ads.FullScreenContentCallback? = null
+        every { ad.fullScreenContentCallback } answers { callback }
+        every { ad.fullScreenContentCallback = any() } answers { callback = firstArg() }
+        AudienzzInterstitialAdHandler(unit, "/fixture/interstitial").load(
+            adLoadCallback = object : org.audienzz.mobile.original.callbacks.AudienzzInterstitialAdLoadCallback() {},
+        ) { _, _, loaded -> loaded.onAdLoaded(ad) }
+        return requireNotNull(callback)
+    }
+
+    @Test fun `interstitial dismissal blanks and reloads once with unchanged page and counters continuing`() {
+        loadVisibleBanner(blank = true, v2 = true)
+        val original = requests.single().customTargeting
+        assertNotNull(original.getString("au_page_seq"))
+        assertNotNull(original.getString("au_slot"))
+        val coordinator = requireNotNull(screenAdCoordinatorOverride)
+        var recoveries = 0
+        AudienzzPrebidMobile.pageImpressionObserver = { recoveries++ }
+        try {
+            repeat(3) { index ->
+                val interstitial = loadedInterstitial()
+                interstitial.onAdShowedFullScreenContent()
+                assertTrue(RefreshBlockReason.INTERSTITIAL in handler.refreshController.blockReasons)
+                interstitial.onAdDismissedFullScreenContent()
+                interstitial.onAdDismissedFullScreenContent()
+                assertEquals(index + 2, responses.size)
+                assertEquals(View.INVISIBLE, creativeVisibility)
+                assertEquals(1, coordinator.epoch)
+                assertFalse(RefreshBlockReason.INTERSTITIAL in handler.refreshController.blockReasons)
+                responses.last()(AudienzzResultCode.NO_BIDS)
+                listener.onAdLoaded()
+                assertEquals(index + 2, googleLoads)
+                assertEquals(View.VISIBLE, creativeVisibility)
+                assertEquals(original.getString("au_page_seq"), requests.last().customTargeting.getString("au_page_seq"))
+                assertEquals(original.getString("au_slot"), requests.last().customTargeting.getString("au_slot"))
+                assertEquals((index + 1).toString(), requests.last().customTargeting.getString("hb_refresh_count"))
+            }
+            assertEquals(3, recoveries)
+        } finally { AudienzzPrebidMobile.pageImpressionObserver = null }
+    }
+
+    @Test fun `navigation while interstitial covers page is not replayed on dismissal`() {
+        loadVisibleBanner(blank = true, v2 = true)
+        val interstitial = loadedInterstitial()
+        interstitial.onAdShowedFullScreenContent()
+        AudienzzPrebidMobile.pageImpression("other")
+        val revision = screenAdCoordinatorOverride!!.adRevision
+        interstitial.onAdDismissedFullScreenContent()
+        assertEquals(revision, screenAdCoordinatorOverride!!.adRevision)
+        assertEquals("other", screenAdCoordinatorOverride!!.activeScreen)
+        assertEquals(1, responses.size)
+        assertTrue(RefreshBlockReason.PAGE_INACTIVE in handler.refreshController.blockReasons)
+        assertFalse(RefreshBlockReason.INTERSTITIAL in handler.refreshController.blockReasons)
+    }
+
+    @Test fun `interstitial return keeps publisher pause and offscreen hold`() {
+        loadVisibleBanner(blank = true, v2 = true)
+        val interstitial = loadedInterstitial()
+        interstitial.onAdShowedFullScreenContent()
+        handler.stopAutoRefresh()
+        inViewport = false
+        observer.dispatchOnPreDraw()
+        interstitial.onAdDismissedFullScreenContent()
+        assertEquals(1, responses.size)
+        inViewport = true
+        observer.dispatchOnPreDraw()
+        assertEquals(1, responses.size)
+        handler.resumeAutoRefresh()
+        assertEquals(2, responses.size)
+    }
+
+    @Test fun `failed interstitial never replaces banner or starts a page`() {
+        loadVisibleBanner(blank = true, v2 = true)
+        val interstitial = loadedInterstitial()
+        interstitial.onAdFailedToShowFullScreenContent(com.google.android.gms.ads.AdError(1, "test", "test"))
+        interstitial.onAdDismissedFullScreenContent()
+        assertEquals(1, responses.size)
+        assertEquals(View.VISIBLE, creativeVisibility)
+        assertEquals(1, screenAdCoordinatorOverride!!.epoch)
+    }
+
+    @Test fun `foreground before dismissal and dismissal before foreground each recover only once`() {
+        loadVisibleBanner(blank = true, v2 = true)
+        repeat(2) { index ->
+            val interstitial = loadedInterstitial()
+            interstitial.onAdShowedFullScreenContent()
+            AppForegroundMonitor.onActivityStopped(foregroundHost)
+            if (index == 0) {
+                AppForegroundMonitor.onActivityStarted(foregroundHost)
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+                    .idleFor(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+                assertEquals(index + 1, responses.size)
+                interstitial.onAdDismissedFullScreenContent()
+            } else {
+                interstitial.onAdDismissedFullScreenContent()
+                assertEquals(index + 1, responses.size)
+                AppForegroundMonitor.onActivityStarted(foregroundHost)
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+                    .idleFor(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+            }
+            assertEquals(index + 2, responses.size)
+            responses.last()(AudienzzResultCode.NO_BIDS)
+            listener.onAdLoaded()
+            assertEquals(1, screenAdCoordinatorOverride!!.epoch)
+        }
+    }
+
+    @Test fun `banner first load is held when registered beneath an interstitial`() {
+        val interstitial = loadedInterstitial()
+        interstitial.onAdShowedFullScreenContent()
+        handler.load(withLazyLoading = false) { _, _ -> googleLoads++ }
+        assertTrue(RefreshBlockReason.INTERSTITIAL in handler.refreshController.blockReasons)
+        assertEquals(0, responses.size)
+        interstitial.onAdDismissedFullScreenContent()
+        assertEquals(1, responses.size)
+        responses.single()(AudienzzResultCode.NO_BIDS)
+        listener.onAdLoaded()
+        assertEquals(1, googleLoads)
+        assertEquals(1, screenAdCoordinatorOverride!!.epoch)
+    }
+
+    @Test fun `dismissal consumes pending foreground delay without a second replacement`() {
+        loadVisibleBanner(blank = true, v2 = true)
+        val interstitial = loadedInterstitial()
+        interstitial.onAdShowedFullScreenContent()
+        AppForegroundMonitor.onActivityStopped(foregroundHost)
+        AppForegroundMonitor.onActivityStarted(foregroundHost)
+        interstitial.onAdDismissedFullScreenContent()
+        assertEquals(2, responses.size)
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+            .idleFor(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+        assertEquals(2, responses.size)
+        assertEquals(1, screenAdCoordinatorOverride!!.epoch)
+    }
+
 }

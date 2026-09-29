@@ -36,7 +36,7 @@ class PageImpressionAttributionTest {
         mockkObject(MainComponent.Companion)
         every { MainComponent.eventLogger } returns logger
     }
-    @After fun cleanup() { unmockkAll() }
+    @After fun cleanup() { org.audienzz.mobile.screen.screenAdCoordinatorOverride = null; unmockkAll() }
 
     private fun drain() = dispatcher.scheduler.runCurrent()
     private fun payload(event: EventNetwork): JsonObject = json.encodeToJsonElement(EventNetwork.serializer(), event).jsonObject
@@ -170,15 +170,21 @@ class PageImpressionAttributionTest {
                 callback.onAdLoaded(ad)
             })
         }
-        logger.onScreenResumed("A")
+        val coordinator = org.audienzz.mobile.screen.ScreenAdCoordinator()
+        org.audienzz.mobile.screen.screenAdCoordinatorOverride = coordinator
+        org.audienzz.mobile.AudienzzPrebidMobile.pageImpression("A")
         load()
-        logger.onScreenResumed("B")
+        org.audienzz.mobile.AudienzzPrebidMobile.pageImpression("B")
         replies.single()(AudienzzResultCode.NO_BIDS)
         assertEquals(1, ads.size)
+        ads[0].fullScreenContentCallback!!.onAdShowedFullScreenContent()
         ads[0].fullScreenContentCallback!!.onAdImpression()
+        ads[0].fullScreenContentCallback!!.onAdClicked()
+        ads[0].fullScreenContentCallback!!.onAdDismissedFullScreenContent()
+        assertEquals(2, coordinator.epoch)
+        assertEquals("B", coordinator.activeScreen)
         load() // same owner accepts a second request on B
         replies[1](AudienzzResultCode.NO_BIDS)
-        ads[0].fullScreenContentCallback!!.onAdClicked() // late callback on the older creative
         ads[1].fullScreenContentCallback!!.onAdImpression()
         drain()
         val pages = sent.filter { it.eventType == "pageImpression" }

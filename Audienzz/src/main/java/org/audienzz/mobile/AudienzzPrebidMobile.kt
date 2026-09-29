@@ -182,7 +182,7 @@ object AudienzzPrebidMobile {
     private var reportedInThisForegroundVisit: Boolean = false
 
     /**
-     * Page lifecycle notification after explicit navigation OR foreground ad recovery.
+     * Page lifecycle notification after explicit navigation OR foreground/interstitial ad recovery.
      * The routing key is unchanged during recovery. Despite the legacy name, this is not an
      * analytics event: Flutter/RN use it to remount views and refresh rendering banners.
      * Their local view revision may advance without changing page_impression_id or au_page_seq.
@@ -200,6 +200,17 @@ object AudienzzPrebidMobile {
      */
     internal val hasPendingForegroundRecovery: Boolean
         get() = pendingForegroundRecovery != null
+
+    internal fun recoverAfterInterstitial(coordinator: org.audienzz.mobile.screen.ScreenAdCoordinator) {
+        if (!org.audienzz.mobile.util.AppForegroundMonitor.isForeground) return
+        val screen = coordinator.activeScreen ?: return
+        val name = coordinator.activeScreenName ?: screen.javaClass.name
+        // A dismissal can arrive before or after the foreground task. One owner reloads.
+        reportedInThisForegroundVisit = true
+        cancelPendingForegroundRecovery()
+        coordinator.recoverActivePage()
+        pageImpressionObserver?.invoke(screen as? String ?: name)
+    }
 
     private fun cancelPendingForegroundRecovery() {
         pendingForegroundRecovery?.let { foregroundHandler.removeCallbacks(it) }
@@ -778,11 +789,11 @@ object AudienzzPrebidMobile {
     }
 
     /**
-     * Report an ad-bearing screen, dialog, or popup by an explicit [name] (e.g. a route name from
-     * Jetpack Compose / Flutter / React Native). Always applied — automatic tracking can't see
-     * non-Activity/Fragment screens, so this is how you report them. Generates a fresh
-     * pageImpressionId and fires a pageImpression event; all ad events after this call are
-     * associated with this screen visit.
+     * Report every navigation destination, including ad-free screens, by an explicit [name]
+     * (e.g. a route name from Jetpack Compose / Flutter / React Native). Each explicit report
+     * creates a fresh analytics page visit; already-prefetched ads retain their request's page.
+     * Do not call solely for app resume or SDK interstitial dismissal: native recovers those ads
+     * without changing page identity.
      */
     @JvmStatic
     fun pageImpression(name: String) {
@@ -791,9 +802,9 @@ object AudienzzPrebidMobile {
     }
 
     /**
-     * Report an ad-bearing screen, dialog, or popup by the screen object itself — pass `this` from an
-     * Activity, Fragment, Dialog, or DialogFragment. The screen name is derived from the object's type
-     * unless [name] is provided. Call it when the screen/dialog appears (e.g. `onResume()`).
+     * Report an actual navigation destination before creating its ads — pass its Activity,
+     * Fragment, Dialog, or DialogFragment. The screen name is derived from the object's type unless
+     * [name] is provided. Include ad-free destinations; a lifecycle onResume alone is not navigation.
      */
     @JvmStatic
     @JvmOverloads

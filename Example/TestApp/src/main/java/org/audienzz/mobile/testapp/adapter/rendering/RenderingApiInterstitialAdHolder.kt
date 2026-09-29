@@ -46,7 +46,6 @@ class RenderingApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent)
 
                 displayAdUnit?.setInterstitialAdUnitListener(object : AudienzzInterstitialAdUnitListener {
                     override fun onAdDisplayed(interstitialAdUnit: AudienzzInterstitialAdUnit) {
-                        org.audienzz.mobile.testapp.App.onFullscreenAdOpened()
                     }
 
                     override fun onAdLoaded(interstitialAdUnit: AudienzzInterstitialAdUnit) {
@@ -90,7 +89,6 @@ class RenderingApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent)
 
                 videoAdUnit?.setInterstitialAdUnitListener(object : AudienzzInterstitialAdUnitListener {
                     override fun onAdDisplayed(interstitialAdUnit: AudienzzInterstitialAdUnit) {
-                        org.audienzz.mobile.testapp.App.onFullscreenAdOpened()
                     }
 
                     override fun onAdLoaded(interstitialAdUnit: AudienzzInterstitialAdUnit) {

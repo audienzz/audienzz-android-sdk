@@ -7,6 +7,7 @@ import org.audienzz.mobile.original.callbacks.AudienzzFullScreenContentCallback
 object FullscreenAdUtils {
     fun createFullScreenCallback(
         logTag: String,
+        rewarded: Boolean = false,
         onAdDismissedCallback: (() -> Unit)? = null,
     ): AudienzzFullScreenContentCallback {
         return object : AudienzzFullScreenContentCallback() {
@@ -17,7 +18,7 @@ object FullscreenAdUtils {
 
             override fun onAdShowedFullScreenContent() {
                 super.onAdShowedFullScreenContent()
-                org.audienzz.mobile.testapp.App.onFullscreenAdOpened()
+                if (rewarded) org.audienzz.mobile.testapp.App.onFullscreenAdOpened()
                 Log.d(logTag, "Ad was shown")
             }
 

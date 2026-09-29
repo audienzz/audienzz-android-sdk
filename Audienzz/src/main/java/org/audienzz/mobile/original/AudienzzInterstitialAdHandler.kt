@@ -201,6 +201,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                 // Install before onAdLoaded: remote/native publishers may show synchronously there.
                 var publisherDirectCallback = adManagerInterstitialAd.fullScreenContentCallback
                 val wrapper = object : FullScreenContentCallback() {
+                        private val pageRecovery = org.audienzz.mobile.screen.InterstitialPageRecovery()
                         private var impressionRecorded = false
                         private var presented = false
                         private var terminal = false
@@ -227,6 +228,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                             if (terminal) return
                             terminal = true
                             viewabilityTimer?.cancel()
+                            pageRecovery.finish(dismissed = true)
                             super.onAdDismissedFullScreenContent()
                             if (publisherDirectCallback != null) {
                                 publisherDirectCallback?.onAdDismissedFullScreenContent()
@@ -240,6 +242,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                             if (terminal) return
                             terminal = true
                             viewabilityTimer?.cancel()
+                            pageRecovery.finish(dismissed = false)
                             super.onAdFailedToShowFullScreenContent(error)
                             if (publisherDirectCallback != null) {
                                 publisherDirectCallback?.onAdFailedToShowFullScreenContent(error)
@@ -274,6 +277,7 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                         override fun onAdShowedFullScreenContent() {
                             if (terminal || presented) return
                             presented = true
+                            pageRecovery.onShown()
                             super.onAdShowedFullScreenContent()
                             if (publisherDirectCallback != null) {
                                 publisherDirectCallback?.onAdShowedFullScreenContent()

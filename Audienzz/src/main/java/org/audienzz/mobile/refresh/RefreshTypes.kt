@@ -17,6 +17,9 @@ enum class RefreshBlockReason {
     /** The app is backgrounded. */
     APP_BACKGROUND,
 
+    /** An SDK interstitial covers the page. Never exempted for first loads. */
+    INTERSTITIAL,
+
     /** The ad view is not attached to a window. */
     DETACHED,
 

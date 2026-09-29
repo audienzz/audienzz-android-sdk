@@ -58,8 +58,31 @@ class ScreenAdCoordinator @Inject constructor() {
     var epoch: Int = 0
         private set
 
+    internal var adRevision: Long = 0
+        private set
+    private val interstitials = mutableSetOf<Any>()
+
+    internal fun beginInterstitial(token: Any): Long {
+        if (interstitials.add(token)) {
+            synchronized(registry) { registry.toList() }.forEach { it.setInterstitialCovered(true) }
+        }
+        return adRevision
+    }
+
+    internal fun endInterstitial(token: Any, revision: Long, dismissed: Boolean) {
+        if (!interstitials.remove(token) || interstitials.isNotEmpty()) return
+        // Recreate while the independent hold still blocks overdue periodic work.
+        if (dismissed && revision == adRevision) {
+            org.audienzz.mobile.AudienzzPrebidMobile.recoverAfterInterstitial(this)
+        }
+        if (interstitials.isEmpty()) {
+            synchronized(registry) { registry.toList() }.forEach { it.setInterstitialCovered(false) }
+        }
+    }
+
     fun register(handler: AudienzzAdViewHandler) {
         registry.add(handler)
+        if (interstitials.isNotEmpty()) handler.setInterstitialCovered(true)
         val screen = activeScreen
         if (screen == null || handler.isHostedBy(screen)) handler.requestContext.register()
     }
@@ -122,6 +145,7 @@ class ScreenAdCoordinator @Inject constructor() {
     }
 
     private fun refreshBanners(screen: Any, name: String?) {
+        adRevision++
         for (handler in registry) {
             val active = handler.isHostedBy(screen)
             AudienzzDiagnostics.log(

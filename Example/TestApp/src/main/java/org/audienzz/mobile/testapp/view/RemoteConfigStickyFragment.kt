@@ -214,7 +214,6 @@ class RemoteConfigStickyFragment : Fragment() {
                 override fun onFailed(loadError: LoadAdError) =
                     setInterstitialStatus("load failed: ${loadError.message}")
                 override fun onOpened() {
-                    App.onFullscreenAdOpened()
                     setInterstitialStatus("showing")
                 }
                 override fun onClosed() = setInterstitialStatus("closed — not loaded")

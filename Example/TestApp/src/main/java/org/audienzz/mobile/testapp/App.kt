@@ -76,7 +76,7 @@ class App : Application() {
             AudienzzPrebidMobile.pageImpression(screen)
         }
 
-        // Fullscreen ad returns intentionally keep the demo's existing explicit new-visit policy.
+        // Rewarded returns retain their existing policy; interstitial returns are SDK-owned.
         // Mark only a confirmed presentation, not a failed show or a mere prefetch.
         fun onFullscreenAdOpened() { reportedScreen = null }
 

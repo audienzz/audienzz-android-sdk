@@ -38,7 +38,7 @@ class OriginalApiInterstitialAdHolder(parent: ViewGroup) : BaseAdHolder(parent) 
                 object : AudienzzRemoteConfigInterstitial.Events {
                     override fun onLoaded() {}
                     override fun onFailed(loadError: LoadAdError) {}
-                    override fun onOpened() { org.audienzz.mobile.testapp.App.onFullscreenAdOpened() }
+                    override fun onOpened() {}
                     override fun onClosed() {}
                     override fun onClicked() {}
                     override fun onFailedToShow(adError: com.google.android.gms.ads.AdError) {}
