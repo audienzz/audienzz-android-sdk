@@ -32,12 +32,13 @@ internal class EventBatcher internal constructor(
     private val now: () -> Long,
     private val jitter: () -> Double,
     context: Context? = null,
+    private val backendBatchSize: (() -> Int?)? = null,
 ) : CoroutineScope, AppForegroundMonitor.Listener {
     @Inject constructor(remoteRepository: RemoteEventRepository, store: EventStore,
                         @IO dispatcher: CoroutineDispatcher = Dispatchers.IO, context: Context) :
-        this(remoteRepository, store, dispatcher, Config(), SystemClock::elapsedRealtime, { Random.nextDouble(0.5, 1.0) }, context)
+        this(remoteRepository, store, dispatcher, Config(), SystemClock::elapsedRealtime, { Random.nextDouble(0.5, 1.0) }, context, AnalyticsBatchSettings::current)
 
-    internal data class Config(val batchSize: Int = 25, val batchBytes: Int = 128 * 1024,
+    internal data class Config(val batchSize: Int = AnalyticsBatchSettings.DEFAULT_SIZE, val batchBytes: Int = 128 * 1024,
         val batchDelayMs: Long = 5000, val minIntervalMs: Long = 2000,
         val retryBaseMs: Long = 2000, val retryMaxMs: Long = 60_000)
 
@@ -121,12 +122,18 @@ internal class EventBatcher internal constructor(
                 else drain = false
                 return
             }
+            val batchSize = AnalyticsBatchSettings.resolve(backendBatchSize?.invoke() ?: config.batchSize)
+            // A lower backend limit also applies to a previously failed batch. Keep every ID
+            // queued, and acknowledge only the smaller portion actually submitted.
+            if (plans.isNotEmpty() && plans.first().size > batchSize) {
+                plans.removeFirst().chunked(batchSize).asReversed().forEach { plans.addFirst(it) }
+            }
             val batch = if (plans.isNotEmpty()) plans.first() else {
                 var bytes = 2
                 val selected = mutableListOf<EventNetwork>()
                 for (event in pending.values) {
                     val added = size(event) + if (selected.isEmpty()) 0 else 1
-                    if (selected.size >= config.batchSize || bytes + added > config.batchBytes) break
+                    if (selected.size >= batchSize || bytes + added > config.batchBytes) break
                     selected.add(event); bytes += added
                 }
                 // An oversized singleton cannot fit any legal POST. Retain it for inspection.
@@ -141,7 +148,7 @@ internal class EventBatcher internal constructor(
                 }
                 selected
             }
-            val full = batch.size >= config.batchSize || batch.size < pending.size
+            val full = batch.size >= batchSize || batch.size < pending.size
             val deadline = if (drain || plans.isNotEmpty() || full) now()
                 else (arrived[batch.first().eventId] ?: now()) + config.batchDelayMs
             val allowed = maxOf(deadline, retryAt, lastStart?.plus(config.minIntervalMs) ?: 0L)

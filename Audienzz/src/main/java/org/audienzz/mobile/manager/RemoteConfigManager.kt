@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import org.audienzz.mobile.api.config.PublisherConfig
 import org.audienzz.mobile.api.config.RemoteAdUnitConfig
 import org.audienzz.mobile.repository.RemoteConfigRepository
+import org.audienzz.mobile.event.AnalyticsBatchSettings
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -29,8 +30,13 @@ class RemoteConfigManager @Inject constructor(
 
     fun initialize(publisherId: String) {
         Log.d(TAG, "Initializing RemoteConfigManager for publisher: $publisherId")
+        AnalyticsBatchSettings.applyBackendConfig(null)
         initialRefreshJob = scope.launch {
+            // Apply cached policy first, then the newly fetched publisher configuration. Reading
+            // only in initializeRemoteSdk races a cold cache against this async refresh.
+            AnalyticsBatchSettings.applyBackendConfig(repository.getPublisherConfig(publisherId)?.analyticsBatchSize)
             repository.refreshConfig(publisherId)
+            AnalyticsBatchSettings.applyBackendConfig(repository.getPublisherConfig(publisherId)?.analyticsBatchSize)
         }
     }
 

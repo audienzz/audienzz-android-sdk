@@ -1,5 +1,13 @@
 package org.audienzz.mobile.api.config
 
+import kotlinx.serialization.KSerializer
+import kotlinx.serialization.builtins.nullable
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -31,6 +39,10 @@ data class PublisherConfig(
      */
     @SerialName("ppidEnabled")
     val ppidEnabled: Boolean? = null,
+    /** Analytics events per POST. Missing/invalid → 10, positive integers capped at 15. */
+    @SerialName("analyticsBatchSize")
+    @Serializable(with = AnalyticsBatchSizeSerializer::class)
+    val analyticsBatchSize: Int? = null,
 )
 
 /**
@@ -103,3 +115,16 @@ data class IosOrtbConfig(
     @SerialName("storeUrl")
     val storeUrl: String? = null,
 )
+
+/** A malformed optional tuning field must not invalidate the publisher's ad configuration. */
+internal object AnalyticsBatchSizeSerializer : KSerializer<Int?> {
+    override val descriptor = Int.serializer().nullable.descriptor
+    override fun deserialize(decoder: Decoder): Int? {
+        val primitive = (decoder as JsonDecoder).decodeJsonElement() as? JsonPrimitive
+        return primitive?.contentOrNull?.trim()?.toLongOrNull()
+            ?.takeIf { it > 0 }?.coerceAtMost(15)?.toInt()
+    }
+    override fun serialize(encoder: Encoder, value: Int?) {
+        if (value == null) encoder.encodeNull() else encoder.encodeInt(value)
+    }
+}

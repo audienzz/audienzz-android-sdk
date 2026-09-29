@@ -181,13 +181,15 @@ for lost events or incorrect historical impression attribution.
 ## Delivery: durable batching (next native release)
 
 This branch replaces the per-event HTTP sender shipped in Android 0.3.1 / iOS 0.4.1.
-The policy is identical in Android `EventBatcher` and iOS `AUEventQueue`. Flutter and React Native
-use these native transports; they only need native dependency bumps after publication.
+The policy is identical in Android `EventBatcher` and iOS `AUEventQueue`. Both bridges use these
+native transports. React Native needs native dependency bumps after publication. Flutter also
+forwards `analyticsBatchSize` from its Dart-fetched publisher config to native initialization;
+that forwarding change and the matching native releases must ship together.
 
 | Setting | Batching policy |
 |---|---|
-| Normal flush | 5 seconds after the oldest waiting event, or 25 events |
-| Maximum POST | 25 events and 128 KiB of serialized UTF-8 JSON, whichever fills first |
+| Normal flush | 5 seconds after the oldest waiting event, or the configured event count (default 10) |
+| Maximum POST | Configured event count, capped at 15, and 128 KiB of serialized UTF-8 JSON, whichever fills first |
 | Concurrent HTTP requests | 1 per SDK process |
 | Request start spacing | At least 2 seconds, including retries and backlog draining |
 | HTTP timeout | 30 seconds per attempt |
@@ -195,6 +197,19 @@ use these native transports; they only need native dependency bumps after public
 | Durable capacity | 20 MiB of pending + quarantined event payloads; journal metadata and an atomic checkpoint need additional space |
 | Retention | No automatic age expiry or retry-count limit; acknowledged events removed, rejected singletons retained |
 | Overflow | Reject newest admission with `dropped reason=storageCapacity`; never evict already owed events |
+
+The publisher response from ws-sdk-config accepts the top-level field `analyticsBatchSize`:
+
+```json
+{"analyticsBatchSize": 15}
+```
+
+Use an integer from 1 to 15. Missing, null, blank, malformed or nonpositive values use **10**;
+larger positive integers are capped at **15**. Numeric strings are tolerated. The field survives
+publisher-config caching and has no public Dart/JS initialization override. The sender reads the
+current limit before each attempt. If a new config lowers it, pending retries are split without
+changing event IDs or the HTTP request already in flight. Removing the field restores 10.
+Configuration updates do not reset the oldest-event deadline, request spacing or retry backoff.
 
 **Persist now → batch → acknowledge exact IDs → remove.** Persistence is on one background worker,
 with a synchronized journal write before an event becomes eligible for HTTP. New events do not
@@ -241,7 +256,7 @@ claim is made from host/simulator timings.
 
 ### Batching verification (September 29, 2026)
 
-- Full native suites: 287 Android tests and 313 iOS tests pass.
+- Full native suites: 293 Android tests and 320 iOS tests pass.
 - Queue tests exercise the real sender with a controlled clock and fake HTTP completion; store
   tests reopen the real journal to check restart recovery, torn writes, capacity and quarantine.
 - Transport tests serialize real event arrays through Retrofit / URLSession and stub responses;
@@ -249,6 +264,13 @@ claim is made from host/simulator timings.
 - Coverage includes the oldest-event deadline, count/UTF-8 byte limits, one in-flight request,
   two-second spacing, backoff/Retry-After, lost acknowledgements, local write failures, exact-ID
   acknowledgements, poison-batch splitting and no idle timer.
+- Backend-limit coverage includes absent/malformed values, cached configuration, the 15-event
+  ceiling, resetting to 10, and reducing a failed batch without losing or mis-acknowledging IDs.
+- Flutter: 213 tests pass; the Android plugin and iOS example compile against matching local
+  natives. Published pins are restored. Config tests analyze clean; the full analyzer still reports
+  existing unrelated lint warnings/infos. RN uses native remote initialization unchanged.
+- Queue tests control connectivity explicitly; real path-monitor callbacks cannot flush a test
+  early. A separate connectivity test verifies early flushing still respects retry backoff.
 - Mutation verification: removing the minimum request spacing fails the burst-drain test on
   both platforms. The unmodified implementation passes.
 - No live-device battery or collector deduplication/atomic-acceptance validation was performed

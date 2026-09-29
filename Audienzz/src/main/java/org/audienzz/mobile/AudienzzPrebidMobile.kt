@@ -84,6 +84,12 @@ object AudienzzPrebidMobile {
         backendPpidEnabled = ppidEnabled
     }
 
+    /** For bridges that fetch publisher configuration themselves; no app-facing tuning API. */
+    @JvmStatic
+    fun applyBackendAnalyticsConfig(batchSize: Int?) {
+        org.audienzz.mobile.event.AnalyticsBatchSettings.applyBackendConfig(batchSize)
+    }
+
     /**
      * Local override for the screen-aware smart-refresh model (directional viewport gate +
      * screen-navigation pause/reload). Takes precedence over the backend `smartRefreshV2` for the

@@ -35,8 +35,8 @@ internal class EventBatcherTest {
         senders.forEach { it.cancel(); AppForegroundMonitor.removeListener(it) }
         unmockkStatic(Log::class)
     }
-    private fun sender(scheduler: TestCoroutineScheduler, config: EventBatcher.Config = EventBatcher.Config()) =
-        EventBatcher(repository, store, StandardTestDispatcher(scheduler), config, { scheduler.currentTime }, { 1.0 }).also { senders.add(it) }
+    private fun sender(scheduler: TestCoroutineScheduler, config: EventBatcher.Config = EventBatcher.Config(), backend: (() -> Int?)? = null) =
+        EventBatcher(repository, store, StandardTestDispatcher(scheduler), config, { scheduler.currentTime }, { 1.0 }, backendBatchSize = backend).also { senders.add(it) }
 
     private fun event(index: Int) = EventNetwork(
         eventType = "adClick",
@@ -92,19 +92,56 @@ internal class EventBatcherTest {
         val done = CompletableDeferred<Unit>()
         coEvery { repository.submitBatch(any()) } coAnswers { done.await() }
         val sender = sender(testScheduler)
-        repeat(60) { sender.enqueue(event(it)) }
+        repeat(25) { sender.enqueue(event(it)) }
         runCurrent()
-        coVerify(exactly = 1) { repository.submitBatch((0..24).map(::event)) }
+        coVerify(exactly = 1) { repository.submitBatch((0..9).map(::event)) }
         advanceTimeBy(1000); runCurrent()
         coVerify(exactly = 1) { repository.submitBatch(any()) }
         done.complete(Unit); runCurrent()
         advanceTimeBy(999); runCurrent()
         coVerify(exactly = 1) { repository.submitBatch(any()) }
         advanceTimeBy(1); runCurrent()
-        coVerify(exactly = 1) { repository.submitBatch((25..49).map(::event)) }
+        coVerify(exactly = 1) { repository.submitBatch((10..19).map(::event)) }
         advanceTimeBy(2000); runCurrent()
-        coVerify(exactly = 1) { repository.submitBatch((50..59).map(::event)) }
+        coVerify(exactly = 1) { repository.submitBatch((20..24).map(::event)) }
         verify(exactly = 3) { store.acknowledge(any()) }
+    }
+
+    @Test fun backendCannotExceedFifteen() = runTest {
+        val sender = sender(testScheduler, backend = { 100 })
+        repeat(14) { sender.enqueue(event(it)) }; runCurrent()
+        coVerify(exactly = 0) { repository.submitBatch(any()) }
+        sender.enqueue(event(14)); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch((0..14).map(::event)) }
+    }
+
+    @Test fun backendReductionSplitsRetryWithoutLosingEvents() = runTest {
+        var limit: Int? = 10
+        val done = CompletableDeferred<Unit>()
+        coEvery { repository.submitBatch(any()) } coAnswers { done.await(); throw IOException("offline") }
+        val sender = sender(testScheduler, backend = { limit })
+        repeat(10) { sender.enqueue(event(it)) }; runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch((0..9).map(::event)) }
+        limit = 3
+        done.complete(Unit); runCurrent()
+        coEvery { repository.submitBatch(any()) } returns Unit
+        advanceTimeBy(2000); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch((0..2).map(::event)) }
+        verify(exactly = 1) { store.acknowledge(listOf("0", "1", "2")) }
+        advanceTimeBy(6000); runCurrent()
+        val sent = mutableListOf<List<EventNetwork>>()
+        coVerify(exactly = 5) { repository.submitBatch(capture(sent)) }
+        assertEquals((0..9).map(::event), sent.drop(1).flatten())
+        assertTrue(sent.drop(1).all { it.size <= 3 })
+    }
+
+    @Test fun removingBackendFieldRestoresDefaultTen() = runTest {
+        var limit: Int? = 15
+        val sender = sender(testScheduler, backend = { limit })
+        repeat(9) { sender.enqueue(event(it)) }; runCurrent()
+        advanceTimeBy(4000); limit = null
+        sender.enqueue(event(9)); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch((0..9).map(::event)) }
     }
 
     @Test fun `byte threshold respects serialized UTF8 size and quarantines oversized singleton`() = runTest {
