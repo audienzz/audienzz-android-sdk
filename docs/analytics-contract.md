@@ -151,13 +151,12 @@ on the main thread, so old-page work cannot observe the next visit before its re
 
 ## 5. Release and operational action items
 
-The current checkout pins native **iOS ~>0.4.0 / Android 0.3.0** in the bridges. New APIs and fixes
-in this document have been checked against local natives and must ship native-first, then be
-pinned by both bridges. Do not claim a new fixing version until it is tagged and published.
+The published baseline is **Android 0.3.1 / iOS 0.4.1**, and both bridge PRs have been updated
+to those native dependencies. The durable batching policy below is new work on
+`feature/durable-analytics-batching`, not part of those releases. Ship new native releases first,
+then update both bridge dependencies; no new Dart/JS integration API is required.
 
-Local release tags confirm the seconds timestamp contract in Android 0.2.3/0.3.0 and iOS 0.4.0;
-iOS 0.3.3 is not available as a local tag for verification. This does **not** mean these releases
-contain today's publisher/environment, deduplication, economics or immediate-delivery changes.
+Older SDK versions do not contain the complete current analytics schema or lifecycle fixes.
 Existing version constants alone cannot identify unpublished branch builds. Preserve release
 commit SHAs with validation records and bump constants at release.
 
@@ -179,69 +178,106 @@ Historical milliseconds can be normalized with `timestamp > 100000000000 ? times
 Treat historical `slot_reload > 1` as `1`; drop zero advertising IDs. No reliable backfill exists
 for lost events or incorrect historical impression attribution.
 
-## Delivery: immediate sends and a durable outbox
+## Delivery: durable batching (next native release)
 
-The current branch uses the same policy on iOS (`AUEventQueue` + `AUEventStore`) and Android
-(`EventBatcher` + `EventStore`). The existing endpoint remains `/submit/batch` for server
-compatibility, but **each request contains a single event**. There is no batching window or size
-threshold. Delivery starts as soon as the event is persisted and the sender is available.
+This branch replaces the per-event HTTP sender shipped in Android 0.3.1 / iOS 0.4.1.
+The policy is identical in Android `EventBatcher` and iOS `AUEventQueue`. Flutter and React Native
+use these native transports; they only need native dependency bumps after publication.
 
-| Setting | Current branch | Previous behaviour |
-|---|---|---|
-| Events per POST | 1 | Up to 20 |
-| Deliberate batching delay | None | Up to 15 seconds |
-| Concurrent HTTP requests per SDK process | 1 | 1 batch |
-| Complete HTTP attempt timeout | 30 seconds | Platform defaults |
-| Failed delivery | Retained; consecutive failures back off 2s, 4s, 8s, 16s, 32s, then 60s; success resets backoff | Dropped after 3 retries |
-| Persisted pending events | 500, evict oldest waiting event on overflow; protect the in-flight event | 500 buffered events |
+| Setting | Batching policy |
+|---|---|
+| Normal flush | 5 seconds after the oldest waiting event, or 25 events |
+| Maximum POST | 25 events and 128 KiB of serialized UTF-8 JSON, whichever fills first |
+| Concurrent HTTP requests | 1 per SDK process |
+| Request start spacing | At least 2 seconds, including retries and backlog draining |
+| HTTP timeout | 30 seconds per attempt |
+| Retry | Exponential 2/4/8/16/32/60-second ceiling, randomized to 50–100%; honor longer `Retry-After` |
+| Durable capacity | 20 MiB of pending + quarantined event payloads; journal metadata and an atomic checkpoint need additional space |
+| Retention | No automatic age expiry or retry-count limit; acknowledged events removed, rejected singletons retained |
+| Overflow | Reject newest admission with `dropped reason=storageCapacity`; never evict already owed events |
 
-**Save → attempt → acknowledge → remove.** File I/O, request creation and retries run off the UI
-thread. The application never waits for the collector. A successful HTTP acknowledgement,
-including 204, removes that event by `event_id`. Failure leaves it saved. Foreground/connectivity
-hints and new events cannot bypass retry backoff. A rejected event rotates behind other pending
-events so one invalid payload cannot permanently strand the rest. On startup, saved pending
-events resume delivery with their original IDs, timestamps and payloads.
+**Persist now → batch → acknowledge exact IDs → remove.** Persistence is on one background worker,
+with a synchronized journal write before an event becomes eligible for HTTP. New events do not
+restart the batching deadline. Successful requests drain a backlog at the same rate limit; the
+worker has no timer when empty. Normal single-event traffic waits at most 5 seconds before its
+first attempt, unless an earlier request, backoff or storage failure is holding it.
 
-The outbox keeps the existing JSONL storage and adds small acknowledgement records. It reads the
-backlog once, appends changes, and compacts every 64 removals or when empty. This avoids a full-file
-rewrite for every request. Existing event-only files are readable without losing pending events.
-Repeated SDK initialization reuses the same sender/store owner.
+Foreground, connectivity restoration and backgrounding request an early flush, without bypassing
+the minimum spacing or backoff. The iOS background task gives a best-effort opportunity to finish;
+neither platform relies on a termination callback. Persisted events resume on the next launch with
+the original payload, `event_id`, `session_seq`, timestamp and `page_impression_id`. A restart resets
+in-memory retry deadlines; the outbox, including quarantined IDs, remains durable.
 
-**Duplicates remain possible:** the server can accept an event and the app can close before the
-acknowledgement is recorded. The collector must deduplicate by `event_id`, not `auction_id` or slot.
-Order analytically by `session_seq`, not HTTP arrival. Immediate delivery does not guarantee receipt
-before force-quit; retained data resumes when the app can run again. Uninstalling the app, exceeding
-the storage cap, or a filesystem failure can still lose data. `persistenceFailed` diagnoses a failed
-write; analytics falls back to memory rather than interrupting ads or the application.
+**Collector contract required:** a 2xx response (including 204) must mean the **entire array** has
+been durably accepted. There is no per-event acknowledgement protocol in the current endpoint.
+If the backend accepts only part of an array, it must expose accepted/rejected event IDs before
+partial acceptance can be supported safely. These client changes do not establish backend
+atomicity or deduplication; confirm both with the collector owner before rollout.
 
-**Performance tradeoff:** removing batching increases HTTP request count. Connection reuse, a
-single in-flight request, off-thread storage and capped retries bound the work; they do not imply
-zero battery/network cost. Host/simulator storage benchmarks are regression checks, not physical
-device battery measurements.
+Network errors, 401/403, 429 and server failures retain and retry the same batch. HTTP 400/413/422
+split a rejected batch into smaller batches, respecting backoff and spacing. A rejected singleton
+is marked **quarantined** in the journal, never counted as delivered; other events can proceed.
+A singleton exceeding 128 KiB is also quarantined. There is no automatic replay of quarantine:
+it requires investigation and an explicit repair/migration, so a persistently invalid payload
+cannot consume requests forever. Quarantined payloads still count toward the 20 MiB capacity.
+
+**Delivery is at least once.** If the server accepts a batch and its reply is lost, or a local
+acknowledgement write fails, the same IDs are retried. The collector must deduplicate by `event_id`,
+not `auction_id` or slot. Order analytically by `session_seq`, not HTTP arrival.
+
+The existing JSONL format is preserved, with batched acknowledgement and quarantine markers.
+Checkpoints run after at least 64 acknowledged events (one quarter of the remaining backlog
+for large queues), when empty, or to bound journal overhead. Writes
+are synchronized off the UI thread; checkpoints replace files atomically. An unreadable store is
+retried rather than overwritten as empty. Existing larger backlogs drain without upgrade eviction.
+
+**Limits are explicit:** no mobile SDK can promise zero loss through uninstall, disk failure,
+storage exhaustion or process death before the asynchronous persistence step. Failed writes are
+retried from a bounded 1 MiB memory fallback; events are not uploaded until persisted. The admission
+queue is bounded to 1,024 events, with a diagnostic for rejection instead of silent replacement.
+Do not interpret `queued` as a durability acknowledgement. Diagnostics report metadata/counts and
+failure reasons without event payloads or identifiers. No physical-device performance or battery
+claim is made from host/simulator timings.
+
+### Batching verification (September 29, 2026)
+
+- Full native suites: 287 Android tests and 313 iOS tests pass.
+- Queue tests exercise the real sender with a controlled clock and fake HTTP completion; store
+  tests reopen the real journal to check restart recovery, torn writes, capacity and quarantine.
+- Transport tests serialize real event arrays through Retrofit / URLSession and stub responses;
+  test traffic does not reach the live collector.
+- Coverage includes the oldest-event deadline, count/UTF-8 byte limits, one in-flight request,
+  two-second spacing, backoff/Retry-After, lost acknowledgements, local write failures, exact-ID
+  acknowledgements, poison-batch splitting and no idle timer.
+- Mutation verification: removing the minimum request spacing fails the burst-drain test on
+  both platforms. The unmodified implementation passes.
+- No live-device battery or collector deduplication/atomic-acceptance validation was performed
+  for this batching change. Historical live checks below apply to the previous immediate sender.
 
 ### Checking delivery in Flutter and React Native
 
 Both bridges use the native collector transport. In Charles, look for
 `api.adnz.co/api/ws-clickstream-collector/submit/batch`, with SSL proxying enabled for
 `api.adnz.co:443` and the Charles certificate trusted on the test device. Current-branch builds
-send individual events without a 15-second wait. Flutter's Dart proxy override alone
+send arrays after up to 5 seconds or at the batch threshold. Flutter's Dart proxy override alone
 does not route native analytics: the device's network proxy must also be configured.
 
 With SDK diagnostics enabled (already enabled in the examples), filter device logs for
 `AUDZ analytics`. The current branch reports:
 
 * `queued`: the native queue received an event, with its type only.
-* `sending`: one event is being submitted, with attempt number.
+* `sending`: a batch is being submitted, with count and attempt number.
 * `sent`: the HTTP request succeeded. This does not prove downstream dashboard ingestion.
 * `failed`: the HTTP status or transport error code/type; `retryScheduled` gives the cooldown.
-* `dropped`: the bounded backlog overflowed; `persistenceFailed`: a local write failed.
+* `quarantined`: a rejected/oversized singleton is retained for inspection.
+* `dropped`: new admission exceeded capacity; `persistenceFailed`: a local write failed.
 
 These lines omit payloads, identifiers, targeting and consent strings, and are disabled when
 SDK diagnostics are off. If `sending` appears without a decrypted request in Charles, check the
 device proxy, certificate trust and capture filters. If `failed` appears, its status/code identifies
 the transport failure without needing the event payload.
 
-The current iOS branch also fixes a queue stall in the 0.4.0 transport: an empty or non-JSON reply
+The released iOS 0.4.1 also fixes a queue stall in the 0.4.0 transport: an empty or non-JSON reply
 could leave a batch in flight forever. All 2xx acknowledgements now settle successfully, including
 204; non-2xx replies enter the retry path regardless of body format. Both bridges need the fixed
 native SDK (or a local native checkout for verification); upgrading Dart/JS alone cannot apply it.

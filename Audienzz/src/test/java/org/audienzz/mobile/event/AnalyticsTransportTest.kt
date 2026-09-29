@@ -42,7 +42,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 @RunWith(RobolectricTestRunner::class)
 class AnalyticsTransportTest {
     @Test
-    fun `events without an advertising ID reach the collector immediately`() = verifyDelivery(false)
+    fun `events without an advertising ID reach the collector in one batch`() = verifyDelivery(false)
 
     @Test
     fun `an HTML HTTP failure retries the same batch and a 204 drains it`() = verifyDelivery(true)
@@ -69,7 +69,7 @@ class AnalyticsTransportTest {
             requireNotNull(request.body).writeTo(buffer)
             bodies.add(json.parseToJsonElement(buffer.readUtf8()) as JsonArray)
             val status = if (failFirst && bodies.size == 1) 403 else 204
-            if (bodies.size == (if (failFirst) 3 else 2)) sent.complete(Unit)
+            if (bodies.size == (if (failFirst) 2 else 1)) sent.complete(Unit)
             Response.Builder().request(request).protocol(Protocol.HTTP_1_1)
                 .code(status).message("fixture")
                 .body((if (status == 403) "<html>Forbidden</html>" else "").toResponseBody())
@@ -77,7 +77,7 @@ class AnalyticsTransportTest {
         }.build()
         val api = module.provideAuthApiService(module.provideJsonConverterFactory(json), client)
         val dispatcher = StandardTestDispatcher(testScheduler)
-        val batcher = EventBatcher(RemoteEventRepositoryImpl(api), store, dispatcher)
+        val batcher = EventBatcher(RemoteEventRepositoryImpl(api), store, dispatcher, EventBatcher.Config(), { testScheduler.currentTime }, { 1.0 })
         val preferences = mockk<EventPreferences>(relaxed = true)
         every { preferences.getVisitorId() } returns "fixture-visitor"
         val adId = mockk<AdIdProvider>()
@@ -90,16 +90,15 @@ class AnalyticsTransportTest {
             logger.onScreenResumed("fixture-screen")
             logger.logEvent(EventDomain(eventType = EventType.AD_IMPRESSION))
             runCurrent()
-            // No advanceTimeBy(15_000): the first request must start immediately. Network replies
-            // run on OkHttp's thread; runTest drives subsequent delivery/retry continuations.
+            // runTest drives the batching timer; OkHttp replies on its own worker.
             sent.await() // runTest drives the consumer while OkHttp replies on its own thread.
             // Wait for acknowledgement processing too, not merely arrival at the interceptor.
             withContext(Dispatchers.Default) {
                 withTimeout(5_000) { while (store.count() != 0) delay(10) }
             }
             assertTrue(EventStore(context).loadAll().isEmpty())
-            assertEquals(if (failFirst) 3 else 2, bodies.size)
-            assertTrue(bodies.all { it.size == 1 })
+            assertEquals(if (failFirst) 2 else 1, bodies.size)
+            assertTrue(bodies.all { it.size == 2 })
             val events = bodies.flatten().map { it.jsonObject }.distinctBy { it["event_id"] }
             assertEquals(listOf("pageImpression", "adImpression"), events.map { it["event_type"]?.jsonPrimitive?.content })
             assertTrue(events.all { it["device_id"] == null })

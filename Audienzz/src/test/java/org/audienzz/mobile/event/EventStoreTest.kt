@@ -39,8 +39,8 @@ internal class EventStoreTest {
         every { context.filesDir } returns folder.root
     }
 
-    private fun store(maxLines: Int = 500) =
-        EventStore(context, maxLines, Json { ignoreUnknownKeys = true })
+    private fun store(maxBytes: Int = EventStore.MAX_BYTES) =
+        EventStore(context, maxBytes, Json { ignoreUnknownKeys = true })
 
     private fun file() = File(File(folder.root, "audienzz"), "events.jsonl")
 
@@ -155,14 +155,15 @@ internal class EventStoreTest {
         assertEquals(emptyList<String>(), store().loadAll().map { it.eventId })
     }
 
-    @Test
-    fun `the store is capped and drops the oldest when it overflows`() {
-        // The channel's own drop-oldest does not cover this: an event dropped from a full channel
-        // is never consumed, so nothing would ever remove its line.
-        val store = store(maxLines = 3)
-        listOf("a", "b", "c", "d", "e").forEach { store.append(event(it)) }
-
-        assertEquals(listOf("c", "d", "e"), store().loadAll().map { it.eventId })
+    @Test fun `byte cap rejects newest without deleting an owed event`() {
+        val bytes = Json.encodeToString(EventNetwork.serializer(), event("a")).toByteArray().size
+        val store = store(maxBytes = bytes * 2)
+        assertEquals(EventStore.Admission.STORED, store.append(event("a")))
+        assertEquals(EventStore.Admission.STORED, store.append(event("b")))
+        assertEquals(EventStore.Admission.FULL, store.append(event("c")))
+        assertEquals(listOf("a", "b"), store().loadAll().map { it.eventId })
+        store.acknowledge(listOf("a"))
+        assertEquals(EventStore.Admission.STORED, store.append(event("c")))
     }
 
     @Test
@@ -182,13 +183,26 @@ internal class EventStoreTest {
         assertTrue(file().length() < journal.length)
     }
 
-    @Test fun `overflow protects the in flight identity and acknowledgements do not shift`() {
-        val store = store(maxLines = 3)
-        store.append(event("a"))
-        listOf("b", "c", "d", "e").forEach { store.append(event(it), protectedId = "a") }
-        assertEquals(listOf("a", "d", "e"), store().loadAll().map { it.eventId })
-        store.remove("a")
-        assertEquals(listOf("d", "e"), store().loadAll().map { it.eventId })
+    @Test fun `quarantine survives compaction and restart without deleting payload`() {
+        val store = store()
+        repeat(100) { store.append(event(it.toString())) }
+        assertTrue(store.quarantine("0"))
+        store.acknowledge((1..70).map(Int::toString))
+        val restored = store()
+        assertEquals(listOf("0"), restored.quarantinedIds().toList())
+        assertEquals((71..99).map(Int::toString), restored.loadAll().map { it.eventId })
+        assertTrue(file().readText().contains("\"event_id\":\"0\""))
+    }
+
+    @Test fun `failed writes never masquerade as persisted in memory`() {
+        val parent = File(folder.root, "audienzz")
+        parent.writeText("not a directory")
+        val store = store()
+        assertEquals(EventStore.Admission.IO_ERROR, store.append(event("a")))
+        assertTrue(store.loadAll().isEmpty())
+        parent.delete()
+        assertEquals(EventStore.Admission.STORED, store.append(event("a")))
+        assertEquals(listOf("a"), store().loadAll().map { it.eventId })
     }
 
     @Test fun `a torn tail cannot swallow the next event after restart`() {

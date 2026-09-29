@@ -95,7 +95,7 @@ internal class EventLoggerImpl @Inject constructor(
             environment = context.environment,
         )
         // Inject ids off the main thread (adId lookup can block), then map to the wire payload and
-        // hand it to the durable sender, which persists it and attempts delivery immediately.
+        // hand it to the durable sender, which persists it before scheduling batched delivery.
         //
         // Mapping here rather than at send time freezes the device/app context at event creation,
         // which matters once the batcher persists across process death: a restored event must carry
