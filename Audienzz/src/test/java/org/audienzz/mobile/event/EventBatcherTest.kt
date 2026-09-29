@@ -67,19 +67,139 @@ internal class EventBatcherTest {
         screenName = "Screen",
         pageUrl = null,
         visitorId = "visitor",
-        attributes = emptyMap(),
+        attributes = mapOf("auction_id" to "A"),
     )
+    private fun auctionEvent(index: Int, auction: String?) = event(index).copy(
+        attributes = auction?.let { mapOf("auction_id" to it) } ?: emptyMap())
+
+    @Test fun `busy auction cannot delay another auction and batches never mix auction ids`() = runTest {
+        val sender = sender(testScheduler)
+        val a = auctionEvent(0, "A"); val b = auctionEvent(1, "B")
+        val a2 = auctionEvent(2, "A"); val a3 = auctionEvent(3, "A")
+        sender.enqueue(a); sender.enqueue(b); runCurrent()
+        advanceTimeBy(1500); sender.enqueue(a2); runCurrent()
+        advanceTimeBy(499); runCurrent()
+        coVerify(exactly = 0) { repository.submitBatch(any()) }
+        advanceTimeBy(1); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(b)) }
+        advanceTimeBy(500); sender.enqueue(a3); runCurrent()
+        advanceTimeBy(1999); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(any()) }
+        advanceTimeBy(1); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(a, a2, a3)) }
+        coVerify(exactly = 2) { repository.submitBatch(any()) }
+    }
+
+    @Test fun `missing and blank auction ids use a separate debounced bucket`() = runTest {
+        val sender = sender(testScheduler)
+        val page = auctionEvent(0, null).copy(eventType = "pageImpression")
+        val blank = auctionEvent(1, " ")
+        val ad = auctionEvent(2, "A"); val ad2 = auctionEvent(3, "A")
+        sender.enqueue(ad); sender.enqueue(page); sender.enqueue(blank); runCurrent()
+        advanceTimeBy(1000); sender.enqueue(ad2); runCurrent()
+        advanceTimeBy(1000); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(page, blank)) }
+        advanceTimeBy(2000); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(ad, ad2)) }
+        coVerify(exactly = 2) { repository.submitBatch(any()) }
+    }
+
+    @Test fun `duplicate enqueue does not extend an auction debounce`() = runTest {
+        val sender = sender(testScheduler)
+        sender.enqueue(event(0)); runCurrent()
+        advanceTimeBy(1500); sender.enqueue(event(0)); runCurrent()
+        advanceTimeBy(500); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
+        verify(exactly = 1) { store.append(event(0)) }
+    }
+    @Test fun `cap counts events per auction instead of across the entire queue`() = runTest {
+        val sender = sender(testScheduler)
+        val a = (0..8).map { auctionEvent(it, "A") }
+        val b = (9..17).map { auctionEvent(it, "B") }
+        (a + b).forEach(sender::enqueue); runCurrent()
+        advanceTimeBy(1999); runCurrent()
+        coVerify(exactly = 0) { repository.submitBatch(any()) }
+        advanceTimeBy(1); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(a) }
+        advanceTimeBy(2000); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(b) }
+        coVerify(exactly = 2) { repository.submitBatch(any()) }
+    }
+
+    @Test fun `continuously full auction yields to an older quiet auction`() = runTest {
+        val sender = sender(testScheduler)
+        (0..9).forEach { sender.enqueue(event(it)) }; runCurrent()
+        advanceTimeBy(100); val b = auctionEvent(100, "B"); sender.enqueue(b); runCurrent()
+        advanceTimeBy(1800); (10..19).forEach { sender.enqueue(event(it)) }; runCurrent()
+        advanceTimeBy(100); runCurrent()
+        coVerify(exactly = 2) { repository.submitBatch(any()) }
+        advanceTimeBy(1900); (20..29).forEach { sender.enqueue(event(it)) }; runCurrent()
+        advanceTimeBy(100); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(b)) }
+        coVerify(exactly = 3) { repository.submitBatch(any()) }
+        advanceTimeBy(2000); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch((20..29).map(::event)) }
+    }
+
+    @Test fun `restored backlog regroups by auction and new events still debounce`() = runTest {
+        val oldA = auctionEvent(100, "A"); val oldB = auctionEvent(101, "B")
+        val oldA2 = auctionEvent(102, "A")
+        every { store.loadAll() } returns listOf(oldA, oldB, oldA2)
+        val done = CompletableDeferred<Unit>()
+        coEvery { repository.submitBatch(any()) } coAnswers { done.await() }
+        val sender = sender(testScheduler); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(oldA, oldA2)) }
+        advanceTimeBy(1900); sender.enqueue(event(0)); runCurrent()
+        advanceTimeBy(100); done.complete(Unit); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(oldB)) }
+        advanceTimeBy(1999); runCurrent()
+        coVerify(exactly = 2) { repository.submitBatch(any()) }
+        advanceTimeBy(1); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
+        coVerify(exactly = 3) { repository.submitBatch(any()) }
+    }
+
+    @Test fun `late event during an in flight post gets its own debounce`() = runTest {
+        val done = CompletableDeferred<Unit>()
+        coEvery { repository.submitBatch(any()) } coAnswers { done.await() }
+        val sender = sender(testScheduler)
+        sender.enqueue(event(0)); runCurrent()
+        advanceTimeBy(2000); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
+        advanceTimeBy(2900); sender.enqueue(event(1)); runCurrent()
+        advanceTimeBy(100); done.complete(Unit); runCurrent()
+        verify(exactly = 1) { store.acknowledge(listOf("0")) }
+        advanceTimeBy(1899); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(any()) }
+        advanceTimeBy(1); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(event(1))) }
+    }
+
+    @Test fun `background flush only forces events already queued`() = runTest {
+        val done = CompletableDeferred<Unit>()
+        coEvery { repository.submitBatch(any()) } coAnswers { done.await() }
+        val sender = sender(testScheduler)
+        sender.enqueue(event(0)); sender.onEnterBackground(); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(event(0))) }
+        advanceTimeBy(1900); sender.enqueue(event(1)); sender.onEnterForeground(); runCurrent()
+        advanceTimeBy(100); done.complete(Unit); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(any()) }
+        advanceTimeBy(1899); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(any()) }
+        advanceTimeBy(1); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(event(1))) }
+    }
 
 
-    @Test fun `persist first and flush five seconds from oldest event not latest enqueue`() = runTest {
+    @Test fun `persist first and debounce two seconds from latest event in the auction`() = runTest {
         val sender = sender(testScheduler)
         sender.enqueue(event(0))
         verify(exactly = 0) { store.append(any()) }
         runCurrent()
         verify(exactly = 1) { store.append(event(0)) }
-        advanceTimeBy(4000); sender.enqueue(event(1)); runCurrent()
+        advanceTimeBy(1500); sender.enqueue(event(1)); runCurrent()
         coVerify(exactly = 0) { repository.submitBatch(any()) }
-        advanceTimeBy(999); runCurrent()
+        advanceTimeBy(1999); runCurrent()
         coVerify(exactly = 0) { repository.submitBatch(any()) }
         advanceTimeBy(1); runCurrent()
         coVerify(exactly = 1) { repository.submitBatch(listOf(event(0), event(1))) }
@@ -139,7 +259,7 @@ internal class EventBatcherTest {
         var limit: Int? = 15
         val sender = sender(testScheduler, backend = { limit })
         repeat(9) { sender.enqueue(event(it)) }; runCurrent()
-        advanceTimeBy(4000); limit = null
+        advanceTimeBy(1000); limit = null
         sender.enqueue(event(9)); runCurrent()
         coVerify(exactly = 1) { repository.submitBatch((0..9).map(::event)) }
     }

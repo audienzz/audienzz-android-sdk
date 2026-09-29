@@ -39,7 +39,7 @@ internal class EventBatcher internal constructor(
         this(remoteRepository, store, dispatcher, Config(), SystemClock::elapsedRealtime, { Random.nextDouble(0.5, 1.0) }, context, AnalyticsBatchSettings::current)
 
     internal data class Config(val batchSize: Int = AnalyticsBatchSettings.DEFAULT_SIZE, val batchBytes: Int = 128 * 1024,
-        val batchDelayMs: Long = 5000, val minIntervalMs: Long = 2000,
+        val batchDelayMs: Long = 2000, val minIntervalMs: Long = 2000,
         val retryBaseMs: Long = 2000, val retryMaxMs: Long = 60_000)
 
     override val coroutineContext = dispatcher + SupervisorJob() +
@@ -57,7 +57,7 @@ internal class EventBatcher internal constructor(
         // Connectivity is only a flush hint; the sender still owns every deadline.
         val connectivity = context?.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) = flush()
+            override fun onAvailable(network: Network) = wake()
         }
         if (connectivity != null) runCatching {
             connectivity.registerDefaultNetworkCallback(callback)
@@ -72,13 +72,16 @@ internal class EventBatcher internal constructor(
         if (events.trySend(event).isFailure) dropped("ingressCapacity")
     }
     fun flush() { flushSignals.trySend(Unit) }
+    fun wake() { wakeSignals.trySend(Unit) }
     override fun onEnterBackground() = flush()
-    override fun onEnterForeground() = flush()
+    override fun onEnterForeground() = wake()
 
     private fun startConsumer() = launch {
         val pending = linkedMapOf<String, EventNetwork>()
         val unsaved = linkedMapOf<String, EventNetwork>()
         val arrived = mutableMapOf<String, Long>()
+        // Flush/recovery applies only to events already queued, never to later arrivals.
+        val flushIds = mutableSetOf<String>()
         val plans = ArrayDeque<List<EventNetwork>>()
         var restored = false
         var inFlight = false
@@ -87,10 +90,10 @@ internal class EventBatcher internal constructor(
         var retryAt = 0L
         var storageRetryAt = 0L
         var failures = 0
-        var drain = false
         var unsavedBytes = 0
 
         fun size(event: EventNetwork) = json.encodeToString(EventNetwork.serializer(), event).toByteArray(Charsets.UTF_8).size
+        fun auction(event: EventNetwork) = event.attributes["auction_id"]?.trim()?.takeIf { it.isNotEmpty() }
         fun later(at: Long) {
             wake?.cancel()
             wake = launch { delay((at - now()).coerceIn(1, 86_400_000)); wakeSignals.send(Unit) }
@@ -99,16 +102,17 @@ internal class EventBatcher internal constructor(
             if (now() < storageRetryAt) return
             try {
                 if (!restored) {
-                    store.loadAll().forEach { pending[it.eventId] = it; arrived[it.eventId] = now() }
+                    store.loadAll().forEach {
+                        pending[it.eventId] = it; arrived[it.eventId] = now(); flushIds.add(it.eventId)
+                    }
                     restored = true
-                    drain = pending.isNotEmpty()
                     if (pending.isNotEmpty()) AudienzzDiagnostics.log("analytics", "restored",
                         "count" to pending.size, "oldestEventTimestamp" to pending.values.minOf { it.eventTimestamp })
                 }
                 for ((id, event) in unsaved.toMap()) {
                     when (store.append(event)) {
                         EventStore.Admission.IO_ERROR -> { storageRetryAt = now() + config.retryBaseMs; return }
-                        EventStore.Admission.FULL -> { dropped("storageCapacity"); arrived.remove(id) }
+                        EventStore.Admission.FULL -> { dropped("storageCapacity"); arrived.remove(id); flushIds.remove(id) }
                         EventStore.Admission.STORED -> pending[id] = event
                     }
                     unsaved.remove(id); unsavedBytes -= size(event)
@@ -121,7 +125,6 @@ internal class EventBatcher internal constructor(
             if (inFlight) return
             if (pending.isEmpty()) {
                 if (unsaved.isNotEmpty() || !restored) later(storageRetryAt)
-                else drain = false
                 return
             }
             val batchSize = AnalyticsBatchSettings.resolve(backendBatchSize?.invoke() ?: config.batchSize)
@@ -130,19 +133,42 @@ internal class EventBatcher internal constructor(
             if (plans.isNotEmpty() && plans.first().size > batchSize) {
                 plans.removeFirst().chunked(batchSize).asReversed().forEach { plans.addFirst(it) }
             }
+            var deadline = now()
             val batch = if (plans.isNotEmpty()) plans.first() else {
+                // Independent trailing-edge debounce per auction, including one no-auction bucket.
+                // Select the earliest due group, not the first event in the global queue: a busy
+                // auction must not hold up another auction that has already gone quiet.
+                val groups = pending.values.groupBy(::auction)
+                val latest = mutableMapOf<String?, Long>()
+                for (event in pending.values + unsaved.values) {
+                    val key = auction(event)
+                    latest[key] = maxOf(latest[key] ?: Long.MIN_VALUE, arrived[event.eventId] ?: now())
+                }
+                fun due(group: Map.Entry<String?, List<EventNetwork>>): Long {
+                    val quietAt = (latest[group.key] ?: now()) + config.batchDelayMs
+                    // Use when the cap became due, not a permanently privileged "now/zero": a
+                    // continuously full auction must eventually yield to other overdue auctions.
+                    val fullAt = group.value.getOrNull(batchSize - 1)?.let { arrived[it.eventId] } ?: Long.MAX_VALUE
+                    val forcedAt = group.value.firstOrNull { it.eventId in flushIds }?.let { arrived[it.eventId] } ?: Long.MAX_VALUE
+                    return minOf(quietAt, fullAt, forcedAt)
+                }
+                val group = groups.entries.minByOrNull(::due)!!
+                deadline = due(group)
+                val quiet = now() >= (latest[group.key] ?: now()) + config.batchDelayMs
+                val candidates = if (!quiet && group.value.size < batchSize && group.value.any { it.eventId in flushIds })
+                    group.value.filter { it.eventId in flushIds } else group.value
                 var bytes = 2
                 val selected = mutableListOf<EventNetwork>()
-                for (event in pending.values) {
+                for (event in candidates) {
                     val added = size(event) + if (selected.isEmpty()) 0 else 1
                     if (selected.size >= batchSize || bytes + added > config.batchBytes) break
                     selected.add(event); bytes += added
                 }
                 // An oversized singleton cannot fit any legal POST. Retain it for inspection.
                 if (selected.isEmpty()) {
-                    val id = pending.keys.first()
+                    val id = candidates.first().eventId
                     if (store.quarantine(id)) {
-                        pending.remove(id); arrived.remove(id)
+                        pending.remove(id); arrived.remove(id); flushIds.remove(id)
                         AudienzzDiagnostics.log("analytics", "quarantined", "reason" to "payloadTooLarge", "count" to 1)
                         later(now() + 1)
                     } else later(now() + config.retryBaseMs)
@@ -150,13 +176,10 @@ internal class EventBatcher internal constructor(
                 }
                 selected
             }
-            val full = batch.size >= batchSize || batch.size < pending.size
-            val deadline = if (drain || plans.isNotEmpty() || full) now()
-                else (arrived[batch.first().eventId] ?: now()) + config.batchDelayMs
             val allowed = maxOf(deadline, retryAt, lastStart?.plus(config.minIntervalMs) ?: 0L)
             if (now() < allowed) { later(minOf(allowed, if (unsaved.isNotEmpty()) storageRetryAt else Long.MAX_VALUE)); return }
             if (plans.isNotEmpty()) plans.removeFirst()
-            inFlight = true; drain = true; lastStart = now()
+            inFlight = true; lastStart = now()
             AudienzzDiagnostics.log("analytics", "sending", "count" to batch.size, "attempt" to failures + 1,
                 "oldestEventTimestamp" to batch.minOf { it.eventTimestamp })
             launch {
@@ -186,7 +209,7 @@ internal class EventBatcher internal constructor(
                     val ids = result.events.map { it.eventId }
                     val error = result.error
                     if (error == null && store.acknowledge(ids)) {
-                        ids.forEach { pending.remove(it); arrived.remove(it) }
+                        ids.forEach { pending.remove(it); arrived.remove(it); flushIds.remove(it) }
                         failures = 0; retryAt = 0
                         AudienzzDiagnostics.log("analytics", "sent", "count" to ids.size)
                     } else {
@@ -198,7 +221,7 @@ internal class EventBatcher internal constructor(
                                 val halves = result.events.chunked((ids.size + 1) / 2)
                                 halves.asReversed().forEach { plans.addFirst(it) }
                             } else if (store.quarantine(ids.single())) {
-                                pending.remove(ids.single()); arrived.remove(ids.single())
+                                pending.remove(ids.single()); arrived.remove(ids.single()); flushIds.remove(ids.single())
                                 AudienzzDiagnostics.log("analytics", "quarantined", "count" to 1, "status" to status)
                             } else plans.addFirst(result.events)
                         } else plans.addFirst(result.events)
@@ -210,7 +233,7 @@ internal class EventBatcher internal constructor(
                     }
                 }
                 wakeSignals.onReceive { }
-                flushSignals.onReceive { drain = true }
+                flushSignals.onReceive { flushIds.addAll(pending.keys); flushIds.addAll(unsaved.keys) }
             }
             pump()
         }

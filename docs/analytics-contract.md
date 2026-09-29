@@ -208,7 +208,7 @@ that forwarding change and the matching native releases must ship together.
 
 | Setting | Batching policy |
 |---|---|
-| Normal flush | 5 seconds after the oldest waiting event, or the configured event count (default 10) |
+| Normal flush | Per `attributes.auction_id`, 2 seconds after that auction's latest new event; reaching the configured cap makes that group due immediately |
 | Maximum POST | Configured event count, capped at 15, and 128 KiB of serialized UTF-8 JSON, whichever fills first |
 | Concurrent HTTP requests | 1 per SDK process |
 | Request start spacing | At least 2 seconds, including retries and backlog draining |
@@ -229,19 +229,30 @@ larger positive integers are capped at **15**. Numeric strings are tolerated. Th
 publisher-config caching and has no public Dart/JS initialization override. The sender reads the
 current limit before each attempt. If a new config lowers it, pending retries are split without
 changing event IDs or the HTTP request already in flight. Removing the field restores 10.
-Configuration updates do not reset the oldest-event deadline, request spacing or retry backoff.
+Configuration updates do not reset auction inactivity deadlines, request spacing or retry backoff.
 
 **Persist now → batch → acknowledge exact IDs → remove.** Persistence is on one background worker,
-with a synchronized journal write before an event becomes eligible for HTTP. New events do not
-restart the batching deadline. Successful requests drain a backlog at the same rate limit; the
-worker has no timer when empty. Normal single-event traffic waits at most 5 seconds before its
-first attempt, unless an earlier request, backoff or storage failure is holding it.
+with a synchronized journal write before an event becomes eligible for HTTP. Each auction has
+an independent two-second inactivity window. A new event resets only its auction's deadline;
+re-enqueuing an already-pending event ID does not. Each POST contains events from one auction,
+in enqueue order, and never exceeds the configured event cap or 128 KiB. The cap is per auction,
+not the total queue size. A late click or impression after a batch was sent starts another window
+for the same auction; the SDK does not wait for every possible event in the ad's lifetime.
 
-Foreground, connectivity restoration and backgrounding request an early flush, without bypassing
-the minimum spacing or backoff. The iOS background task gives a best-effort opportunity to finish;
-neither platform relies on a termination callback. Persisted events resume on the next launch with
-the original payload, `event_id`, `session_seq`, timestamp and `page_impression_id`. A restart resets
-in-memory retry deadlines; the outbox, including quarantined IDs, remains durable.
+Events with a missing/blank auction ID, including `pageImpression`, share a separate debounced
+bucket. They are not dropped, assigned a fabricated auction ID or mixed into an auction's POST.
+Among due groups, the oldest due group sends first; an active or continuously full auction cannot
+continually overtake older due groups. One serial worker owns all groups and has no timer when empty.
+Two-second request-start spacing, one in-flight POST, retry backoff and persistence failures can
+delay actual sending beyond a group's debounce deadline.
+
+Backgrounding makes already-queued events eligible early, still grouped by auction and subject to
+spacing/backoff. This is a snapshot, not a mode that makes later arrivals send immediately.
+Foreground/connectivity wake the worker without bypassing a fresh auction's debounce. The iOS
+background task gives a best-effort opportunity to finish; neither platform relies on a termination
+callback. Restored events are immediately eligible, regrouped by auction, with their original
+payload, `event_id`, `session_seq`, timestamp and `page_impression_id`. Fresh events continue to
+debounce. A restart resets in-memory retry deadlines; the outbox and quarantine remain durable.
 
 **Collector contract required:** a 2xx response (including 204) must mean the **entire array** has
 been durably accepted. There is no per-event acknowledgement protocol in the current endpoint.
@@ -249,7 +260,8 @@ If the backend accepts only part of an array, it must expose accepted/rejected e
 partial acceptance can be supported safely. These client changes do not establish backend
 atomicity or deduplication; confirm both with the collector owner before rollout.
 
-Network errors, 401/403, 429 and server failures retain and retry the same batch. HTTP 400/413/422
+Network errors, 401/403, 429 and server failures retain and retry the same batch; later events do
+not get appended to that attempt or extend its backoff. HTTP 400/413/422
 split a rejected batch into smaller batches, respecting backoff and spacing. A rejected singleton
 is marked **quarantined** in the journal, never counted as delivered; other events can proceed.
 A singleton exceeding 128 KiB is also quarantined. There is no automatic replay of quarantine:
@@ -276,12 +288,15 @@ claim is made from host/simulator timings.
 
 ### Batching verification (September 29, 2026)
 
+- Auction-debounce update: full native suites pass (314 Android / 342 iOS). Removing auction
+  grouping and reverting to the first event's deadline fails the interleaving and inactivity
+  regression tests on both platforms. No on-device or live-collector claim is made from these tests.
 - Full native suites: 293 Android tests and 320 iOS tests pass.
 - Queue tests exercise the real sender with a controlled clock and fake HTTP completion; store
   tests reopen the real journal to check restart recovery, torn writes, capacity and quarantine.
 - Transport tests serialize real event arrays through Retrofit / URLSession and stub responses;
   test traffic does not reach the live collector.
-- Coverage includes the oldest-event deadline, count/UTF-8 byte limits, one in-flight request,
+- Coverage includes per-auction inactivity deadlines, count/UTF-8 byte limits, one in-flight request,
   two-second spacing, backoff/Retry-After, lost acknowledgements, local write failures, exact-ID
   acknowledgements, poison-batch splitting and no idle timer.
 - Backend-limit coverage includes absent/malformed values, cached configuration, the 15-event
@@ -289,8 +304,9 @@ claim is made from host/simulator timings.
 - Flutter: 213 tests pass; the Android plugin and iOS example compile against matching local
   natives. Published pins are restored. Config tests analyze clean; the full analyzer still reports
   existing unrelated lint warnings/infos. RN uses native remote initialization unchanged.
-- Queue tests control connectivity explicitly; real path-monitor callbacks cannot flush a test
-  early. A separate connectivity test verifies early flushing still respects retry backoff.
+- Queue tests control connectivity explicitly; foreground/connectivity wakes preserve debounce
+  and retry backoff. Additional tests cover interleaved auctions, missing IDs, late events during
+  HTTP, per-group cap accounting, fair selection, duplicate enqueue and restart regrouping.
 - Mutation verification: removing the minimum request spacing fails the burst-drain test on
   both platforms. The unmodified implementation passes.
 - No live-device battery or collector deduplication/atomic-acceptance validation was performed
@@ -301,7 +317,8 @@ claim is made from host/simulator timings.
 Both bridges use the native collector transport. In Charles, look for
 `api.adnz.co/api/ws-clickstream-collector/submit/batch`, with SSL proxying enabled for
 `api.adnz.co:443` and the Charles certificate trusted on the test device. Current-branch builds
-send arrays after up to 5 seconds or at the batch threshold. Flutter's Dart proxy override alone
+send one auction's events after two seconds without another event for that auction, or when its
+event cap is reached (subject to pacing/backoff). Flutter's Dart proxy override alone
 does not route native analytics: the device's network proxy must also be configured.
 
 With SDK diagnostics enabled (already enabled in the examples), filter device logs for
