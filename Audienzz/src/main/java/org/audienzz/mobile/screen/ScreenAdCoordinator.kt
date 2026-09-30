@@ -26,8 +26,8 @@ import javax.inject.Singleton
  *
  * A "screen" is an opaque token — an `Activity`, a `Fragment` (so ViewPager2 tabs and fragment
  * navigation are distinct screens), or any object a manual caller provides (e.g. a route key from
- * Flutter/React Native). Matching is by object identity, so two instances of the same class are
- * distinct screens. Each handler resolves its own host screen (its host Fragment when it lives in
+ * Flutter/React Native). Native hosts match by identity; String route keys match by value. Each
+ * handler resolves its own host screen (its host Fragment when it lives in
  * one, else its host Activity) — see [AudienzzAdViewHandler.isHostedBy].
  */
 @Singleton
@@ -40,10 +40,14 @@ class ScreenAdCoordinator @Inject constructor() {
     internal val requestLedger = org.audienzz.mobile.targeting.AdRequestLedger()
 
     private var activeScreenRef: WeakReference<Any>? = null
+    // A bridge decodes the page report and each banner's route independently. Equal Strings
+    // are not the same object, so a weak-only page token disappears after the bridge call/GC.
+    // Retain the value token until navigation; native Activity/Fragment hosts must remain weak.
+    private var activeScreenKey: String? = null
 
     /** The active screen token from the most recent [onScreenResumed], or null before the first. */
     val activeScreen: Any?
-        get() = activeScreenRef?.get()
+        get() = activeScreenKey ?: activeScreenRef?.get()
 
     /** Name reported with the active screen, retained through foreground recovery. */
     @Volatile
@@ -119,7 +123,8 @@ class ScreenAdCoordinator @Inject constructor() {
             Handler(Looper.getMainLooper()).post { onScreenResumed(screen, name) }
             return
         }
-        activeScreenRef = WeakReference(screen)
+        activeScreenKey = screen as? String
+        activeScreenRef = if (activeScreenKey == null) WeakReference(screen) else null
         activeScreenName = name
         epoch++
         synchronized(registry) {
