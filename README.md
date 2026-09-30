@@ -90,7 +90,7 @@ Call `banner.destroy()` when its view is permanently discarded (`onDestroyView` 
 by the SDK. For a custom overlay, use `setHostCover(true)` and clear it when the overlay closes.
 
 Periodic refresh uses backend `config.refreshTimeSeconds` and pauses its clock while ineligible.
-The upcoming native release defaults to 10 eligible seconds; see [Smart Refresh](#smart-refresh).
+Android SDK `0.3.3` defaults to 10 eligible seconds; see [Smart Refresh](#smart-refresh).
 
 ### 5. Show an interstitial
 
@@ -330,7 +330,7 @@ If raising it does not move the auction earlier, the ad component is not mountin
 
 Smart Refresh
 -------
-> **Unreleased:** eligible-time timing below is implemented on `main`; it is not part of `0.3.2`.
+> Eligible-time refresh requires Android SDK `0.3.3` or newer.
 
 Periodic refresh counts **only time when the banner is eligible to refresh**: its page is active,
 the app is foregrounded, the viewport gate allows it, and no attachment, cover or publisher hold
