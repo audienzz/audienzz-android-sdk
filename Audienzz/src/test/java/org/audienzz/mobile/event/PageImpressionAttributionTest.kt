@@ -1,11 +1,25 @@
 package org.audienzz.mobile.event
 
 import com.google.android.gms.ads.FullScreenContentCallback
+import com.google.android.gms.ads.AdListener
+import com.google.android.gms.ads.admanager.AdManagerAdRequest
+import com.google.android.gms.ads.admanager.AdManagerAdView
 import com.google.android.gms.ads.admanager.AdManagerInterstitialAd
 import io.mockk.*
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.audienzz.mobile.AudienzzInterstitialAdUnit
 import org.audienzz.mobile.AudienzzResultCode
+import org.audienzz.mobile.AudienzzAdUnit
+import org.audienzz.mobile.AudienzzPrebidMobile
+import org.audienzz.mobile.api.rendering.AudienzzInterstitialAdUnit as RenderingInterstitial
+import org.audienzz.mobile.api.rendering.listeners.AudienzzInterstitialAdUnitListener
+import org.audienzz.mobile.original.AudienzzAdViewHandler
+import org.audienzz.mobile.refresh.RefreshBlockReason
+import org.audienzz.mobile.screen.ScreenAdCoordinator
+import org.audienzz.mobile.screen.screenAdCoordinatorOverride
+import org.audienzz.mobile.util.AppForegroundMonitor
+import org.prebid.mobile.api.rendering.InterstitialAdUnit as PrebidRenderingInterstitial
+import org.prebid.mobile.api.rendering.listeners.InterstitialAdUnitListener
 import org.audienzz.mobile.di.MainComponent
 import org.audienzz.mobile.event.entity.*
 import org.audienzz.mobile.event.network.entity.EventNetwork
@@ -41,6 +55,88 @@ class PageImpressionAttributionTest {
     private fun drain() = dispatcher.scheduler.runCurrent()
     private fun payload(event: EventNetwork): JsonObject = json.encodeToJsonElement(EventNetwork.serializer(), event).jsonObject
     private fun pageId(event: EventNetwork): String = payload(event).getValue("page_impression_id").jsonPrimitive.content
+
+    @Test fun `installed rendering listener recovers banners without a new page`() {
+        renderingDismissalPreservesPage(removePublisherListener = false)
+    }
+
+    @Test fun `removing publisher rendering listener retains SDK dismissal recovery`() {
+        renderingDismissalPreservesPage(removePublisherListener = true)
+    }
+
+    private fun renderingDismissalPreservesPage(removePublisherListener: Boolean) {
+        val coordinator = ScreenAdCoordinator()
+        screenAdCoordinatorOverride = coordinator
+        AppForegroundMonitor.resetForTesting()
+        AudienzzPrebidMobile.sdkInitializedOverride = true
+        val view = mockk<AdManagerAdView>(relaxed = true)
+        every { view.isAttachedToWindow } returns true
+        every { view.adUnitId } returns "/fixture/banner"
+        every { view.responseInfo } returns null
+        var googleListener: AdListener = object : AdListener() {}
+        every { view.adListener } answers { googleListener }
+        every { view.adListener = any() } answers { googleListener = firstArg() }
+        val unit = mockk<AudienzzAdUnit>(relaxed = true)
+        val replies = mutableListOf<(AudienzzResultCode?) -> Unit>()
+        every { unit.fetchDemand(any(), any()) } answers { replies += secondArg<(AudienzzResultCode?) -> Unit>() }
+        val handler = AudienzzAdViewHandler(view, unit)
+        val requests = mutableListOf<AdManagerAdRequest>()
+
+        // Capture what the real wrapper installs on Prebid, rather than constructing a
+        // recovery helper or calling the coordinator directly.
+        val prebid = mockk<PrebidRenderingInterstitial>(relaxed = true)
+        var installed: InterstitialAdUnitListener? = null
+        every { prebid.setInterstitialAdUnitListener(any()) } answers { installed = firstArg() }
+        val owner = RenderingInterstitial(prebid, "/fixture/interstitial")
+        val publisher = mockk<AudienzzInterstitialAdUnitListener>(relaxed = true)
+        owner.setInterstitialAdUnitListener(publisher)
+        if (removePublisherListener) owner.setInterstitialAdUnitListener(null)
+        try {
+            AudienzzPrebidMobile.pageImpression("A")
+            val page = requireNotNull(logger.capturePageContext().pageImpressionId)
+            handler.setScreen("A")
+            handler.load(withLazyLoading = false) { request, _ -> requests += request }
+            assertEquals(1, replies.size)
+            replies.single()(AudienzzResultCode.NO_BIDS)
+            googleListener.onAdLoaded()
+            googleListener.onAdImpression()
+            val first = requests.single().customTargeting
+            val sequence = requireNotNull(first.getString("au_page_seq"))
+            val slot = requireNotNull(first.getString("au_slot"))
+            assertEquals("0", first.getString("hb_refresh_count"))
+
+            val callback = requireNotNull(installed)
+            callback.onAdDisplayed(prebid)
+            assertTrue(RefreshBlockReason.INTERSTITIAL in handler.refreshController.blockReasons)
+            assertEquals(1, replies.size)
+            callback.onAdClosed(prebid)
+            callback.onAdClosed(prebid) // duplicate terminal callback cannot recover twice
+            assertFalse(RefreshBlockReason.INTERSTITIAL in handler.refreshController.blockReasons)
+            assertEquals(2, replies.size)
+            replies.last()(AudienzzResultCode.NO_BIDS)
+            googleListener.onAdLoaded()
+            googleListener.onAdImpression()
+            assertEquals(2, requests.size)
+            val replacement = requests.last().customTargeting
+            assertEquals(sequence, replacement.getString("au_page_seq"))
+            assertEquals(slot, replacement.getString("au_slot"))
+            assertEquals("1", replacement.getString("hb_refresh_count"))
+
+            drain()
+            assertEquals(1, sent.count { it.eventType == "pageImpression" })
+            assertEquals(2, sent.count { it.eventType == "bidRequest" })
+            assertEquals(2, sent.count { it.eventType == "adImpression" })
+            sent.forEach { assertEquals(page, pageId(it)) }
+            assertEquals(page, logger.capturePageContext().pageImpressionId)
+            assertEquals(1, coordinator.epoch)
+            verify(exactly = if (removePublisherListener) 0 else 1) { publisher.onAdDisplayed(owner) }
+        } finally {
+            owner.destroy(); handler.destroy()
+            AudienzzPrebidMobile.pageImpression("cleanup")
+            AudienzzPrebidMobile.sdkInitializedOverride = null
+            AppForegroundMonitor.resetForTesting()
+        }
+    }
 
     @Test fun `every ad event retains the actual page visit through navigation and delayed delivery`() {
         logger.onScreenResumed("A")

@@ -181,6 +181,54 @@ class AnalyticsLifecycleTest {
         assertEquals(1, impressions.size)
         assertEquals(1, impressions.map { it.auctionId }.toSet().size)
     }
+
+    @Test fun interstitialCoverInterruptsBannerViewabilityAndReplacementEarnsItsOwnSuccess() {
+        val events = capture()
+        every { view.adUnitId } returns "/fixture/banner"
+        visible(); load()
+        responses.single()(AudienzzResultCode.NO_BIDS)
+        gamListener.onAdLoaded(); gamListener.onAdImpression()
+        val starts = events.filter { it.eventType == org.audienzz.mobile.event.entity.EventType.VIEWABILITY_START }
+        assertEquals(1, starts.size)
+        val originalAuction = requireNotNull(starts.single().auctionId)
+
+        val interstitialUnit = mockk<AudienzzInterstitialAdUnit>(relaxed = true)
+        every { interstitialUnit.fetchDemand(any(), any()) } answers {
+            secondArg<(AudienzzResultCode?) -> Unit>()(AudienzzResultCode.NO_BIDS)
+        }
+        val ad = mockk<com.google.android.gms.ads.admanager.AdManagerInterstitialAd>(relaxed = true)
+        var installed: com.google.android.gms.ads.FullScreenContentCallback? = null
+        every { ad.fullScreenContentCallback } answers { installed }
+        every { ad.fullScreenContentCallback = any() } answers { installed = firstArg() }
+        AudienzzInterstitialAdHandler(interstitialUnit, "/fixture/interstitial").load(
+            adLoadCallback = object : org.audienzz.mobile.original.callbacks.AudienzzInterstitialAdLoadCallback() {},
+            resultCallback = { _, _, listener -> listener.onAdLoaded(ad) })
+        val callback = requireNotNull(installed)
+        fun bannerSuccesses() = events.filter {
+            it.adUnitId == "/fixture/banner" && it.eventType == org.audienzz.mobile.event.entity.EventType.VIEWABILITY_SUCCESS
+        }
+        idle(100)
+        callback.onAdShowedFullScreenContent()
+        try {
+            assertTrue(org.audienzz.mobile.refresh.RefreshBlockReason.INTERSTITIAL in handler.refreshController.blockReasons)
+            idle(1_100)
+            assertEquals(0, bannerSuccesses().size)
+            assertEquals(1, gamLoads)
+
+            callback.onAdDismissedFullScreenContent()
+            assertEquals(2, responses.size)
+            responses.last()(AudienzzResultCode.NO_BIDS)
+            gamListener.onAdLoaded(); gamListener.onAdImpression()
+            assertEquals(2, gamLoads)
+            idle(999)
+            assertEquals(0, bannerSuccesses().size)
+            idle(1)
+            val success = bannerSuccesses().single()
+            assertNotNull(success.auctionId)
+            assertNotEquals(originalAuction, success.auctionId)
+            assertEquals(events.last { it.eventType == org.audienzz.mobile.event.entity.EventType.AD_IMPRESSION }.auctionId, success.auctionId)
+        } finally { callback.onAdDismissedFullScreenContent() }
+    }
     @Test fun noBidOncePerAuctionEvenWithDuplicateRepliesAndGoogleImpressions() {
         val events = capture()
         load()
