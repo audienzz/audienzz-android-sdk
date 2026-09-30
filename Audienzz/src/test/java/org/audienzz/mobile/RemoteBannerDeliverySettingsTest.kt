@@ -26,11 +26,11 @@ class RemoteBannerDeliverySettingsTest {
     private var loadedLazy: Boolean? = null
     private var loadedMargin: Int? = null
 
-    private fun config(lazyLoad: Boolean? = null, prefetchDp: Int? = null) = RemoteAdUnitConfig(
+    private fun config(lazyLoad: Boolean? = null, prefetchDp: Int? = null, refreshSeconds: Int? = null) = RemoteAdUnitConfig(
         1,
         RemoteConfig(
             adType = "banner",
-            refreshTimeSeconds = 30,
+            refreshTimeSeconds = refreshSeconds,
             prefetchDistanceDp = prefetchDp,
             lazyLoad = lazyLoad,
         ),
@@ -120,6 +120,21 @@ class RemoteBannerDeliverySettingsTest {
         pump()
         assertEquals(true, loadedLazy)
         assertEquals(600, loadedMargin)
+    }
+
+    @Test fun `backend refresh seconds and missing fallback reach the actual ad unit`() {
+        for ((seconds, expected) in listOf(null to 10_000L, 10 to 10_000L, 17 to 17_000L, 5 to 5_000L, 600 to 600_000L, 0 to 0L, -1 to 0L)) {
+            loadedLazy = null
+            seed(config(refreshSeconds = seconds))
+            val remote = view()
+            remote.loadAd()
+            pump()
+            assertEquals("the configured banner must reach the handler", true, loadedLazy)
+            val unit = AudienzzRemoteBannerView::class.java.getDeclaredField("adUnit")
+                .apply { isAccessible = true }.get(remote) as AudienzzAdUnit
+            assertEquals("backend refreshTimeSeconds=$seconds", expected, unit.audienzzRefreshIntervalMillis)
+            remote.destroy()
+        }
     }
 
     // endregion

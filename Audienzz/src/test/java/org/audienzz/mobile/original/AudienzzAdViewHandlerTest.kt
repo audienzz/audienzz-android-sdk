@@ -515,17 +515,19 @@ class AudienzzAdViewHandlerTest {
     }
 
     @Test
-    fun `resuming after a publisher pause restarts the interval`() {
+    fun `resuming after a publisher pause preserves remaining eligible time`() {
         openPage("A")
         loadOn("A")
         respondTo(0)
+        idle(6_000)
         handler.stopAutoRefresh()
         idle(10 * 30_000)
 
         handler.resumeAutoRefresh()
+        idle(23_999)
+        assertEquals("paused time must not consume the remaining 24 seconds", 1, responses.size)
         idle(1)
-
-        assertEquals("already overdue, so it refreshes at once", 2, responses.size)
+        assertEquals("the six seconds earned before pausing are retained", 2, responses.size)
     }
     @Test fun `missing Google callback expires without fast retry and manual reload works`() {
         openPage("A"); loadOn("A")

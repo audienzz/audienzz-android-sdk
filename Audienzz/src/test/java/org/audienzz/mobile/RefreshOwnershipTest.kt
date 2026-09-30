@@ -4,7 +4,6 @@ import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.prebid.mobile.PrebidMobile
 import org.robolectric.RobolectricTestRunner
 import java.util.EnumSet
 
@@ -86,14 +85,14 @@ class RefreshOwnershipTest {
     }
 
     @Test
-    fun `the interval is clamped to the supported range`() {
+    fun `positive intervals below Prebid minimum are honored`() {
         val unit = bannerAdUnit()
 
         unit.setAutoRefreshInterval(5)
 
         assertEquals(
-            "below Prebid's minimum, clamped the same way it always was",
-            PrebidMobile.AUTO_REFRESH_DELAY_MIN.toLong(),
+            "SDK-owned timer honors the configured interval",
+            5_000L,
             unit.audienzzRefreshIntervalMillis,
         )
     }
@@ -146,13 +145,13 @@ class RefreshOwnershipTest {
     }
 
     @Test
-    fun `an interval above the maximum is clamped down`() {
+    fun `long backend intervals are honored`() {
         val unit = bannerAdUnit()
 
         unit.setAutoRefreshInterval(600)
 
         assertEquals(
-            PrebidMobile.AUTO_REFRESH_DELAY_MAX.toLong(),
+            600_000L,
             unit.audienzzRefreshIntervalMillis,
         )
     }

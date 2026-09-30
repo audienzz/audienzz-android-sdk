@@ -58,7 +58,7 @@ class GoogleSupportReviewProbeTest {
     private fun idle(ms: Long) { shadowOf(Looper.getMainLooper()).idleFor(ms, TimeUnit.MILLISECONDS) }
 
 
-    @Test fun `prefetched unimpressed creative is overdue at first visibility`() {
+    @Test fun `prefetched creative waits for its eligible interval at first visibility`() {
         load()
         responses[0](AudienzzResultCode.NO_BIDS)
         gamListener.onAdLoaded() // Google returned a creative; intentionally no impression yet.
@@ -66,8 +66,10 @@ class GoogleSupportReviewProbeTest {
         idle(35_000)
         assertEquals("hidden hold protects the cached creative", 1, responses.size)
         handler.resumeSmartRefresh()
+        idle(29_999)
+        assertEquals("hidden time must not consume the eligible interval", 1, responses.size)
         idle(1)
-        assertEquals("CURRENT POLICY: returning starts a replacement before any impression", 2, responses.size)
+        assertEquals("replacement starts only after the full eligible interval", 2, responses.size)
         responses[1](AudienzzResultCode.NO_BIDS)
         assertEquals("both auctions reached Google", 2, gamLoads)
     }
@@ -83,7 +85,7 @@ class GoogleSupportReviewProbeTest {
     }
     /**
      * The two holds are independent and either may be cleared first. Whichever order the host
-     * happens to produce, the outcome must be the same: exactly one overdue request, not two and
+     * happens to produce, the outcome must be the same: exactly one request after the eligible interval, not two and
      * not none. Added alongside the imported probe, which covers only the attach-then-resume order.
      */
     @Test fun `clearing the holds in either order recovers exactly one request`() {
@@ -96,15 +98,17 @@ class GoogleSupportReviewProbeTest {
         handler.pauseSmartRefresh()
         listeners.forEach { it.onViewDetachedFromWindow(view) }
         idle(35_000)
-        assertEquals("both holds suppress the overdue refresh", 1, responses.size)
+        assertEquals("both holds suppress periodic refresh", 1, responses.size)
 
         // Reverse of the imported probe: host visibility first, attachment second.
         handler.resumeSmartRefresh()
         idle(1)
         assertEquals("a detached view must not auction", 1, responses.size)
         listeners.forEach { it.onViewAttachedToWindow(view) }
+        idle(29_999)
+        assertEquals("neither hold may contribute eligible time", 1, responses.size)
         idle(1)
-        assertEquals("exactly one overdue request once both holds are clear", 2, responses.size)
+        assertEquals("exactly one request after both holds clear and the interval elapses", 2, responses.size)
 
         idle(1)
         assertEquals("and it does not repeat", 2, responses.size)
@@ -122,7 +126,9 @@ class GoogleSupportReviewProbeTest {
         idle(1)
         assertEquals("attach alone cannot resume the host hold", 1, responses.size)
         handler.resumeSmartRefresh()
+        idle(29_999)
+        assertEquals("attachment must not charge time while the host hold remains", 1, responses.size)
         idle(1)
-        assertEquals("CONTROL: a new widget's true verdict would recover exactly once", 2, responses.size)
+        assertEquals("a new widget's true verdict resumes the full eligible interval", 2, responses.size)
     }
 }

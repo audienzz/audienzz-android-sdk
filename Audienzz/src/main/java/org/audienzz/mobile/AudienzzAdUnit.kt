@@ -8,8 +8,6 @@ import org.audienzz.mobile.api.data.AudienzzBidInfo
 import org.prebid.mobile.AdUnit
 import org.prebid.mobile.AudienzzBidResponseAccessor
 import org.prebid.mobile.OnCompleteListener
-import org.prebid.mobile.PrebidMobile.AUTO_REFRESH_DELAY_MAX
-import org.prebid.mobile.PrebidMobile.AUTO_REFRESH_DELAY_MIN
 import org.prebid.mobile.api.original.OnFetchDemandResult
 
 /**
@@ -83,7 +81,7 @@ abstract class AudienzzAdUnit internal constructor(
     internal var refreshIntervalObserver: ((Long) -> Unit)? = null
 
     /** Kept for analytics reporting, which records the configured cadence. */
-    internal val autoRefreshTime get() = audienzzRefreshIntervalMillis.toInt()
+    internal val autoRefreshTime get() = audienzzRefreshIntervalMillis
 
     internal val adFormats get() = adUnit.configuration.adFormats
 
@@ -91,19 +89,11 @@ abstract class AudienzzAdUnit internal constructor(
     internal val configId: String? get() = adUnit.configuration.configId
 
     fun setAutoRefreshInterval(
-        @IntRange(
-            from = AUTO_REFRESH_DELAY_MIN / 1000L,
-            to = AUTO_REFRESH_DELAY_MAX / 1000L,
-        ) seconds: Int,
+        @IntRange(from = 0) seconds: Int,
     ) {
-        // Stored here rather than forwarded to Prebid — see [audienzzRefreshIntervalMillis].
-        // Clamped the same way Prebid clamps it, so the accepted range and the disabled behaviour
-        // (0 = no refresh) are unchanged for publishers.
-        audienzzRefreshIntervalMillis = when {
-            seconds <= 0 -> 0
-            else -> (seconds * 1000L)
-                .coerceIn(AUTO_REFRESH_DELAY_MIN.toLong(), AUTO_REFRESH_DELAY_MAX.toLong())
-        }
+        // The SDK owns the timer: honor positive backend intervals without Prebid's 30s floor.
+        // Zero (or negative) retains the existing explicit opt-out from periodic refresh.
+        audienzzRefreshIntervalMillis = seconds.coerceAtLeast(0) * 1000L
         refreshIntervalObserver?.invoke(audienzzRefreshIntervalMillis)
     }
 

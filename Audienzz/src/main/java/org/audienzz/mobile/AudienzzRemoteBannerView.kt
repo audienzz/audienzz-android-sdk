@@ -121,7 +121,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     /**
      * Visibility resume, for a host that tracks it itself. Clears only the visibility reason, so a
      * publisher pause or a released page survives; the refresh controller decides whether the
-     * banner is overdue or should wait out the remainder of its interval.
+     * banner has earned its eligible interval or should wait out the remainder.
      */
     fun onResume() {
         adViewHandler?.resumeSmartRefresh()
@@ -181,7 +181,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     }
 
     /**
-     * Force a fresh auction now on the underlying banner, ignoring the stale-aware refresh timing.
+     * Force a fresh auction now on the underlying banner, ignoring the remaining eligible refresh interval.
      * Forwards to [AudienzzAdViewHandler.reloadAd] — used by the RN/Flutter bridges to reload on
      * screen change, and for a manual reload. No-op until the underlying banner has been built.
      */
@@ -412,7 +412,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
 
     companion object {
         private const val TAG = "AudienzzRemoteConfigBannerView"
-        private const val DEFAULT_REFRESH_SECONDS = 30
+        private const val DEFAULT_REFRESH_SECONDS = 10
         private const val DEFAULT_PREFETCH_DISTANCE_DP = 200
 
         /**

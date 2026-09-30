@@ -89,6 +89,9 @@ Call `banner.destroy()` when its view is permanently discarded (`onDestroyView` 
 `onDestroy` for an Activity, or Compose `onRelease`). Temporary detachment/backgrounding is handled
 by the SDK. For a custom overlay, use `setHostCover(true)` and clear it when the overlay closes.
 
+Periodic refresh uses backend `config.refreshTimeSeconds` and pauses its clock while ineligible.
+The upcoming native release defaults to 10 eligible seconds; see [Smart Refresh](#smart-refresh).
+
 ### 5. Show an interstitial
 
 Retain one owner per placement in a field. Construct it with the host Activity's context:
@@ -327,17 +330,25 @@ If raising it does not move the auction earlier, the ad component is not mountin
 
 Smart Refresh
 -------
-Smart Refresh makes banner auto-refresh viewport-aware: refresh is paused while the ad is off-screen, and resumes intelligently when it returns.
+> **Unreleased:** eligible-time timing below is implemented on `main`; it is not part of `0.3.2`.
 
-When the ad scrolls back into view the SDK checks how long it was hidden:
-- **Stale** (hidden ≥ refresh interval) → a new ad is fetched immediately, then normal auto-refresh resumes.
-- **Not stale** (hidden < refresh interval) → the remaining time is waited before the next fetch, then normal auto-refresh resumes.
+Periodic refresh counts **only time when the banner is eligible to refresh**: its page is active,
+the app is foregrounded, the viewport gate allows it, and no attachment, cover or publisher hold
+blocks it. Pausing preserves accrued time. With a 10-second interval, 6 eligible seconds followed
+by 40 hidden seconds leave 4 eligible seconds before the next request. A fresh interval starts
+after each request completes; time spent loading does not count.
+
+Remote banners read `config.refreshTimeSeconds` from the backend: missing/null defaults to **10
+seconds**, `0` disables periodic refresh, and positive values are honored without the former
+30-second minimum. An explicit backend value of `30` still means 30 eligible seconds. Initial
+prefetch, explicit page changes, foreground recovery and interstitial-dismissal recovery keep
+their existing behavior. No publisher timer is needed.
 
 Enable it by calling `enableSmartRefresh()` on the `AudienzzAdViewHandler` after calling `load()`:
 
 ```kotlin
 // Set an auto-refresh interval — required for smart refresh to have any effect
-audienzzAdUnit.setAutoRefreshInterval(30) // seconds (min 30, max 120)
+audienzzAdUnit.setAutoRefreshInterval(10) // eligible seconds; 0 disables periodic refresh
 
 val handler = AudienzzAdViewHandler(
     adView = gamAdView,
@@ -510,8 +521,8 @@ This object contains methods to initialize the SDK and configure global settings
 | Name                                     | Type                                    | Description                                                                             |
 |------------------------------------------|-----------------------------------------|-----------------------------------------------------------------------------------------|
 | `ppidManager`                            | `PpidManager`                           | Read-only value - variable throught which to interact with PpidManger class             |
-| `AUTO_REFRESH_DELAY_MIN`                 | `Int`                                   | Read-only value - Minimum refresh interval allowed (30 seconds).                        |
-| `AUTO_REFRESH_DELAY_MAX`                 | `Int`                                   | Read-only value - Maximum refresh interval allowed (120 seconds).                       |
+| `AUTO_REFRESH_DELAY_MIN`                 | `Int`                                   | Legacy Prebid minimum (30 seconds); not applied to SDK-owned banner refresh.                        |
+| `AUTO_REFRESH_DELAY_MAX`                 | `Int`                                   | Legacy Prebid maximum (120 seconds); not applied to SDK-owned banner refresh.                       |
 | `SCHEME_HTTPS`                           | `String`                                | Read-only value - HTTPS scheme definition.                                              |
 | `SCHEME_HTTP`                            | `String`                                | Read-only value - HTTP scheme definition.                                               |
 | `SDK_VERSION`                            | `String`                                | Read-only value - The version of the SDK.                                               |

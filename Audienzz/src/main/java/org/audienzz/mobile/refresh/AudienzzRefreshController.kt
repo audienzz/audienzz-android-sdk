@@ -26,10 +26,8 @@ import android.util.Log
  *   slow auction does not shorten the gap between creatives.
  * - Durations use a monotonic clock ([RefreshScheduler.nowMillis]). Wall-clock time would let a
  *   device clock change fire a refresh instantly or suppress it indefinitely.
- * - Blocking cancels the pending task but does **not** move the due time: elapsed time keeps
- *   counting while a banner is off screen, which preserves the existing stale-aware resume. When
- *   the last block clears, an overdue banner refreshes immediately and an in-date one waits out the
- *   remainder. (Charging only visible time is deliberately out of scope for this migration.)
+ * - Only eligible time counts. The first block freezes accumulated time; clearing the last block
+ *   resumes the remaining interval. Hidden/background/covered time never makes a banner overdue.
  * - An interval of 0 disables periodic refresh entirely; nothing is ever scheduled.
  *
  * ## Ownership rules
@@ -59,8 +57,21 @@ internal class AudienzzRefreshController(
 
     private val blocks = linkedSetOf<RefreshBlockReason>()
 
-    /** Monotonic time the last request completed, or null before the first completion. */
-    private var lastCompletionAt: Long? = null
+    /** Eligible time earned in this cycle; null until a current request completes. */
+    private var eligibleElapsedMillis: Long? = null
+    private var eligibleSince: Long? = null
+
+    private fun pauseEligibleClock() {
+        eligibleSince?.let { since ->
+            eligibleElapsedMillis = (eligibleElapsedMillis ?: 0) +
+                (scheduler.nowMillis() - since).coerceAtLeast(0)
+        }
+        eligibleSince = null
+    }
+
+    private fun remainingMillis(): Long = (intervalMillis - (eligibleElapsedMillis ?: 0) -
+        (eligibleSince?.let { (scheduler.nowMillis() - it).coerceAtLeast(0) } ?: 0))
+        .coerceAtLeast(0)
 
     /**
      * Generation of the outstanding request, or null when none is.
@@ -86,6 +97,8 @@ internal class AudienzzRefreshController(
 
     /** Applies the configured interval. Passing 0 disables refresh and cancels pending work. */
     fun setIntervalMillis(millis: Long) {
+        if (destroyed) return
+        pauseEligibleClock()
         intervalMillis = if (millis > 0) millis else 0
         if (intervalMillis == 0L) {
             scheduler.cancel()
@@ -102,11 +115,12 @@ internal class AudienzzRefreshController(
     val blockReasons: Set<RefreshBlockReason> get() = blocks.toSet()
 
     /**
-     * Adds a block reason. Any pending periodic work is cancelled and outstanding callbacks are
-     * invalidated, so a response that arrives after this cannot schedule a successor.
+     * Adds a block reason and freezes eligible time. In-flight responses may still complete,
+     * but cannot schedule a successor until all blocks clear.
      */
     fun block(reason: RefreshBlockReason) {
         if (destroyed) return
+        pauseEligibleClock()
         if (blocks.add(reason)) {
             Log.d(logTag, "refresh blocked by $reason (now $blocks)")
             AudienzzDiagnostics.log(
@@ -159,6 +173,8 @@ internal class AudienzzRefreshController(
      * to; the caller passes that back on completion so a superseded response can be recognised.
      */
     fun onRequestStarted(reason: RefreshRequestReason): Int {
+        eligibleSince = null
+        eligibleElapsedMillis = null
         generation++
         inFlightGeneration = generation
         scheduler.cancel()
@@ -189,7 +205,8 @@ internal class AudienzzRefreshController(
             return
         }
         inFlightGeneration = null
-        lastCompletionAt = scheduler.nowMillis()
+        eligibleElapsedMillis = 0
+        eligibleSince = null
         AudienzzDiagnostics.log(
             "auction", "end",
             "slot" to logTag, "gen" to generationAtRequest,
@@ -224,21 +241,20 @@ internal class AudienzzRefreshController(
     // ── Scheduling ──────────────────────────────────────────────────────────
 
     /**
-     * Schedules the next periodic refresh, or fires one immediately if the banner is already
-     * overdue. Safe to call repeatedly; the scheduler keeps at most one pending task.
+     * Schedules only the remaining eligible time. Repeated calls do not restart the clock;
+     * the scheduler keeps at most one pending task.
      */
     fun scheduleNext() {
         if (destroyed || intervalMillis <= 0 || isBlocked || hasRequestInFlight) {
             return
         }
-        val last = lastCompletionAt
-        if (last == null) {
+        if (eligibleElapsedMillis == null) {
             // Nothing has loaded yet, so there is no interval to measure from. The first load is
             // driven by lazy loading or an explicit load, not by this controller.
             return
         }
-        val dueAt = last + intervalMillis
-        val delay = (dueAt - scheduler.nowMillis()).coerceAtLeast(0)
+        if (eligibleSince == null) eligibleSince = scheduler.nowMillis()
+        val delay = remainingMillis()
         Log.d(logTag, "next refresh in ${delay}ms")
         scheduler.postDelayed(delay) { fireIfStillEligible(RefreshRequestReason.PERIODIC_REFRESH) }
     }
@@ -264,7 +280,14 @@ internal class AudienzzRefreshController(
             Log.d(logTag, "$reason due but a request is already in flight; skipping")
             return
         }
-        if (reason == RefreshRequestReason.PERIODIC_REFRESH && intervalMillis <= 0) return
+        if (reason == RefreshRequestReason.PERIODIC_REFRESH) {
+            if (intervalMillis <= 0 || eligibleElapsedMillis == null) return
+            // A cancelled callback must not spend the interval of a newer cycle or resume.
+            if (remainingMillis() > 0) {
+                scheduleNext()
+                return
+            }
+        }
         onRequestDue(reason, generation)
     }
 
@@ -273,6 +296,8 @@ internal class AudienzzRefreshController(
      * own replacement and must not also let a pending periodic refresh or retry fire.
      */
     fun invalidatePending() {
+        eligibleSince = null
+        eligibleElapsedMillis = null
         scheduler.cancel()
         generation++
         inFlightGeneration = null
@@ -283,11 +308,14 @@ internal class AudienzzRefreshController(
      * load is issued outside the controller (a first load or a page replacement).
      */
     fun noteLoadedNow() {
-        lastCompletionAt = scheduler.nowMillis()
+        eligibleElapsedMillis = 0
+        eligibleSince = null
     }
 
     fun destroy() {
         destroyed = true
+        eligibleSince = null
+        eligibleElapsedMillis = null
         scheduler.cancel()
         generation++
         blocks.clear()

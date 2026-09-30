@@ -300,13 +300,13 @@ object AudienzzPrebidMobile {
     internal var schainObject: JSONObject? = null
 
     /**
-     * Minimum refresh interval allowed. 30 seconds
+     * Legacy Prebid minimum (30 seconds), not applied to SDK-owned banner refresh.
      */
     @JvmStatic
     val AUTO_REFRESH_DELAY_MIN: Int = PrebidMobile.AUTO_REFRESH_DELAY_MIN
 
     /**
-     * Maximum refresh interval allowed. 120 seconds
+     * Legacy Prebid maximum (120 seconds), not applied to SDK-owned banner refresh.
      */
     @JvmStatic
     val AUTO_REFRESH_DELAY_MAX: Int = PrebidMobile.AUTO_REFRESH_DELAY_MAX

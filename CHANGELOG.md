@@ -5,6 +5,12 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Banner periodic refresh now counts only eligible time, preserving the remaining interval across
+  visibility, attachment, app, page, cover and publisher holds. Loading time is excluded.
+- Remote banners use backend `config.refreshTimeSeconds`, defaulting to 10 seconds when absent/null.
+  Positive intervals are honored without the old Prebid clamp; 0 disables periodic refresh.
+  Initial prefetch and explicit page/foreground/interstitial recovery are unchanged.
+
 - Fix late SDK initialization followed by a translucent interstitial leaving the app permanently
   marked as backgrounded. Returning to the host without a new `onStart` now preserves foreground
   state, so new banners and page-return replacements can load. Real backgrounding still blocks

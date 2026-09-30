@@ -175,28 +175,125 @@ class AudienzzRefreshControllerTest {
     }
 
     @Test
-    fun `an overdue banner refreshes as soon as it is unblocked`() {
-        // Elapsed time keeps counting while blocked, which is the existing stale-aware resume.
+    fun `six eligible seconds then forty hidden seconds leaves four seconds`() {
+        controller.setIntervalMillis(10_000)
         completeARequest()
+        scheduler.advance(6_000)
         controller.block(RefreshBlockReason.NOT_VISIBLE)
-        scheduler.advance(interval * 2)
-
+        scheduler.advance(40_000)
         controller.unblock(RefreshBlockReason.NOT_VISIBLE)
-
-        assertEquals(0L, scheduler.pendingDelay)
-        scheduler.advance(0)
+        assertEquals(4_000L, scheduler.pendingDelay)
+        scheduler.advance(3_999)
+        assertEquals(emptyList<RefreshRequestReason>(), requests)
+        scheduler.advance(1)
         assertEquals(listOf(RefreshRequestReason.PERIODIC_REFRESH), requests)
     }
 
     @Test
-    fun `an in-date banner waits out the remainder after unblocking`() {
-        completeARequest()
+    fun `every block pauses time and overlapping duplicate blocks do not count twice`() {
+        for (reason in RefreshBlockReason.entries) {
+            requests.clear()
+            controller.setIntervalMillis(10_000)
+            completeARequest()
+            scheduler.advance(6_000)
+            controller.block(reason)
+            scheduler.advance(20_000)
+            controller.block(reason)
+            controller.block(RefreshBlockReason.PUBLISHER)
+            scheduler.advance(20_000)
+            controller.unblock(reason)
+            if (reason != RefreshBlockReason.PUBLISHER) {
+                assertFalse(scheduler.hasPending)
+                scheduler.advance(20_000)
+                controller.unblock(RefreshBlockReason.PUBLISHER)
+            }
+            assertEquals("remaining time for $reason", 4_000L, scheduler.pendingDelay)
+            scheduler.advance(4_000)
+            assertEquals(listOf(RefreshRequestReason.PERIODIC_REFRESH), requests)
+        }
+    }
+
+    @Test
+    fun `prefetch completed while hidden earns no time until visible`() {
+        controller.setIntervalMillis(10_000)
         controller.block(RefreshBlockReason.NOT_VISIBLE)
-        scheduler.advance(10_000)
-
+        completeARequest()
+        scheduler.advance(86_400_000)
         controller.unblock(RefreshBlockReason.NOT_VISIBLE)
+        assertEquals(10_000L, scheduler.pendingDelay)
+        scheduler.advance(9_999)
+        assertTrue(requests.isEmpty())
+        scheduler.advance(1)
+        assertEquals(listOf(RefreshRequestReason.PERIODIC_REFRESH), requests)
+    }
 
-        assertEquals(interval - 10_000, scheduler.pendingDelay)
+    @Test
+    fun `interval changes preserve eligible time without credit for disabled time`() {
+        controller.setIntervalMillis(10_000)
+        completeARequest()
+        scheduler.advance(6_000)
+        controller.setIntervalMillis(0)
+        scheduler.advance(86_400_000)
+        assertFalse(scheduler.hasPending)
+        controller.setIntervalMillis(17_000)
+        assertEquals(11_000L, scheduler.pendingDelay)
+        scheduler.advance(5_000)
+        controller.setIntervalMillis(17_000)
+        controller.scheduleNext()
+        assertEquals(6_000L, scheduler.pendingDelay)
+        scheduler.advance(5_999)
+        assertTrue(requests.isEmpty())
+        scheduler.advance(1)
+        assertEquals(listOf(RefreshRequestReason.PERIODIC_REFRESH), requests)
+    }
+
+    @Test
+    fun `shortening a blocked interval retains only previously earned time`() {
+        completeARequest()
+        scheduler.advance(6_000)
+        controller.block(RefreshBlockReason.NOT_VISIBLE)
+        scheduler.advance(40_000)
+        controller.setIntervalMillis(10_000)
+        controller.unblock(RefreshBlockReason.NOT_VISIBLE)
+        assertEquals(4_000L, scheduler.pendingDelay)
+    }
+
+    @Test
+    fun `multiple visible segments accumulate and the replacement starts a fresh cycle`() {
+        controller.setIntervalMillis(10_000)
+        completeARequest()
+        repeat(3) {
+            scheduler.advance(3_000)
+            controller.block(RefreshBlockReason.NOT_VISIBLE)
+            scheduler.advance(40_000)
+            controller.unblock(RefreshBlockReason.NOT_VISIBLE)
+        }
+        assertEquals(1_000L, scheduler.pendingDelay)
+        scheduler.advance(1_000)
+        assertEquals(1, requests.size)
+        val generation = controller.onRequestStarted(RefreshRequestReason.PERIODIC_REFRESH)
+        scheduler.advance(20_000)
+        controller.onRequestCompleted(generation, true)
+        assertEquals(10_000L, scheduler.pendingDelay)
+        scheduler.advance(9_999)
+        assertEquals(1, requests.size)
+        scheduler.advance(1)
+        assertEquals(2, requests.size)
+    }
+
+    @Test
+    fun `an early cancelled callback cannot consume the remaining interval`() {
+        controller.setIntervalMillis(10_000)
+        completeARequest()
+        scheduler.advance(6_000)
+        controller.block(RefreshBlockReason.NOT_VISIBLE)
+        scheduler.advance(40_000)
+        controller.unblock(RefreshBlockReason.NOT_VISIBLE)
+        scheduler.fireIgnoringCancellation()
+        assertTrue(requests.isEmpty())
+        assertEquals(4_000L, scheduler.pendingDelay)
+        scheduler.advance(4_000)
+        assertEquals(1, requests.size)
     }
 
     @Test
@@ -303,7 +400,7 @@ class AudienzzRefreshControllerTest {
         controller.onRequestCompleted(stale, success = true)
         controller.scheduleNext()
 
-        assertEquals("the banner was already overdue and must stay overdue", 0L, scheduler.pendingDelay)
+        assertFalse("invalidated work must await a new completed request", scheduler.hasPending)
     }
 
     // ── Failures and retries ────────────────────────────────────────────────

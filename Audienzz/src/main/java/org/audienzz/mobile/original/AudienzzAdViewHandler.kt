@@ -270,7 +270,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     }
 
     /**
-     * Page release: stop everything. Cancels any pending stale-aware refresh and stops Prebid's
+     * Page release: stop everything. Cancels any pending periodic refresh and stops Prebid's
      * auto-refresh, so the handler issues no further auctions or GAM loads until its page returns.
      */
     private fun releaseForPage() {
@@ -424,7 +424,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             // its own Activity lifecycle is unaffected.
             runCatching { adView.resume() }
                 .onFailure { Log.w(TAG, "adView.resume() failed for adUnitId=${adView.adUnitId}", it) }
-            // Decide ownership BEFORE unblocking can schedule an overdue periodic request.
+            // Decide ownership BEFORE unblocking can schedule a periodic request.
             if (AudienzzPrebidMobile.hasPendingForegroundRecovery) return
             refreshController.unblock(RefreshBlockReason.APP_BACKGROUND, schedule = false)
             resumeEligibleWork()
@@ -433,7 +433,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     }
 
     /**
-     * Force a fresh auction on screen activation (v2). Unlike [resumeSmartRefresh] (stale-aware),
+     * Force a fresh auction on screen activation (v2). Unlike [resumeSmartRefresh] (remaining eligible time),
      * this always refetches when the ad has loaded before — the "new pageImpression → reload"
      * semantics on screen change.
      */
@@ -446,7 +446,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     }
 
     /**
-     * Force a fresh auction now, ignoring the stale-aware timing of [resumeSmartRefresh].
+     * Force a fresh auction now, ignoring the remaining eligible interval of [resumeSmartRefresh].
      *
      * Public entry point for a manual reload — e.g. the React Native / Flutter bridges reloading a
      * banner when its screen (route/tab) becomes active again, or a publisher triggering a refresh
@@ -684,8 +684,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
 
     /**
      * Enables viewport-aware smart refresh: pauses auto-refresh when the view scrolls off-screen
-     * and resumes — firing immediately if the creative is stale, or after the remaining interval
-     * if not — when it returns to the viewport.
+     * and resumes the remaining eligible interval when it returns to the viewport.
      *
      * Call once after [load]. Stop tracking with [disableSmartRefresh].
      */
@@ -702,8 +701,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         )
         // The listener now only reports visibility. It used to compute the remaining interval and
         // post its own delayed fetch, which is one of the two schedulers that could each issue a
-        // request for the same moment; the controller owns that decision and the stale-aware
-        // resume behaviour is unchanged, because it measures the interval the same way.
+        // request for the same moment. The controller alone measures eligible time and schedules
+        // the remaining interval after a visibility resume.
         smartRefreshListener = adView.addContinuousVisibilityListener(
             useDirectionalGate = useV2,
             onBecameVisible = {
@@ -765,13 +764,9 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     }
 
     /**
-     * Called by the Flutter Dart visibility layer when the ad becomes visible (≥ 20% on screen).
-     * Implements stale-aware logic identical to the [enableSmartRefresh] onBecameVisible block:
-     * - If the ad content is stale (elapsed ≥ refresh interval) → force-fetch demand immediately.
-     * - Otherwise → schedule the next fetch for the remaining interval, then resume auto-refresh.
-     *
-     * This corrects the plain [org.audienzz.mobile.AudienzzAdUnit.resumeAutoRefresh] call which
-     * resets Prebid's timer to 0, ignoring however long the ad has already been displayed.
+     * Called by the Flutter Dart visibility layer when the selected viewport gate allows refresh.
+     * Clears the viewport hold and resumes the remaining eligible interval once every hold clears.
+     * Time spent hidden is excluded; eligible time earned before the pause is retained.
      */
     fun resumeSmartRefresh() {
         hostReportedHidden = false
