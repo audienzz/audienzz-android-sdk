@@ -3,8 +3,8 @@ Audienzz Android SDK
 
 ## Quick integration (remote config + `pageImpression`)
 
-The recommended path: your ad units come from the Audienzz publisher config, and you tell the SDK
-which screen is current. Five steps.
+Initialize once, report navigation, and keep one owner per placement. Remote configuration controls
+banner sizes, lazy loading and refresh; you do not need your own refresh timers.
 
 ### 1. Install
 
@@ -16,110 +16,104 @@ dependencies {
 }
 ```
 
-Latest version on [Maven Central](https://central.sonatype.com/artifact/com.audienzz/sdk). Add your
+Find the release on [Maven Central](https://central.sonatype.com/artifact/com.audienzz/sdk). Add your
 GAM/AdMob app ID to `AndroidManifest.xml` as `com.google.android.gms.ads.APPLICATION_ID`.
+In GAM, leave each banner ad unit's **refresh rate unset**; Audienzz owns refresh.
 
-### 2. Initialize once, in your `Application`
+### 2. Initialize once, from app startup
+
+Run your CMP and forward its result through `AudienzzTargetingParams` before initializing or
+creating ads — see [Consent](#consent). Use one app-wide startup flow shared by every entry route,
+not separate initialization in each ad screen. Call this on the main thread with the application
+context after consent is resolved:
 
 ```kotlin
-class App : Application() {
-    override fun onCreate() {
-        super.onCreate()
-
-        RemoteConfigManager.initialize(
-            publisherId = "YOUR_PUBLISHER_ID",   // provided by Audienzz
-            remoteUrl = "https://api.adnz.co/api/ws-sdk-config/public/v1/",
-        )
-
-        AudienzzPrebidMobile.initializeRemoteSdk(this, "YOUR_PUBLISHER_ID") { status ->
-            if (status == AudienzzInitializationStatus.FAILED) {
-                Log.e(TAG, "Audienzz init failed: $status")
-            }
-        }
+AudienzzPrebidMobile.initializeRemoteSdk(applicationContext, "YOUR_PUBLISHER_ID") { status ->
+    if (status == AudienzzInitializationStatus.FAILED) {
+        // Keep app content available; show an error/retry option for ads.
+    } else {
+        // Ads can be enabled. Report the current page (step 3) before loading its ads.
+        // Server-status warnings still permit Google fallback.
     }
 }
 ```
 
-**In the `Application`, not in an `Activity` or `Fragment`.** An SDK initialized by whichever screen
-happens to open first is not initialized at all when the reader starts somewhere else, and every ad
-on that launch stays empty.
+Use publisher and placement IDs from the production configuration supplied by Audienzz.
+`initializeRemoteSdk` configures the remote manager itself; no separate manager setup is needed.
 
-Run your CMP **before** this and forward the result through `AudienzzTargetingParams` — see
-[Consent](#consent). Initializing first requests ads without the consent signals.
-
-### 3. Report every screen
+### 3. Report navigation, before loading the page's ads
 
 ```kotlin
-// In your navigation callback, before creating the destination's ads:
-AudienzzPrebidMobile.pageImpression(destinationScreen) // Activity, Fragment, or route key
+// Your navigation callback, including the initial destination:
+AudienzzPrebidMobile.pageImpression(destinationScreen) // Activity, Fragment, or route-instance key
 ```
 
-This is the one thing the SDK cannot do for you, and everything else follows from it: it groups a
-visit's ad events, and it is what releases the *previous* screen's banners.
+The report releases the previous page's banners and gives this visit its analytics identity.
+Recommended startup order: **initialization → page report → ad creation/load**. Report only the
+visible destination, not screens that your navigator pre-creates off screen.
 
-**Cold start follows the same order: start SDK initialization → report the visible page → create
-its ads.** Do not create banners first and postpone the page report until the Prebid-ready callback;
-deferred auctions can resume before that callback. Once initialization has started in `Application`,
-page reporting does not need to wait for Prebid. This update also buffers reports received before
-SDK setup and processes them before releasing deferred ads, preserving their occurrence time.
-Report only visible navigation destinations, not fragments merely being pre-created off screen.
+| Situation | Report a new page? |
+|---|---|
+| First visible screen, navigation, tab change, back, or a new article | **Yes**, including destinations with no ads; report before loading their ads |
+| App background → foreground | **No** — native recovery refreshes the active page's banners |
+| SDK interstitial dismissal | **No** — native recovery handles it |
+| Layout, render/rebuild, scrolling, or an ad callback | **No** |
 
-**Report ad-free screens too.** A settings page with no ads still has to be reported — skipping it
-leaves the previous screen's banners auctioning for a screen nobody is looking at.
+A manual `pageImpression` call always starts a new visit, even for the same screen key.
+Automatic recovery keeps `page_impression_id`, `au_page_seq` and `au_slot`; replacement requests
+advance `hb_refresh_count`. Visibility and publisher pauses still apply. Interstitial events keep
+the page captured at prefetch. Actual navigation during an interstitial still needs a page report.
 
-**App background/foreground is the same page visit.** With the native foreground-continuity
-update, minimizing and reopening the app refreshes its active banners (and blanks them when
-blanking is enabled), but sends no new `pageImpression` analytics event. The existing
-`page_impression_id`, `au_page_seq` and `au_slot` remain; each replacement request advances the
-slot's `hb_refresh_count` and gets a fresh auction ID. Visibility, page ownership and publisher
-pause still apply. Do not call `pageImpression` from app-resume callbacks just because the app
-became active. Report actual navigation, including ad-free screens, back navigation and a new
-article. An explicit call still starts a new page impression, even for the same screen.
+Do not report unconditionally from `onResume`: it also runs after app and interstitial returns.
+The automatic return behavior described here is in current `main`; it requires a native release
+containing the page-continuity changes, which postdate `0.3.1`.
 
-**Closing an SDK interstitial also keeps the same page.** The native SDK holds banner refresh
-while it is presented, then replaces the active page's banners with the same page ID and sequence.
-Do not call `pageImpression` from its dismissal callback or simply because the covered screen
-reappeared. A navigation that occurred during the ad remains a new page; dismissal does not
-restore the previous page or repeat that navigation's reload. Failed presentation does not force
-a reload. The interstitial's own analytics keep the page captured at prefetch, even if shown on
-another page. These changes require the matching native continuity release; Flutter also needs
-the updated bridge that removes its old dismissal page report.
-
-
-### 4. Place a banner
+### 4. Place a remote banner
 
 ```kotlin
-val banner = AudienzzRemoteBannerView(context, adConfigId = "YOUR_CONFIG_ID")
+// Keep this as a screen/view property. Use the host Activity/Fragment's context.
+val banner = AudienzzRemoteBannerView(context, adConfigId = "YOUR_BANNER_CONFIG_ID")
 container.addView(banner)
-banner.loadAd()
+banner.loadAd() // after step 3; do not repeat from layout or scroll callbacks
 ```
+
+Give the container a real width and reserve the expected height while loading. Adaptive sizing
+comes from the backend. Lazy loading defaults to `true` with a `200dp` prefetch margin; both are
+backend-controlled.
+
+If multiple destinations share one native host (Compose/custom navigation), call
+`banner.setScreen(routeInstanceKey)` **before `loadAd()`**, using the same key reported in step 3.
+Use a distinct key for each route instance, not just an article route template. See
+[Compose ownership](#jetpack-compose).
+
+Call `banner.destroy()` when its view is permanently discarded (`onDestroyView` for a Fragment,
+`onDestroy` for an Activity, or Compose `onRelease`). Temporary detachment/backgrounding is handled
+by the SDK. For a custom overlay, use `setHostCover(true)` and clear it when the overlay closes.
 
 ### 5. Show an interstitial
 
-Three verbs, and the distinction between them is deliberate:
+Retain one owner per placement in a field. Construct it with the host Activity's context:
 
 ```kotlin
-val interstitial = AudienzzRemoteConfigInterstitial(context, "YOUR_CONFIG_ID")
+val interstitial = AudienzzRemoteConfigInterstitial(activity, "YOUR_INTERSTITIAL_CONFIG_ID")
 
-// Obtain and retain one ad. Never presents.
+// At a prefetch opportunity: cache one ad, never present.
 interstitial.prefetch()
 
-// Present what is in hand, at a moment you chose. Returns false if nothing is ready —
-// it does NOT present later, when the reader has moved on.
-interstitial.show(activity)
+// Later, at a display opportunity: show now if ready, otherwise skip.
+val submitted = interstitial.show(activity, eligible = canShowAd)
 
-// The one call that presents something you did not explicitly time.
-interstitial.prefetchAndShow()
+// Alternative flow: request and present as soon as ready.
+if (canShowAd) interstitial.prefetchAndShow()
 ```
 
-### That's it
-
-You do not have to wait for initialization before creating ads. An auction that would start before
-Prebid is ready is deferred and taken as soon as it is ready — so a banner built during launch fills
-normally rather than losing its one request.
+These are separate event-handler actions, not three calls to run together. `canShowAd` is your
+frequency-cap and screen-policy decision. Use the owner's `Events` callbacks for load/show errors;
+`show()` returning `true` means presentation was submitted, not an impression guarantee. Repeated
+prefetches share an outstanding load or retain the ready ad. Keep the owner through dismissal and
+call `destroy()` when finished. See [interstitial details](#interstitial-ad-remote-config).
 
 ---
-
 
 ## Overview
 
@@ -129,7 +123,7 @@ The implementation includes lazy loading functionality to optimize application p
 > ### ⚠️ Important
 >
 > - **You report every screen.** Call `AudienzzPrebidMobile.pageImpression(...)` on every screen, dialog or popup that can show an ad — including ad-free destinations, because reporting those is what releases the previous screen's banners. There is no automatic tracking: it was removed so that every platform behaves the same way, and so that a screen the SDK cannot see (Jetpack Compose, a custom navigation model) is not a special case. See [Screen reporting](#step-2--screen-reporting).
-> - **Smart Refresh v2 is opt-in.** The screen-aware refresh model (directional viewport gate + pause/reload on screen navigation) is **off by default** — the classic viewport-aware refresh runs unless you enable it via the backend `smartRefreshV2` flag or `AudienzzPrebidMobile.smartRefreshV2Override = true`. See [Smart Refresh](#smart-refresh).
+> - **Page ownership always applies.** Navigation pauses/releases the previous page’s banners regardless of Smart Refresh v2. The opt-in `smartRefreshV2` flag (or `AudienzzPrebidMobile.smartRefreshV2Override`) selects the stricter directional viewport gate only. See [Smart Refresh](#smart-refresh).
 
 ## How screens & ads work (read this first)
 
@@ -147,7 +141,7 @@ to integrating correctly.
   hierarchy cannot distinguish your screens (Compose, or several screens in one Activity), tag each
   banner with the same key you report: `banner.setScreen("home")`.
 - **Lifecycle:** when a screen becomes active, its banners (re)load; when you leave it, they pause;
-  returning reloads them (with Smart Refresh v2). This stops off-screen slots from auctioning and
+  returning reloads them, independently of Smart Refresh v2. This stops off-screen slots from auctioning and
   gives each visit a fresh, viewable ad.
 - **Report ad-free destinations too.** A settings screen with no ads still has to be reported —
   that report is what releases the banners of the screen the reader just left. Skipping it leaves
@@ -368,22 +362,22 @@ override fun onDestroyView() {
 
 ### Smart Refresh v2 (screen-aware) — opt-in
 
-Smart Refresh v2 refines the model in two ways. It is **off by default**; when disabled, the classic behavior above applies unchanged.
+Smart Refresh v2 selects a stricter viewport gate. It is **off by default**; when disabled, the
+classic viewport gate applies. Page ownership and navigation recovery apply in both modes.
 
-**1. Directional visibility gate.** A refresh runs only while the ad's **top edge is fully on screen** and **at least 50% of the ad is visible**. It pauses the moment the top scrolls off (even 1px) or more than half the ad drops below the fold — a stricter, less "wasteful" rule than a plain visible-percentage threshold. The **initial load is unaffected** (the ad still loads as early as possible via lazy/prefetch).
+**Directional visibility gate.** A refresh runs only while the ad's **top edge is fully on screen** and **at least 50% of the ad is visible**. It pauses the moment the top scrolls off (even 1px) or more than half the ad drops below the fold — a stricter, less "wasteful" rule than a plain visible-percentage threshold. The **initial load is unaffected** (the ad still loads as early as possible via lazy/prefetch).
 
-**2. Screen-aware pause & reload.** Refresh is matched to the screen (Activity) the ad lives on. When you open a new screen, the previous screen's banners **pause**; when you navigate back — a new page impression — that screen's banners **reload** with a fresh ad. This is driven entirely by your `pageImpression(...)` calls, so no per-ad wiring is needed.
-
-> **Fragments & tabs:** with automatic [screen tracking](#step-2--screen-tracking-automatic) (default), each Fragment — including ViewPager2 tabs — is a distinct screen, so switching tabs pauses the previous tab's banners and reloads the incoming tab's. (If you disable auto-tracking and report only Activities manually, all fragments in one Activity collapse to a single screen.)
-
-The scroll-off/scroll-back timer is unchanged (stale-aware, respecting your refresh interval); only **screen navigation** forces an immediate reload.
+**Page-aware pause & reload applies in both modes.** Report the destination with `pageImpression`
+before loading its ads. Leaving releases the previous page's banners; returning starts a new visit
+and reloads eligible slots. App foreground and SDK interstitial dismissal instead recover the
+current page without a new analytics visit, as described in the quick guide.
 
 Optionally, set `AudienzzPrebidMobile.blankOnScreenReload = true` to clear the slot (keeping its size, so no layout shift) while a screen-change reload is in progress. The slot is blanked as soon as the page is left, so returning to it never shows the previous screen's creative — you see an empty slot until the fresh ad renders, rather than the old ad followed by a blank. If no replacement auction can start, the previous creative is left in place rather than leaving the slot empty with nothing on the way. Default is off.
 
 Enable it per publisher from the backend remote config (`smartRefreshV2: true` on the publisher config), or locally in the app (the local override wins):
 
 ```kotlin
-// Force the screen-aware model on (or off) regardless of the backend flag.
+// Select the v2 viewport gate regardless of the backend flag.
 AudienzzPrebidMobile.smartRefreshV2Override = true
 ```
 
@@ -772,27 +766,8 @@ The SDK supports a simplified integration using remote configuration. This allow
 
 ### Initialize SDK with Remote Configuration
 
-Before using remote configuration ads, ensure the SDK is properly initialized:
-
-```kotlin
-// 1. Configure remote URL and publisher ID
-RemoteConfigManager.initialize(
-    publisherId = "YOUR_PUBLISHER_ID", // Will be provided for you
-    remoteUrl = "https://api.adnz.co/api/ws-sdk-config/public/v1/" // Audienzz remote config URL
-)
-
-// 2. Initialize SDK with remote configuration support
-AudienzzPrebidMobile.initializeRemoteSdk(
-    context = applicationContext,
-    publisherId = "YOUR_PUBLISHER_ID"
-) { status ->
-    if (status != AudienzzInitializationStatus.FAILED) {
-        Log.d(TAG, "SDK ready with remote config: $status — ${status.description}")
-    } else {
-        Log.e(TAG, "Error during SDK initialization: $status")
-    }
-}
-```
+Follow [quick integration steps 1–3](#quick-integration-remote-config--pageimpression): initialize
+once after consent, report the current destination, then load its ads.
 
 ### Banner Ad (Remote Config)
 
@@ -828,7 +803,8 @@ remoteBannerView.loadAd()
 > key with `AudienzzPrebidMobile.pageImpression("home")`. See [Jetpack Compose](#jetpack-compose).
 
 #### Fixed Size Banner
-To request a specific fixed size for your banner, you can set the layout parameters of the `AudienzzRemoteBannerView` before calling `loadAd()`. If the remote configuration contains matching sizes, they will be used:
+The remote configuration defines requested creative sizes. Layout parameters reserve space; they
+do not override the backend request sizes. For a placement configured as 320×50, for example:
 
 ```kotlin
 remoteBannerView.layoutParams = FrameLayout.LayoutParams(320.dpToPx(), 50.dpToPx(), Gravity.CENTER)
@@ -843,25 +819,18 @@ If adaptive banners are enabled in the remote configuration, the SDK handles the
 remoteBannerView.loadAd()
 ```
 
-**Lifecycle Management:**
-Remember to handle lifecycle events properly:
+**Lifecycle management:** native background/foreground handling is automatic. Keep the owner
+while its screen can return, and destroy it when its view is permanently removed. In an Activity:
 
 ```kotlin
-override fun onResume() {
-    super.onResume()
-    remoteBannerView.onResume()
-}
-
-override fun onPause() {
-    super.onPause()
-    remoteBannerView.onPause()
-}
-
 override fun onDestroy() {
-    super.onDestroy()
     remoteBannerView.destroy()
+    super.onDestroy()
 }
 ```
+
+In a Fragment, destroy in `onDestroyView`; in Compose, use `AndroidView.onRelease`. Do not destroy
+on a temporary detach or add manual refreshes to `onResume`.
 
 ### Interstitial Ad (Remote Config)
 
@@ -912,8 +881,8 @@ Analytics
 
 The SDK reports ad-performance analytics to the Audienzz backend automatically. **All ad-level
 events fire on their own** once the SDK is initialized — you do not wire up bid, impression, click,
-or viewability tracking yourself. The only integration step you must add is one call per
-ad-bearing screen (see [Step 2](#step-2--track-screen-impressions-required)).
+or viewability tracking yourself. Report each navigation visit, including ad-free destinations
+(see [Screen reporting](#step-2--screen-reporting)).
 
 ### What gets collected
 
@@ -941,9 +910,8 @@ resolves company and website IDs. Direct integrations can supply the publisher t
 
 **You report every screen.** Call `pageImpression` when a screen becomes current. Each call fires a
 `pageImpression` analytics event with a fresh page-impression id that tags every ad event of that
-visit, and it is the same signal that drives screen-aware
-[Smart Refresh v2](#smart-refresh-v2-screen-aware--opt-in): entering a screen reloads its banners,
-leaving pauses them.
+visit. It also drives page ownership in **both** refresh modes: entering a screen reloads its
+banners and leaving releases them. Smart Refresh v2 only changes viewport eligibility.
 
 Two forms. Pass the screen object and the name is derived from it, or pass a name of your own:
 
@@ -971,8 +939,8 @@ Every platform now behaves identically — the app always reports.
 > automatic tracking, add a `pageImpression` call to each screen; nothing reports itself any more.
 
 Notes:
-- A dialog or bottom sheet that covers a screen is a screen: report it, and report the screen
-  underneath again when it is dismissed.
+- Report an app-owned dialog or bottom sheet treated as a navigation destination, and report the
+  screen underneath when returning. SDK interstitial dismissal is automatic; do not report it.
 - There is **no `onPause`/teardown counterpart**. If no screen is ever reported, ad events still
   send with a fallback page-impression id; they just aren't tied to a named screen.
 
@@ -988,50 +956,35 @@ two calls that share **one route key**:
    screen that ad belongs to. Without this the banner would resolve to the Activity and never match
    a route key (it would pause on the first navigation and not reload).
 
-The key is any stable, per-screen token (your nav route id works well); it's matched **by value**,
-so the string reported to `pageImpression` and the one passed to `setScreen` just have to be equal.
+Use a stable key **per back-stack entry** (for example `NavBackStackEntry.id`), not a route template
+such as `article/{id}` shared by multiple visits. Keys match by value.
+
+Report from your navigation owner when the active entry changes, including back navigation and
+ad-free destinations. **Finish that report before composing/loading the destination's ads.** A
+`LaunchedEffect` beside an unconditionally created `AndroidView` does not guarantee this order;
+gate ad composition until the report has run. Do not repeat the report on recomposition or resume.
+
+After the navigation owner has reported `routeInstanceKey`, the banner component only needs:
 
 ```kotlin
-// A composable that hosts an Audienzz banner and reports its own screen.
 @Composable
-fun HomeWithAd(route: String = "home") {
-    // Report the screen once per entry (and on every re-entry).
-    LaunchedEffect(route) {
-        AudienzzPrebidMobile.pageImpression(route)
+fun ArticleBanner(routeInstanceKey: String) {
+    key(routeInstanceKey) {
+        AndroidView(
+            factory = { context ->
+                AudienzzRemoteBannerView(context, adConfigId = "YOUR_CONFIG_ID").apply {
+                    setScreen(routeInstanceKey)
+                    loadAd()
+                }
+            },
+            onRelease = { banner -> banner.destroy() },
+        )
     }
-
-    AndroidView(
-        factory = { context ->
-            AudienzzRemoteBannerView(context, adConfigId = "your-config-id").apply {
-                setScreen(route)   // same key you reported above
-                loadAd()
-            }
-        },
-        onRelease = { banner -> banner.destroy() },
-    )
 }
 ```
 
-With Navigation-Compose you can report from a single place instead of inside each screen:
-
-```kotlin
-val navController = rememberNavController()
-val entry by navController.currentBackStackEntryAsState()
-LaunchedEffect(entry?.destination?.route) {
-    entry?.destination?.route?.let { AudienzzPrebidMobile.pageImpression(it) }
-}
-// …still call banner.setScreen(route) on each banner so it's paired to its screen.
-```
-
-Notes:
-- Use the same key for `pageImpression` and `setScreen`. Navigating to another route pauses this
-  screen's banners; navigating back re-fires `pageImpression(route)` and reloads them (with
-  [Smart Refresh v2](#smart-refresh-v2-screen-aware--opt-in)).
-- `setScreen` can be called before or after `loadAd()`.
-- Report ad-free routes as well. `pageImpression` on a settings destination is what releases the
-  previous route's banners.
-- Analytics-only is enough if you don't use Smart Refresh v2: `pageImpression(route)` alone gives
-  correct per-screen `pageImpression`s; `setScreen` only matters for the screen-aware reload.
+The matching `setScreen` is required for page ownership even with Smart Refresh v2 disabled.
+Report only the active destination; an off-screen pre-created tab must not claim the current page.
 
 ### Demand-source attribution (`bidder_code`) — optional GAM setup
 
