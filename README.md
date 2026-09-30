@@ -65,8 +65,7 @@ advance `hb_refresh_count`. Visibility and publisher pauses still apply. Interst
 the page captured at prefetch. Actual navigation during an interstitial still needs a page report.
 
 Do not report unconditionally from `onResume`: it also runs after app and interstitial returns.
-The automatic return behavior described here is in current `main`; it requires a native release
-containing the page-continuity changes, which postdate `0.3.1`.
+The automatic return behavior described here requires Android SDK `0.3.2` or newer.
 
 ### 4. Place a remote banner
 
