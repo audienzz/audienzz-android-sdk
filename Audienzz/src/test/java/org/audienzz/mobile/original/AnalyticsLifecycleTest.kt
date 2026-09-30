@@ -129,19 +129,98 @@ class AnalyticsLifecycleTest {
         val success = events.single { it.eventType == org.audienzz.mobile.event.entity.EventType.VIEWABILITY_SUCCESS }
         assertNotNull(original); assertNotNull(success.auctionId); assertNotEquals(original, success.auctionId)
     }
+    @Test fun bannerViewabilityStartIsOncePerAuctionAcrossInterruptedExposure() {
+        val events = capture(); visible()
+        var draw: ViewTreeObserver.OnPreDrawListener? = null
+        every { view.viewTreeObserver.addOnPreDrawListener(any()) } answers { draw = firstArg() }
+        load(); responses.single()(AudienzzResultCode.NO_BIDS)
+        gamListener.onAdLoaded(); gamListener.onAdImpression()
+        val startType = org.audienzz.mobile.event.entity.EventType.VIEWABILITY_START
+        val successType = org.audienzz.mobile.event.entity.EventType.VIEWABILITY_SUCCESS
+        val auction = requireNotNull(events.single { it.eventType == startType }.auctionId)
+
+        repeat(2) {
+            idle(600)
+            every { view.getGlobalVisibleRect(any()) } returns false
+            requireNotNull(draw).onPreDraw()
+            idle(1_100)
+            assertEquals(0, events.count { it.eventType == successType })
+            visible(); requireNotNull(draw).onPreDraw()
+            assertEquals(1, events.count { it.eventType == startType })
+        }
+        idle(999)
+        assertEquals(0, events.count { it.eventType == successType })
+        idle(1)
+        assertEquals(auction, events.single { it.eventType == successType }.auctionId)
+        every { view.getGlobalVisibleRect(any()) } returns false
+        requireNotNull(draw).onPreDraw()
+        visible(); requireNotNull(draw).onPreDraw(); idle(1_100)
+        assertEquals(1, events.count { it.eventType == startType })
+        assertEquals(1, events.count { it.eventType == successType })
+
+        // A refreshed creative gets a new auction and its own first start and success.
+        handler.reloadAd(); responses.last()(AudienzzResultCode.NO_BIDS)
+        gamListener.onAdLoaded(); gamListener.onAdImpression(); idle(1_000)
+        val starts = events.filter { it.eventType == startType }
+        val successes = events.filter { it.eventType == successType }
+        assertEquals(2, starts.size); assertEquals(2, successes.size)
+        val replacementAuction = requireNotNull(starts.last().auctionId)
+        assertNotEquals(auction, replacementAuction)
+        assertEquals(replacementAuction, successes.last().auctionId)
+    }
+    @Test fun interstitialViewabilityStartIsOncePerAuctionAcrossBackgroundReturns() {
+        val events = capture()
+        AppForegroundMonitor.onActivityStarted(host)
+        val startType = org.audienzz.mobile.event.entity.EventType.VIEWABILITY_START
+        val successType = org.audienzz.mobile.event.entity.EventType.VIEWABILITY_SUCCESS
+        val auctions = mutableSetOf<String>()
+        repeat(2) { index ->
+            val interstitialUnit = mockk<AudienzzInterstitialAdUnit>(relaxed = true)
+            every { interstitialUnit.fetchDemand(any(), any()) } answers {
+                secondArg<(AudienzzResultCode?) -> Unit>()(AudienzzResultCode.NO_BIDS)
+            }
+            val ad = mockk<com.google.android.gms.ads.admanager.AdManagerInterstitialAd>(relaxed = true)
+            var installed: com.google.android.gms.ads.FullScreenContentCallback? = null
+            every { ad.fullScreenContentCallback } answers { installed }
+            every { ad.fullScreenContentCallback = any() } answers { installed = firstArg() }
+            AudienzzInterstitialAdHandler(interstitialUnit, "/fixture/interstitial").load(
+                adLoadCallback = object : org.audienzz.mobile.original.callbacks.AudienzzInterstitialAdLoadCallback() {},
+                resultCallback = { _, _, callback -> callback.onAdLoaded(ad) })
+            val callback = requireNotNull(installed)
+            try {
+                callback.onAdShowedFullScreenContent(); callback.onAdImpression()
+                val auction = requireNotNull(events.last { it.eventType == startType }.auctionId)
+                assertTrue(auctions.add(auction))
+                repeat(2) {
+                    idle(600)
+                    AppForegroundMonitor.onActivityStopped(host); idle(1_100)
+                    assertEquals(index, events.count { it.eventType == successType })
+                    AppForegroundMonitor.onActivityStarted(host)
+                    callback.onAdShowedFullScreenContent()
+                    assertEquals(index + 1, events.count { it.eventType == startType })
+                }
+                idle(999); assertEquals(index, events.count { it.eventType == successType })
+                idle(1)
+                assertEquals(index + 1, events.count { it.eventType == successType })
+                assertEquals(auction, events.last { it.eventType == successType }.auctionId)
+            } finally { callback.onAdDismissedFullScreenContent() }
+        }
+    }
     @Test fun backgroundPreDrawCannotRearmViewabilityTimer() {
         visible()
         var draw: ViewTreeObserver.OnPreDrawListener? = null
         every { view.viewTreeObserver.addOnPreDrawListener(any()) } answers { draw = firstArg() }
         var successes = 0
-        val tracker = ViewabilityTracker(view, onStart = {}, onSuccess = { successes++ })
+        var starts = 0
+        val tracker = ViewabilityTracker(view, onStart = { starts++ }, onSuccess = { successes++ })
         AppForegroundMonitor.onActivityStarted(host)
-        tracker.start(); idle(100)
+        tracker.start(); idle(100); assertEquals(1, starts)
         AppForegroundMonitor.onActivityStopped(host)
         assertFalse(AppForegroundMonitor.isForeground)
         assertNotNull(draw); draw!!.onPreDraw(); idle(1_100)
         assertEquals(0, successes)
         AppForegroundMonitor.onActivityStarted(host); idle(999)
+        assertEquals(1, starts)
         assertEquals(0, successes); idle(1); assertEquals(1, successes)
         draw!!.onPreDraw(); idle(2_000); assertEquals(1, successes)
         tracker.stop()

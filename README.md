@@ -894,7 +894,7 @@ or viewability tracking yourself. Report each navigation visit, including ad-fre
 | `noBid` | The auction returned no usable bid |
 | `adImpression` | The ad is rendered on screen — carries `bidder_code` (the demand that rendered) |
 | `adClick` | The user taps the ad |
-| `viewability.start` | The ad becomes ≥ 50 % visible |
+| `viewability.start` | The ad first becomes ≥ 50 % visible; once for that creative/auction, even after scrolling away and back |
 | `viewability.success` | The ad stays ≥ 50 % visible for 1 continuous second |
 
 Banner, interstitial and rewarded ads on the Original API are all covered.

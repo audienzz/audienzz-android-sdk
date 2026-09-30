@@ -5,7 +5,7 @@ import android.os.Looper
 import android.view.View
 import android.view.ViewTreeObserver
 
-/** One creative's continuous exposure. Starts can repeat after an interruption; success is terminal. */
+/** One creative's exposure. Start is emitted once; success requires a continuous visible second. */
 internal class ViewabilityTracker(
     private val view: View,
     private val thresholdFraction: Float = 0.5f,
@@ -18,6 +18,7 @@ internal class ViewabilityTracker(
     private var observer: ViewTreeObserver? = null
     private var running = false
     private var aboveThreshold = false
+    private var startRecorded = false
     private var generation = 0
     private var pending: Runnable? = null
     private val preDraw = ViewTreeObserver.OnPreDrawListener { refreshVisibility(); true }
@@ -51,7 +52,10 @@ internal class ViewabilityTracker(
         } else if (!aboveThreshold) {
             aboveThreshold = true
             val token = generation
-            onStart()
+            if (!startRecorded) {
+                startRecorded = true
+                onStart()
+            }
             if (!running || token != generation) return
             val action = Runnable {
                 if (!running || token != generation) return@Runnable

@@ -115,9 +115,11 @@ Non-finite or negative values are omitted.
   not independent proof that this bid won the Google auction.
 - `slot_reload` is the string `"0"` for the first slot load, `"1"` after that. It is distinct from
   the numeric request-targeting `hb_refresh_count`, which resets with a page visit.
-- `viewability.start` marks each exposure attempt, so leaving visibility and returning can emit
-  another start for the same creative. `viewability.success` is terminal: at most one per creative
-  after a continuous second at ≥50% visible (or a foreground fullscreen presentation).
+- `viewability.start` is emitted only on the creative's first eligible exposure, with its
+  `auction_id`. Scrolling away/back, uncovering or returning from background restarts the exposure
+  timer without another start for that ad. `viewability.success` is terminal: at most one per
+  creative after a continuous second at ≥50% visible (or a foreground fullscreen presentation).
+  A refreshed creative under a new auction gets its own first start and success.
   Backgrounding, concealment or detachment interrupts exposure. Page release, destruction and a
   received replacement cancel the previous creative's measurement. A duplicate Google load for
   the same known response ID preserves it. Starting a replacement auction alone does not cancel

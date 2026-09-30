@@ -3,7 +3,7 @@ package org.audienzz.mobile.util
 import android.os.Handler
 import android.os.Looper
 
-/** One fullscreen presentation. Exposure restarts on foreground; duplicate shown callbacks do not. */
+/** One fullscreen presentation. Foreground restarts exposure, but never emits another start. */
 internal class FullScreenViewabilityTimer(
     private val successDurationMs: Long = 1_000L,
     private val onStart: () -> Unit,
@@ -12,6 +12,7 @@ internal class FullScreenViewabilityTimer(
     private val handler = Handler(Looper.getMainLooper())
     private var shown = false
     private var measuring = false
+    private var startRecorded = false
     private var terminal = false
     private var generation = 0
     private var pending: Runnable? = null
@@ -26,7 +27,10 @@ internal class FullScreenViewabilityTimer(
         if (!shown || terminal || measuring || !AppForegroundMonitor.isForeground) return
         measuring = true
         val token = generation
-        onStart()
+        if (!startRecorded) {
+            startRecorded = true
+            onStart()
+        }
         if (!shown || terminal || token != generation) return
         val action = Runnable {
             if (!shown || terminal || token != generation) return@Runnable
