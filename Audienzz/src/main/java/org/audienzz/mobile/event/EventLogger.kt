@@ -18,7 +18,7 @@ internal interface EventLogger {
 
     fun logEvent(event: EventDomain)
 
-    fun onScreenResumed(screenName: String)
+    fun onScreenResumed(screenName: String, timestamp: Long = System.currentTimeMillis())
 
     fun capturePageContext(): AnalyticsPageContext = AnalyticsPageContext()
 }

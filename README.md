@@ -57,6 +57,13 @@ AudienzzPrebidMobile.pageImpression(destinationScreen) // Activity, Fragment, or
 This is the one thing the SDK cannot do for you, and everything else follows from it: it groups a
 visit's ad events, and it is what releases the *previous* screen's banners.
 
+**Cold start follows the same order: start SDK initialization → report the visible page → create
+its ads.** Do not create banners first and postpone the page report until the Prebid-ready callback;
+deferred auctions can resume before that callback. Once initialization has started in `Application`,
+page reporting does not need to wait for Prebid. This update also buffers reports received before
+SDK setup and processes them before releasing deferred ads, preserving their occurrence time.
+Report only visible navigation destinations, not fragments merely being pre-created off screen.
+
 **Report ad-free screens too.** A settings page with no ads still has to be reported — skipping it
 leaves the previous screen's banners auctioning for a screen nobody is looking at.
 

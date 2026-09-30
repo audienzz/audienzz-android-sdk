@@ -66,12 +66,13 @@ internal class EventLoggerImpl @Inject constructor(
         }
     }
 
-    override fun onScreenResumed(screenName: String) {
+    override fun onScreenResumed(screenName: String, timestamp: Long) {
         val page = AnalyticsPageContext(generateUuidString(), screenName)
         currentPageContext = page
         logEvent(
             EventDomain(
                 eventType = EventType.PAGE_IMPRESSION,
+                timestamp = timestamp,
                 pageContext = page,
                 screenName = screenName,
                 // Guarded: reading Prebid targeting touches org.json, which is unavailable in plain

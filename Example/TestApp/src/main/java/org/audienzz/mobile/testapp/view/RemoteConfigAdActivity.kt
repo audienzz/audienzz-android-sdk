@@ -23,6 +23,18 @@ class RemoteConfigAdActivity : AppCompatActivity() {
         setContentView(R.layout.activity_remote_config_ad)
         title = "Remote Config Ad Screen"
 
+        // Same transition as the system back gesture, just discoverable. Finishing is what makes
+        // the Remote Config tab current again, which is the half of this test that matters.
+        findViewById<Button>(R.id.btnClose).setOnClickListener { finish() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        App.reportScreenIfChanged(this)
+        if (banner == null) createBanner()
+    }
+
+    private fun createBanner() {
         val container = findViewById<FrameLayout>(R.id.bannerContainer)
         val b = AudienzzRemoteBannerView(this, BANNER_CONFIG_ID)
         banner = b
@@ -34,15 +46,6 @@ class RemoteConfigAdActivity : AppCompatActivity() {
             ),
         )
         b.loadAd()
-
-        // Same transition as the system back gesture, just discoverable. Finishing is what makes
-        // the Remote Config tab current again, which is the half of this test that matters.
-        findViewById<Button>(R.id.btnClose).setOnClickListener { finish() }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        App.reportScreenIfChanged(this)
     }
 
     override fun onDestroy() {

@@ -65,36 +65,16 @@ class RemoteConfigStickyFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        if (AudienzzPrebidMobile.isSdkInitialized) {
-            App.reportScreenIfChanged(this)
-        } else {
-            // Cold start: onResume runs before initialization finishes, so this screen would
-            // otherwise never report its FIRST page impression — only later ones, after navigating.
-            App.whenSdkReady { if (isResumed) App.reportScreenIfChanged(this) }
-        }
+        // Application has started SDK setup; the page need not wait for Prebid readiness.
+        // Build slots only after reporting, including when setup finished before this view existed.
+        App.reportScreenIfChanged(this)
+        if (remoteBannerViews.isEmpty()) loadBanners(requireView())
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
         scrollView = view.findViewById(R.id.remoteConfigScrollView)
-
-        // Built immediately, deliberately — a publisher should not have to wait for initialization
-        // before creating ads, and since the SDK defers an auction until Prebid is ready this is
-        // exactly the case that used to leave the first (above-the-fold) banner empty for the whole
-        // session. Leaving it un-gated here keeps that regression visible in the demo app.
-
-        // Section 1 — plain banner (non-sticky)
-        loadBannerInto(view.findViewById(R.id.bannerContainer1), BANNER_CONFIG_ID)
-
-        // Section 2 — sticky banner
-        loadStickyBannerInto(view.findViewById(R.id.stickyContainer1), BANNER_CONFIG_ID)
-
-        // Section 3 — adaptive banner (non-sticky)
-        loadBannerInto(view.findViewById(R.id.bannerContainer2), ADAPTIVE_CONFIG_ID)
-
-        // Section 4 — sticky banner
-        loadStickyBannerInto(view.findViewById(R.id.stickyContainer2), BANNER_CONFIG_ID)
 
         interstitialStatus = view.findViewById(R.id.interstitialStatus)
         setInterstitialStatus("not loaded")
@@ -138,6 +118,20 @@ class RemoteConfigStickyFragment : Fragment() {
     }
 
     // ── Ad loading helpers ─────────────────────────────────────────────────────────────────────
+
+    private fun loadBanners(view: View) {
+        // Section 1 — plain banner (non-sticky)
+        loadBannerInto(view.findViewById(R.id.bannerContainer1), BANNER_CONFIG_ID)
+
+        // Section 2 — sticky banner
+        loadStickyBannerInto(view.findViewById(R.id.stickyContainer1), BANNER_CONFIG_ID)
+
+        // Section 3 — adaptive banner (non-sticky)
+        loadBannerInto(view.findViewById(R.id.bannerContainer2), ADAPTIVE_CONFIG_ID)
+
+        // Section 4 — sticky banner
+        loadStickyBannerInto(view.findViewById(R.id.stickyContainer2), BANNER_CONFIG_ID)
+    }
 
     private fun loadBannerInto(container: FrameLayout, configId: String) {
         val banner = AudienzzRemoteBannerView(requireContext(), configId)

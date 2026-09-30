@@ -132,12 +132,16 @@ object AudienzzPrebidMobile {
         get() = AudienzzDiagnostics.isEnabled
         set(value) { AudienzzDiagnostics.isEnabled = value }
 
-    /** Single sink for both the auto tracker and the manual API: page impression + v2 coordinator. */
-    private fun notifyScreenResumed(screen: Any, screenName: String) {
+    private data class PendingPageReport(val screen: Any, val name: String, val timestamp: Long)
+    private val pendingPageReports = java.util.ArrayDeque<PendingPageReport>()
+    private var drainingPageReports = false
+
+    /** Explicit page reports may precede the dependency graph, but must precede its ads. */
+    private fun notifyScreenResumed(screen: Any, screenName: String, timestamp: Long = System.currentTimeMillis()) {
         // A bridge can call off-main. Publish the analytics ID and transition the slots together,
         // so an old-page refresh cannot capture the incoming page before its release is applied.
         if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
-            foregroundHandler.post { notifyScreenResumed(screen, screenName) }
+            foregroundHandler.post { notifyScreenResumed(screen, screenName, timestamp) }
             return
         }
         android.util.Log.d(TAG, "pageImpression: firing → \"$screenName\"")
@@ -150,20 +154,42 @@ object AudienzzPrebidMobile {
         // foreground visit so an activation arriving afterwards doesn't schedule a duplicate.
         reportedInThisForegroundVisit = true
         cancelPendingForegroundRecovery()
-        eventLogger?.onScreenResumed(screenName)
-        // Ads are page-scoped unconditionally. This is NOT gated on isSmartRefreshV2Enabled(), which
-        // now only selects the viewport gate used for scroll pause/resume: every page impression
-        // releases the previous page's banners and recreates the incoming page's, so a banner can
-        // never keep auctioning for a screen the user has left.
-        org.audienzz.mobile.screen.screenAdCoordinator?.onScreenResumed(screen, screenName)
-        // Emitted only once the transition is complete. An observer is free to report another page
-        // — the bridges hand this to app code — and running it mid-transition let that nested
-        // report finish first, after which this call's sweep overwrote it with the older page.
-        // The ROUTING key, not the display name. A bridge matches its banners against the token the
-        // coordinator is now holding, so emitting the name would leave every bridge banner unable to
-        // recognise its own page impression whenever the two differ. They are identical for a
-        // name-only report, so nothing changes for an app that never supplies an id.
-        pageImpressionObserver?.invoke(screen as? String ?: screenName)
+        pendingPageReports.addLast(PendingPageReport(screen, screenName, timestamp))
+        drainPendingPageReports()
+    }
+
+    @MainThread
+    internal fun drainPendingPageReports() {
+        if (drainingPageReports || pendingPageReports.isEmpty()) return
+        val coordinator = org.audienzz.mobile.screen.screenAdCoordinator ?: return
+        val logger = eventLogger
+        drainingPageReports = true
+        try {
+            while (pendingPageReports.isNotEmpty()) {
+                val (screen, screenName, timestamp) = pendingPageReports.removeFirst()
+                logger?.onScreenResumed(screenName, timestamp)
+                // Ads are page-scoped unconditionally. This is NOT gated on isSmartRefreshV2Enabled(), which
+                // now only selects the viewport gate used for scroll pause/resume: every page impression
+                // releases the previous page's banners and recreates the incoming page's, so a banner can
+                // never keep auctioning for a screen the user has left.
+                coordinator.onScreenResumed(screen, screenName)
+                // Emitted only once the transition is complete. An observer is free to report another page
+                // — the bridges hand this to app code — and running it mid-transition let that nested
+                // report finish first, after which this call's sweep overwrote it with the older page.
+                // The ROUTING key, not the display name. A bridge matches its banners against the token the
+                // coordinator is now holding, so emitting the name would leave every bridge banner unable to
+                // recognise its own page impression whenever the two differ. They are identical for a
+                // name-only report, so nothing changes for an app that never supplies an id.
+                pageImpressionObserver?.invoke(screen as? String ?: screenName)
+            }
+        } finally {
+            drainingPageReports = false
+        }
+    }
+
+    internal fun resetPendingPageReportsForTesting() {
+        pendingPageReports.clear()
+        drainingPageReports = false
     }
 
     /**
@@ -636,6 +662,7 @@ object AudienzzPrebidMobile {
         }
         registerActivityCallbacks(context)
         MainComponent.init(context)
+        drainPendingPageReports()
         configureGam(context, GamConfig(appVolume = appVolume))
         PrebidMobile.initializeSdk(context, prebidServerUrl ?: audienzzHost.hostUrl, listener)
     }
@@ -661,6 +688,7 @@ object AudienzzPrebidMobile {
 
         this.publisherId = publisherId
         org.audienzz.mobile.event.AnalyticsContext.setPublisherId(publisherId)
+        drainPendingPageReports()
 
         MainComponent.remoteConfigManager?.let { manager ->
             manager.initialize(publisherId)

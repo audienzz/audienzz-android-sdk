@@ -644,7 +644,7 @@ class AudienzzAdViewHandlerTest {
         try {
             every { org.audienzz.mobile.di.MainComponent.eventLogger } returns logger
             every { logger.capturePageContext() } answers { page }
-            every { logger.onScreenResumed(any()) } answers {
+            every { logger.onScreenResumed(any(), any()) } answers {
                 page = org.audienzz.mobile.event.AnalyticsPageContext(java.util.UUID.randomUUID().toString(), firstArg())
             }
             every { logger.logEvent(capture(events)) } returns Unit

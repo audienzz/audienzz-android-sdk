@@ -297,6 +297,10 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * leaves the ad unit reusable: the next [fetchDemand] builds a fresh loader.
      */
     private fun retireCurrentAuction() {
+        // A superseded initial delivery never completed. Keep its replacement initial, even
+        // when Prebid had already answered and Google was still loading. Completed deliveries
+        // (including no-fill/failure) keep the existing refresh/retry classification.
+        if (lastRefreshTime == 0L) isFirstDemandFetch = true
         // Retires the outstanding Prebid loader and any scheduled work, WITHOUT recording a block
         // reason. It used to route through pauseSmartRefresh(), which now means "not visible" — so
         // a page transition left the banner permanently blocked on a visibility reason that nothing
