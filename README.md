@@ -6,17 +6,23 @@ Audienzz Android SDK
 Initialize once, report navigation, and keep one owner per placement. Remote configuration controls
 banner sizes, lazy loading and refresh; you do not need your own refresh timers.
 
+**Start here for RemoteBanners and remote interstitials.** Follow steps 1–5 in order. The Original
+and Rendering API examples later in this document are separate, advanced integrations.
+Ask Audienzz for your **publisher ID** and **banner/interstitial configuration IDs**; use your own
+Google Mobile Ads **app ID**. GAM ad-unit paths and Prebid placement IDs come from remote config.
+
 ### 1. Install
 
 ```gradle
 repositories { mavenCentral() }
 
 dependencies {
-  implementation 'com.audienzz:sdk:{latest_version}'
+  implementation 'com.audienzz:sdk:0.3.3'
 }
 ```
 
-Find the release on [Maven Central](https://central.sonatype.com/artifact/com.audienzz/sdk). Add your
+This guide targets Android SDK **0.3.3** (minimum Android API **24**). Find releases on
+[Maven Central](https://central.sonatype.com/artifact/com.audienzz/sdk). Add your
 GAM/AdMob app ID to `AndroidManifest.xml` as `com.google.android.gms.ads.APPLICATION_ID`.
 In GAM, leave each banner ad unit's **refresh rate unset**; Audienzz owns refresh.
 
@@ -89,8 +95,13 @@ Call `banner.destroy()` when its view is permanently discarded (`onDestroyView` 
 `onDestroy` for an Activity, or Compose `onRelease`). Temporary detachment/backgrounding is handled
 by the SDK. For a custom overlay, use `setHostCover(true)` and clear it when the overlay closes.
 
-Periodic refresh uses backend `config.refreshTimeSeconds` and pauses its clock while ineligible.
-Android SDK `0.3.3` defaults to 10 eligible seconds; see [Smart Refresh](#smart-refresh).
+Periodic refresh uses backend `config.refreshTimeSeconds`: missing/null means **10 seconds**,
+`0` disables periodic refresh, and an explicit value such as `7` or `30` is respected.
+The clock starts after loading completes and advances only while the banner is attached, on the
+active page, in the foreground, allowed by the viewport gate, and not paused or covered by an SDK
+interstitial or a reported overlay. Hidden time does not count; returning resumes the remaining
+time. With `7`, the next request starts after **seven eligible seconds**, then needs time to load.
+Navigation/foreground/interstitial recovery is separate from this timer. See [Smart Refresh](#smart-refresh).
 
 ### 5. Show an interstitial
 
@@ -114,6 +125,14 @@ frequency-cap and screen-policy decision. Use the owner's `Events` callbacks for
 `show()` returning `true` means presentation was submitted, not an impression guarantee. Repeated
 prefetches share an outstanding load or retain the ready ad. Keep the owner through dismissal and
 call `destroy()` when finished. See [interstitial details](#interstitial-ad-remote-config).
+
+### Verify the integration
+
+- Open the app directly on an ad screen: report one page before its first ad request.
+- Scroll a banner off-screen and back: periodic refresh pauses, then counts the remaining eligible time.
+- Navigate to an ad-free screen and back: the hidden page stops requesting; each visit gets a new PI.
+- Background/restore the app and show/dismiss an interstitial: eligible banners recover without a
+  new PI. Try `prefetch()` → `show()` twice with the same interstitial owner.
 
 ---
 
@@ -189,7 +208,7 @@ repositories {
 }
 
 dependencies {
-  implementation 'com.audienzz:sdk:{latest_version}}'
+  implementation 'com.audienzz:sdk:0.3.3'
 }
 ```
 
@@ -207,13 +226,17 @@ SDK or load any ads:
 1. Show your CMP and obtain the user's choice.
 2. Forward the consent signals (GDPR subject, TCF consent string, purpose
    consents) via `AudienzzTargetingParams`.
-3. **Then** call `AudienzzPrebidMobile.initializeSdk(...)` and load ads.
+3. **Then** initialize using the [remote startup flow](#2-initialize-once-from-app-startup),
+   report the current page and load ads. Manual integrations use `initializeSdk(...)` instead.
 
 Initializing or loading ads before consent will request ads without the consent
 signals.
 
 Initialize SDK
 -------
+The following is the **manual configuration** entry point. Remote integrations use
+`initializeRemoteSdk(...)` from the quick guide; do not run both startup flows.
+
 Initialize the SDK with a context. The asynchronous callback returns `SUCCEEDED`,
 `SERVER_STATUS_WARNING`, or `FAILED`. Both success and warning allow Original API / remote
 Google ads to load. A warning can mean Prebid is unavailable: Google demand continues without
