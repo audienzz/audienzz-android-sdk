@@ -5,6 +5,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **Behavior change: a remote banner without a refresh interval no longer refreshes.** When the ad
+  config's `refreshTimeSeconds` is missing or `null`, the banner now has no periodic refresh (same
+  as `0`) instead of the 10-second fallback introduced in 0.3.3. Explicit backend values are
+  unchanged. Initial prefetch and page/foreground/interstitial recovery reloads still apply.
 - Fix backend app volume being ignored: the publisher config's `gamConfig.appVolume` is now read
   (the SDK looked for `setAppVolume`, which the backend never sends, so ads always started muted).
   The legacy `setAppVolume` key is still accepted.
