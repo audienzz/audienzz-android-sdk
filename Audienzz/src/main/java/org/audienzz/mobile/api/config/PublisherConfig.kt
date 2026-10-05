@@ -1,11 +1,13 @@
 package org.audienzz.mobile.api.config
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.nullable
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonNames
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.SerialName
@@ -52,9 +54,12 @@ data class PublisherConfig(
 data class GamConfig(
     /**
      * Global app volume for GMA ad audio. Range: 0.0 (muted) – 1.0 (full volume).
-     * Defaults to 0.0 (muted) if absent.
+     * Defaults to 0.0 (muted) if absent. The backend sends `appVolume`; the legacy key
+     * `setAppVolume` (what the SDK used to read) is still accepted.
      */
-    @SerialName("setAppVolume")
+    @OptIn(ExperimentalSerializationApi::class)
+    @SerialName("appVolume")
+    @JsonNames("setAppVolume")
     val appVolume: Float? = 0f,
 )
 

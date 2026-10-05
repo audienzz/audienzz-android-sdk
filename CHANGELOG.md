@@ -5,6 +5,10 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Fix backend app volume being ignored: the publisher config's `gamConfig.appVolume` is now read
+  (the SDK looked for `setAppVolume`, which the backend never sends, so ads always started muted).
+  The legacy `setAppVolume` key is still accepted.
+
 - Fix late SDK initialization followed by a translucent interstitial leaving the app permanently
   marked as backgrounded. Returning to the host without a new `onStart` now preserves foreground
   state, so new banners and page-return replacements can load. Real backgrounding still blocks
