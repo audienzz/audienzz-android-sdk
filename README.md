@@ -637,7 +637,7 @@ A `FrameLayout` that reserves a block of vertical space in the layout and keeps 
 
 | Name | Parameters | Description |
 |---|---|---|
-| `AudienzzStickyAdWrapperView` | `context: Context`, `attrs: AttributeSet? = null`, `defStyleAttr: Int = 0`, `maxHeightDp: Int = 600` | Creates a sticky wrapper. `maxHeightDp` is the vertical space reserved in the layout (default 600 dp). |
+| `AudienzzStickyAdWrapperView` | `context: Context`, `attrs: AttributeSet? = null`, `defStyleAttr: Int = 0`, `maxHeightDp: Int? = null` | Creates a sticky wrapper. `maxHeightDp` is the vertical space reserved in the layout; `null` uses the ad config's `stickyMaxHeight` (with `adConfigId` set), else 600 dp. It must be at least the tallest ad size, or the ad is cut off. |
 
 **Properties:**
 
@@ -1040,7 +1040,7 @@ Sticky Ad
 
 ### Layout
 
-Place the wrapper's container inside your `NestedScrollView` (or `ScrollView`) at the position where the ad should appear. The wrapper will reserve exactly `maxHeightDp` pixels of vertical space:
+Place the wrapper's container inside your `NestedScrollView` (or `ScrollView`) at the position where the ad should appear. The wrapper reserves exactly its max height (`maxHeightDp`, else the ad config's `stickyMaxHeight`, else 600 dp) of vertical space. **The reservation must be at least as tall as the tallest ad size**: the ad is never taller than the reserved space, so a 300x600 creative in a 300 dp reservation is cut in half.
 
 ```xml
 <androidx.core.widget.NestedScrollView
@@ -1083,11 +1083,10 @@ private fun loadStickyAd() {
         override fun onAdFailedToLoad(error: LoadAdError) { /* handle error */ }
     })
 
-    // 2. Create the sticky wrapper
-    sticky = AudienzzStickyAdWrapperView(
-        context = requireContext(),
-        maxHeightDp = 300,  // vertical space reserved in the layout
-    ).apply {
+    // 2. Create the sticky wrapper. Without maxHeightDp the reserved height comes from the ad
+    //    config's stickyMaxHeight, else 600 dp — keep it at least the tallest configured size.
+    sticky = AudienzzStickyAdWrapperView(requireContext()).apply {
+        adConfigId = "YOUR_CONFIG_ID"
         setAdView(banner)
     }
 

@@ -151,10 +151,11 @@ class RemoteConfigStickyFragment : Fragment() {
         val banner = AudienzzRemoteBannerView(requireContext(), configId)
         remoteBannerViews += banner
 
-        val sticky = AudienzzStickyAdWrapperView(
-            context = requireContext(),
-            maxHeightDp = STICKY_MAX_HEIGHT_DP,
-        ).apply {
+        // No maxHeightDp: the reserved height comes from the ad config's `stickyMaxHeight`, else
+        // the 600 dp default. It must fit the tallest configured size (46 serves 300x600); a
+        // smaller reservation cuts the creative off.
+        val sticky = AudienzzStickyAdWrapperView(requireContext()).apply {
+            adConfigId = configId
             isVisibilityGateEnabled = false
             setAdView(banner)
         }
@@ -240,6 +241,5 @@ class RemoteConfigStickyFragment : Fragment() {
         const val BANNER_CONFIG_ID = "46"
         const val ADAPTIVE_CONFIG_ID = "48"
         const val INTERSTITIAL_CONFIG_ID = "47"
-        const val STICKY_MAX_HEIGHT_DP = 300
     }
 }
