@@ -17,11 +17,11 @@ Google Mobile Ads **app ID**. GAM ad-unit paths and Prebid placement IDs come fr
 repositories { mavenCentral() }
 
 dependencies {
-  implementation 'com.audienzz:sdk:0.3.3'
+  implementation 'com.audienzz:sdk:0.3.4'
 }
 ```
 
-This guide targets Android SDK **0.3.3** (minimum Android API **24**). Find releases on
+This guide targets Android SDK **0.3.4** (minimum Android API **24**). Find releases on
 [Maven Central](https://central.sonatype.com/artifact/com.audienzz/sdk). Add your
 GAM/AdMob app ID to `AndroidManifest.xml` as `com.google.android.gms.ads.APPLICATION_ID`.
 In GAM, leave each banner ad unit's **refresh rate unset**; Audienzz owns refresh.
@@ -208,7 +208,7 @@ repositories {
 }
 
 dependencies {
-  implementation 'com.audienzz:sdk:0.3.3'
+  implementation 'com.audienzz:sdk:0.3.4'
 }
 ```
 
