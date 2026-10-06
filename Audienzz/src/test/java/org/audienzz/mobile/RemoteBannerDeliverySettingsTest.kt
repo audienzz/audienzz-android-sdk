@@ -122,8 +122,8 @@ class RemoteBannerDeliverySettingsTest {
         assertEquals(600, loadedMargin)
     }
 
-    @Test fun `backend refresh seconds and missing fallback reach the actual ad unit`() {
-        for ((seconds, expected) in listOf(null to 10_000L, 10 to 10_000L, 17 to 17_000L, 5 to 5_000L, 600 to 600_000L, 0 to 0L, -1 to 0L)) {
+    @Test fun `backend refresh seconds reach the actual ad unit and missing means no refresh`() {
+        for ((seconds, expected) in listOf(null to 0L, 10 to 10_000L, 17 to 17_000L, 5 to 5_000L, 600 to 600_000L, 0 to 0L, -1 to 0L)) {
             loadedLazy = null
             seed(config(refreshSeconds = seconds))
             val remote = view()

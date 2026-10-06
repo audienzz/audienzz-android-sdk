@@ -343,7 +343,8 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         ).apply {
             bannerParameters = parameters
 
-            setAutoRefreshInterval(config.config.refreshTimeSeconds ?: DEFAULT_REFRESH_SECONDS)
+            // A missing/null refreshTimeSeconds means no periodic refresh, the same as an explicit 0.
+            setAutoRefreshInterval(config.config.refreshTimeSeconds ?: 0)
         }
 
         adUnit = adUnitLocal
@@ -412,7 +413,6 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
 
     companion object {
         private const val TAG = "AudienzzRemoteConfigBannerView"
-        private const val DEFAULT_REFRESH_SECONDS = 10
         private const val DEFAULT_PREFETCH_DISTANCE_DP = 200
 
         /**

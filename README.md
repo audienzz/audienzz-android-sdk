@@ -17,11 +17,11 @@ Google Mobile Ads **app ID**. GAM ad-unit paths and Prebid placement IDs come fr
 repositories { mavenCentral() }
 
 dependencies {
-  implementation 'com.audienzz:sdk:0.3.3'
+  implementation 'com.audienzz:sdk:0.3.4'
 }
 ```
 
-This guide targets Android SDK **0.3.3** (minimum Android API **24**). Find releases on
+This guide targets Android SDK **0.3.4** (minimum Android API **24**). Find releases on
 [Maven Central](https://central.sonatype.com/artifact/com.audienzz/sdk). Add your
 GAM/AdMob app ID to `AndroidManifest.xml` as `com.google.android.gms.ads.APPLICATION_ID`.
 In GAM, leave each banner ad unit's **refresh rate unset**; Audienzz owns refresh.
@@ -95,8 +95,8 @@ Call `banner.destroy()` when its view is permanently discarded (`onDestroyView` 
 `onDestroy` for an Activity, or Compose `onRelease`). Temporary detachment/backgrounding is handled
 by the SDK. For a custom overlay, use `setHostCover(true)` and clear it when the overlay closes.
 
-Periodic refresh uses backend `config.refreshTimeSeconds`: missing/null means **10 seconds**,
-`0` disables periodic refresh, and an explicit value such as `7` or `30` is respected.
+Periodic refresh uses backend `config.refreshTimeSeconds`: missing/null or `0` means **no
+periodic refresh**, and an explicit value such as `7` or `30` is respected.
 The clock starts after loading completes and advances only while the banner is attached, on the
 active page, in the foreground, allowed by the viewport gate, and not paused or covered by an SDK
 interstitial or a reported overlay. Hidden time does not count; returning resumes the remaining
@@ -208,7 +208,7 @@ repositories {
 }
 
 dependencies {
-  implementation 'com.audienzz:sdk:0.3.3'
+  implementation 'com.audienzz:sdk:0.3.4'
 }
 ```
 
@@ -361,8 +361,8 @@ blocks it. Pausing preserves accrued time. With a 10-second interval, 6 eligible
 by 40 hidden seconds leave 4 eligible seconds before the next request. A fresh interval starts
 after each request completes; time spent loading does not count.
 
-Remote banners read `config.refreshTimeSeconds` from the backend: missing/null defaults to **10
-seconds**, `0` disables periodic refresh, and positive values are honored without the former
+Remote banners read `config.refreshTimeSeconds` from the backend: missing/null or `0` means **no
+periodic refresh** for that placement, and positive values are honored without the former
 30-second minimum. An explicit backend value of `30` still means 30 eligible seconds. Initial
 prefetch, explicit page changes, foreground recovery and interstitial-dismissal recovery keep
 their existing behavior. No publisher timer is needed.

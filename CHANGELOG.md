@@ -3,19 +3,22 @@
 All notable changes to the Audienzz Android SDK are documented here. This project
 adheres to [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.3.4
 
+- **Behavior change: a remote banner without a refresh interval no longer refreshes.** When the ad
+  config's `refreshTimeSeconds` is missing or `null`, the banner now has no periodic refresh (same
+  as `0`) instead of the 10-second fallback introduced in 0.3.3. Explicit backend values are
+  unchanged. Initial prefetch and page/foreground/interstitial recovery reloads still apply.
 - Fix backend app volume being ignored: the publisher config's `gamConfig.appVolume` is now read
   (the SDK looked for `setAppVolume`, which the backend never sends, so ads always started muted).
   The legacy `setAppVolume` key is still accepted.
+
+## 0.3.3
 
 - Fix late SDK initialization followed by a translucent interstitial leaving the app permanently
   marked as backgrounded. Returning to the host without a new `onStart` now preserves foreground
   state, so new banners and page-return replacements can load. Real backgrounding still blocks
   refresh. This native fix is also required by the Flutter Android interstitial-return update.
-
-## 0.3.3
-
 - Banner periodic refresh now counts only eligible time, preserving the remaining interval across
   visibility, attachment, app, page, cover and publisher holds. Loading time is excluded.
 - Remote banners use backend `config.refreshTimeSeconds`, defaulting to 10 seconds when absent/null.
