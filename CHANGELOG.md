@@ -3,6 +3,15 @@
 All notable changes to the Audienzz Android SDK are documented here. This project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- New analytics event `placementVisible` (banners) for fill rate: sent once per auction when at
+  least 1 px of the slot is on screen with the app in the foreground after the auction ended,
+  filled or not. Carries `auction_id` (same as `adImpression`), `slot_reload` and `ad_unit_code`.
+  Never sent for a slot that does not appear; a refresh or leaving the page closes the auction.
+- Analytics field `publisher_id` is renamed `sdk_id` (same ws-sdk-config id). Events queued by an
+  older version are re-sent under the new name.
+
 ## 0.3.4
 
 - **Behavior change: a remote banner without a refresh interval no longer refreshes.** When the ad

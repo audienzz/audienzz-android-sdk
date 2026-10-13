@@ -930,12 +930,13 @@ or viewability tracking yourself. Report each navigation visit, including ad-fre
 | `adClick` | The user taps the ad |
 | `viewability.start` | The ad first becomes ≥ 50 % visible; once for that creative/auction, even after scrolling away and back |
 | `viewability.success` | The ad stays ≥ 50 % visible for 1 continuous second |
+| `placementVisible` | Banner slot first has ≥ 1 px on screen, app in foreground, after its auction ended (filled or not); once per auction — `auction_id`, `slot_reload`, `ad_unit_code` |
 
 Banner, interstitial and rewarded ads on the Original API are all covered.
 
 ### Step 1 — Initialize the SDK
 
-Analytics uses the **publisher ID** from remote configuration as `publisher_id`; the collector
+Analytics sends the ws-sdk-config **publisher ID** from remote configuration as `sdk_id`; the collector
 resolves company and website IDs. Direct integrations can supply the publisher through
 `configureAnalytics`. See [the analytics contract](docs/analytics-contract.md).
 
@@ -1232,7 +1233,7 @@ for page resets, automatic slot ordering and request-count semantics. No new pub
 
 ### Analytics environments and publisher identity
 
-Remote initialization supplies the ws-sdk-config `publisher_id` automatically (including Flutter).
+Remote initialization supplies the ws-sdk-config id as `sdk_id` automatically (including Flutter).
 The collector resolves company and website IDs. Analytics defaults to `environment=production`;
 set `test` or `staging` before initializing a non-production app. Our examples use `test`.
 See [the analytics contract](docs/analytics-contract.md) for configuration, currency provenance,

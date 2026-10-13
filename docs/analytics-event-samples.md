@@ -1,7 +1,7 @@
 # Audienzz Analytics — Event Samples (Android)
 
 > Historical capture, not the current payload schema. Today's branch uses top-level
-> `publisher_id`, `environment`, `os_version` and omits company/website guesses and unknown IDs.
+> `sdk_id`, `environment`, `os_version` and omits company/website guesses and unknown IDs.
 > Currency must accompany its own monetary source. See [the current contract](analytics-contract.md).
 
 
