@@ -48,6 +48,9 @@ android {
 
 dependencies {
     implementation project(':Audienzz')
+    // Meta Audience Network mediation (opt-in module). Bids only on ad units mapped to Meta in Ad
+    // Manager, and only while the publisher config does not set mediation.meta.enabled = false.
+    implementation project(':AudienzzMeta')
 
     // Standard libraries
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"

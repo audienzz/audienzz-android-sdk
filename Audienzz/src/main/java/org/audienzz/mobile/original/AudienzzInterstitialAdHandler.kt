@@ -21,6 +21,7 @@ import org.audienzz.mobile.event.eventLogger
 import org.audienzz.mobile.event.noBid
 import org.audienzz.mobile.event.viewabilityStart
 import org.audienzz.mobile.event.viewabilitySuccess
+import org.audienzz.mobile.mediation.MetaMediation
 import org.audienzz.mobile.original.callbacks.AudienzzFullScreenContentCallback
 import org.audienzz.mobile.original.callbacks.AudienzzInterstitialAdLoadCallback
 import org.audienzz.mobile.util.AD_SERVER_BIDDER
@@ -198,6 +199,12 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                 if (settled) return
                 settled = true
                 super.onAdLoaded(adManagerInterstitialAd)
+                MetaMediation.logAdSource(
+                    "interstitial",
+                    adUnitId,
+                    adManagerInterstitialAd.responseInfo,
+                    filled = true,
+                )
                 // Install before onAdLoaded: remote/native publishers may show synchronously there.
                 var publisherDirectCallback = adManagerInterstitialAd.fullScreenContentCallback
                 val wrapper = object : FullScreenContentCallback() {
@@ -322,6 +329,12 @@ class AudienzzInterstitialAdHandler @JvmOverloads constructor(
                 if (settled) return
                 settled = true
                 super.onAdFailedToLoad(loadAdError)
+                MetaMediation.logAdSource(
+                    "interstitial",
+                    adUnitId,
+                    loadAdError.responseInfo,
+                    filled = false,
+                )
                 adLoadCallback?.onAdFailedToLoad(loadAdError)
             }
         }

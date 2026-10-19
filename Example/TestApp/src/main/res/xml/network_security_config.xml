@@ -6,4 +6,8 @@
             <certificates src="user" overridePins="true" />
         </trust-anchors>
     </base-config>
+    <!-- Meta Audience Network caches video through a local cleartext server (Android 9+). -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">127.0.0.1</domain>
+    </domain-config>
 </network-security-config>

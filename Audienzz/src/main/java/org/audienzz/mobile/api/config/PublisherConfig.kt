@@ -45,6 +45,28 @@ data class PublisherConfig(
     @SerialName("analyticsBatchSize")
     @Serializable(with = AnalyticsBatchSizeSerializer::class)
     val analyticsBatchSize: Int? = null,
+    /** Per-publisher switches for Google Mobile Ads mediation partners. */
+    @SerialName("mediation")
+    val mediation: MediationConfig? = null,
+)
+
+@Serializable
+data class MediationConfig(
+    @SerialName("meta")
+    val meta: MetaMediationConfig? = null,
+)
+
+/**
+ * Meta Audience Network (SDK Bidding through Ad Manager).
+ *
+ * Only matters when the app ships the Meta adapter (`com.audienzz:sdk-meta`). `false` stops the SDK
+ * sending `au_meta=1`, so the Meta yield group no longer matches — a kill switch without an app
+ * release. Absent/null → on.
+ */
+@Serializable
+data class MetaMediationConfig(
+    @SerialName("enabled")
+    val enabled: Boolean? = null,
 )
 
 /**

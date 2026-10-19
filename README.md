@@ -134,6 +134,62 @@ call `destroy()` when finished. See [interstitial details](#interstitial-ad-remo
 - Background/restore the app and show/dismiss an interstitial: eligible banners recover without a
   new PI. Try `prefetch()` → `show()` twice with the same interstitial owner.
 
+### Optional: Meta Audience Network mediation
+
+Meta bids through Ad Manager **SDK Bidding** (it has no waterfall). Only publishers that sell to Meta
+add the module; everyone else keeps Meta's SDK out of their app.
+
+```kotlin
+dependencies {
+    implementation("com.audienzz:sdk:<version>")
+    implementation("com.audienzz:sdk-meta:<same version>") // Meta adapter 6.21.0.2 + Audience Network 6.21.0
+}
+```
+
+No code is needed. Google Mobile Ads initializes the adapter, and the SDK adds the reserved key
+`au_meta=1` to every GAM request while Meta is enabled for the publisher:
+
+| App ships `sdk-meta` | Publisher config `mediation.meta.enabled` | `au_meta=1` sent |
+| --- | --- | --- |
+| no | any | no |
+| yes | absent / `true` | yes |
+| yes | `false` (kill switch, no app release) | no |
+
+Ad Manager setup, per publisher: enable secure signal sharing for Meta, add Meta under
+*Delivery → Bidders → SDK Bidding*, map each ad unit to its Meta placement ID, and target those ad
+units with a yield group that also targets **`au_meta = 1`**. Add Meta to the EU and US-state ad
+partner lists, and the Meta line to the app's `app-ads.txt`.
+
+App-side requirements: on Android 9+, allow Meta's local video cache in the app's network security
+config:
+
+```xml
+<domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">127.0.0.1</domain>
+</domain-config>
+```
+
+In the EEA/UK Meta is not in the IAB vendor list, so the CMP must cover it through Google's
+Additional Consent. For US state privacy laws, call `AudienzzMeta.enableLimitedDataUse()` before ads
+load when the user opts out.
+
+**Testing.** Register the device as a test device in Ad Manager and in Meta Monetization Manager
+(*Integration → Testing*, by advertising ID), open Google's Ad Inspector and turn on
+*Single ad source test → Meta Audience Network (Bidding)*, then force-restart the app. With
+`AudienzzPrebidMobile.diagnosticsEnabled = true`, `adb logcat -s AUDZ` shows:
+
+```
+AUDZ mediation meta active=true adapter=true backend=default
+AUDZ mediation metaAdapter state=READY latencyMs=12
+AUDZ gam adSource format=banner ... filled=true source="Meta Audience Network" metaWon=true metaInAuction=true
+```
+
+`metaAdapter state=NOT_CONFIGURED_IN_AD_MANAGER` means the adapter is in the app but Ad Manager has no
+Meta mediation for it yet (Google only initializes adapters the app's yield groups use).
+`metaInAuction=false` on every request means the request never reached a Meta yield group (check the
+ad unit mapping and the `au_meta` targeting). `metaError=<code>:<message>` is Meta's own answer
+(e.g. no fill). Turn test mode off in both Ad Manager and Meta before release.
+
 ---
 
 ## Overview

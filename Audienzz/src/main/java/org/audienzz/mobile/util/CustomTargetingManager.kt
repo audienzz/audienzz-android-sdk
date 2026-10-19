@@ -42,6 +42,11 @@ class CustomTargetingManager(
         reservedTargetingMap[key] = value
     }
 
+    /** Remove a reserved (SDK-internal) key-value. Publisher keys are untouched. */
+    fun removeReservedTargeting(key: String) {
+        reservedTargetingMap.remove(key)
+    }
+
     /** Returns true if the key is in the reserved map. */
     fun isReserved(key: String): Boolean = reservedTargetingMap.containsKey(key)
 
