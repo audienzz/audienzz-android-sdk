@@ -7,6 +7,10 @@ nmcp = "0.0.7"
 prebid = "3.3.1"
 # GMS
 gms-ads = "25.1.0"
+# Meta Audience Network mediation adapter (optional AudienzzMeta module). Keep it on a release whose
+# play-services-ads dependency equals gms-ads: 6.21.0.3+ pull GMA 25.2+/25.4, and 25.4 needs AGP 8.9.1
+# and compileSdk 36 in every consuming app.
+gms-mediation-meta = "6.21.0.2"
 # kotlin
 kotlin = "2.2.0"
 kotlin-coroutines = "1.8.1"
@@ -46,6 +50,7 @@ prebid-max-adapters = { module = "org.prebid:prebid-mobile-sdk-max-adapters", ve
 prebid-gam-event-handlers = { module = "org.prebid:prebid-mobile-sdk-gam-event-handlers", version.ref = "prebid" }
 # GMS
 gms-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "gms-ads" }
+gms-mediation-meta = { module = "com.google.ads.mediation:facebook", version.ref = "gms-mediation-meta" }
 # kotlin
 kotlin-bom = { module = "org.jetbrains.kotlin:kotlin-bom", version.ref = "kotlin" }
 kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib" }

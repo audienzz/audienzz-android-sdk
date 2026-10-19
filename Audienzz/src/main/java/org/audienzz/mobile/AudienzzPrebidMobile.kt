@@ -26,6 +26,7 @@ import org.audienzz.mobile.configuration.AudienzzAdUnitConfiguration
 import org.audienzz.mobile.configuration.AudienzzPBSConfig
 import org.audienzz.mobile.di.MainComponent
 import org.audienzz.mobile.event.eventLogger
+import org.audienzz.mobile.mediation.MetaMediation
 import org.audienzz.mobile.rendering.bidding.data.bid.AudienzzBidResponse
 import org.audienzz.mobile.rendering.bidding.interfaces.AudienzzInterstitialControllerListener
 import org.audienzz.mobile.rendering.bidding.listeners.AudienzzDisplayVideoListener
@@ -82,6 +83,17 @@ object AudienzzPrebidMobile {
     @JvmStatic
     fun applyBackendPpidConfig(ppidEnabled: Boolean?) {
         backendPpidEnabled = ppidEnabled
+    }
+
+    /**
+     * Applies the publisher config's Meta mediation switch (`mediation.meta.enabled`).
+     *
+     * Called during remote init, and by the Flutter bridge, which fetches the publisher config in
+     * Dart. Has no effect unless the app ships the Meta adapter (`com.audienzz:sdk-meta`).
+     */
+    @JvmStatic
+    fun applyBackendMetaMediationConfig(enabled: Boolean?) {
+        MetaMediation.applyBackendConfig(enabled)
     }
 
     /** For bridges that fetch publisher configuration themselves; no app-facing tuning API. */
@@ -663,6 +675,8 @@ object AudienzzPrebidMobile {
         registerActivityCallbacks(context)
         MainComponent.init(context)
         drainPendingPageReports()
+        // Keeps a backend value a bridge applied before calling this.
+        MetaMediation.applyTargeting()
         configureGam(context, GamConfig(appVolume = appVolume))
         PrebidMobile.initializeSdk(context, prebidServerUrl ?: audienzzHost.hostUrl, listener)
     }
@@ -701,6 +715,7 @@ object AudienzzPrebidMobile {
                 companyId = publisherConfig?.ortbConfig?.schainConfig?.sellerId ?: "1"
                 backendSmartRefreshV2 = publisherConfig?.smartRefreshV2
                 applyBackendPpidConfig(ppidEnabled = publisherConfig?.ppidEnabled)
+                applyBackendMetaMediationConfig(enabled = publisherConfig?.mediation?.meta?.enabled)
 
                 val baseUrl = publisherConfig?.prebidServerConfig?.url ?: audienzzHost.hostUrl
                 val prebidServerUrl = if (isPbsDebug) {
@@ -792,7 +807,8 @@ object AudienzzPrebidMobile {
      */
     private fun configureGam(context: Context, gamConfig: GamConfig?) {
         val volume = (gamConfig?.appVolume ?: 0f).coerceIn(0f, 1f)
-        MobileAds.initialize(context) {
+        MobileAds.initialize(context) { status ->
+            MetaMediation.logAdapterStatus(status)
             MobileAds.setAppVolume(volume)
             MobileAds.setAppMuted(volume == 0f)
             android.util.Log.d(TAG, "GMA app volume set to $volume, muted=${volume == 0f}")

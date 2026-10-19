@@ -11,6 +11,7 @@ import com.google.android.gms.ads.admanager.AdManagerAdRequest
 import com.google.android.gms.ads.admanager.AdManagerAdView
 import com.google.android.gms.ads.admanager.AppEventListener
 import org.audienzz.mobile.AudienzzAdUnit
+import org.audienzz.mobile.mediation.MetaMediation
 import org.audienzz.mobile.util.AudienzzDiagnostics
 import org.audienzz.mobile.AudienzzWinningBid
 import org.audienzz.mobile.AudienzzPrebidMobile
@@ -1257,6 +1258,12 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
 
             override fun onAdLoaded() {
                 if (!completeGoogleLoad(retryableFailure = false)) return
+                MetaMediation.logAdSource(
+                    "banner",
+                    adView.adUnitId,
+                    adView.responseInfo,
+                    filled = true,
+                )
                 // This is the moment the replacement becomes what the reader sees, so it is the
                 // moment its economics become the ones render events describe.
                 commitDisplayedCreative()
@@ -1296,6 +1303,12 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                 val retryable = error.code == com.google.android.gms.ads.AdRequest.ERROR_CODE_NETWORK_ERROR ||
                     error.code == com.google.android.gms.ads.AdRequest.ERROR_CODE_INTERNAL_ERROR
                 if (!completeGoogleLoad(retryableFailure = retryable)) return
+                MetaMediation.logAdSource(
+                    "banner",
+                    adView.adUnitId,
+                    error.responseInfo,
+                    filled = false,
+                )
                 restoreFromBlankIfNeeded()
                 actualListener?.onAdFailedToLoad(error)
             }

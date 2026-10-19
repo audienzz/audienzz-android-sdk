@@ -32,6 +32,15 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
 
+            <!-- Google Ad Inspector: opens only on a registered test device. -->
+            <Button
+                android:id="@+id/adInspectorButton"
+                style="?attr/borderlessButtonStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Ad Inspector" />
+
         </LinearLayout>
 
         <!-- Tab Layout -->

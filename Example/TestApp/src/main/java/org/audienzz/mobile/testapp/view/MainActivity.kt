@@ -2,11 +2,13 @@ package org.audienzz.mobile.testapp.view
 
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
+import com.google.android.gms.ads.MobileAds
 import com.google.android.material.tabs.TabLayoutMediator
 import org.audienzz.mobile.testapp.DemoFeatureFlags
 import org.audienzz.mobile.testapp.R
@@ -21,6 +23,20 @@ class MainActivity : AppCompatActivity() {
 
         setupTabs()
         setupSmartRefreshV2Toggle()
+        setupAdInspector()
+    }
+
+    /// Demo control: Google's Ad Inspector, to check which ad source filled a slot and to force a
+    /// single source (e.g. "Meta Audience Network (Bidding)"). It opens only on a test device
+    /// registered in Ad Manager; otherwise the error says so.
+    private fun setupAdInspector() {
+        binding.adInspectorButton.setOnClickListener {
+            MobileAds.openAdInspector(this) { error ->
+                if (error != null) {
+                    Toast.makeText(this, "Ad Inspector: ${error.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     /// Demo control: a Smart Refresh v2 switch. Persists the choice and restarts the app so the SDK

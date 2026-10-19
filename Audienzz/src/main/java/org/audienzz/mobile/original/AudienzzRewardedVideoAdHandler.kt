@@ -22,6 +22,7 @@ import org.audienzz.mobile.event.eventLogger
 import org.audienzz.mobile.event.noBid
 import org.audienzz.mobile.event.viewabilityStart
 import org.audienzz.mobile.event.viewabilitySuccess
+import org.audienzz.mobile.mediation.MetaMediation
 import org.audienzz.mobile.original.callbacks.AudienzzFullScreenContentCallback
 import org.audienzz.mobile.original.callbacks.AudienzzRewardedAdLoadCallback
 import org.audienzz.mobile.targeting.AudienzzAdRequestContext
@@ -194,6 +195,12 @@ class AudienzzRewardedVideoAdHandler(
             override fun onAdLoaded(rewardedAd: RewardedAd) {
                 if (settled) return
                 settled = true
+                MetaMediation.logAdSource(
+                    "rewarded",
+                    adUnitId,
+                    rewardedAd.responseInfo,
+                    filled = true,
+                )
                 // H5: delegate to the publisher's own FullScreenContentCallback if they set one on
                 // the ad inside their onAdLoaded (GAM-documented pattern) instead of clobbering it;
                 // fall back to the callback passed to load().
@@ -315,6 +322,12 @@ class AudienzzRewardedVideoAdHandler(
                 if (settled) return
                 settled = true
                 super.onAdFailedToLoad(loadAdError)
+                MetaMediation.logAdSource(
+                    "rewarded",
+                    adUnitId,
+                    loadAdError.responseInfo,
+                    filled = false,
+                )
                 adLoadCallback?.onAdFailedToLoad(loadAdError)
             }
         }

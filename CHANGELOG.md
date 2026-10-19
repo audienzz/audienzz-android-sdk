@@ -3,6 +3,16 @@
 All notable changes to the Audienzz Android SDK are documented here. This project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- **Optional Meta Audience Network mediation** (Ad Manager SDK Bidding). New artifact
+  `com.audienzz:sdk-meta` bundles the Google Meta adapter (6.21.0.2, on the SDK's GMA 25.1.0).
+  When the app ships it, the SDK sends the reserved GAM key `au_meta=1` for the Meta yield group to
+  target. The publisher config `mediation.meta.enabled = false` switches that off without an app
+  release. Apps without the module are unchanged.
+- `AUDZ` diagnostics now log the Meta adapter's init state and, for banner, interstitial and
+  rewarded loads, which ad source filled and what Meta did in the auction (`gam adSource`).
+
 ## 0.3.4
 
 - **Behavior change: a remote banner without a refresh interval no longer refreshes.** When the ad
