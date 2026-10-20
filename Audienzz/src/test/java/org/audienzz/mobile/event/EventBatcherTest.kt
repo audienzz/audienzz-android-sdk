@@ -96,6 +96,25 @@ internal class EventBatcherTest {
         coVerify(exactly = 2) { repository.submitBatch(any()) }
     }
 
+    @Test fun `placementVisible is bundled with its own auction`() = batcherTest {
+        val sender = sender(testScheduler)
+        fun of(index: Int, type: String, auction: String) = auctionEvent(index, auction).copy(eventType = type)
+        val request = of(0, "bidRequest", "A"); val impression = of(1, "adImpression", "A")
+        val other = of(2, "bidRequest", "B")
+        val visible = of(3, "placementVisible", "A")
+        sender.enqueue(request); sender.enqueue(impression); sender.enqueue(other); runCurrent()
+        advanceTimeBy(1000); sender.enqueue(visible); runCurrent()
+        // Posts are at least two seconds apart; leave room for both auctions' batches.
+        advanceTimeBy(6000); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(other)) }
+        coVerify(exactly = 1) { repository.submitBatch(listOf(request, impression, visible)) }
+        // Seen only after its auction's batch went: still its auction's own batch, never another's.
+        val late = of(4, "placementVisible", "B"); val next = of(5, "bidRequest", "C")
+        sender.enqueue(late); sender.enqueue(next); advanceTimeBy(8000); runCurrent()
+        coVerify(exactly = 1) { repository.submitBatch(listOf(late)) }
+        coVerify(exactly = 1) { repository.submitBatch(listOf(next)) }
+    }
+
     @Test fun `missing and blank auction ids use a separate debounced bucket`() = batcherTest {
         val sender = sender(testScheduler)
         val page = auctionEvent(0, null).copy(eventType = "pageImpression")

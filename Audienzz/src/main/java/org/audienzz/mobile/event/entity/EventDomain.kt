@@ -58,6 +58,7 @@ internal enum class EventType(val nameString: String) {
     AD_CLICK("adClick"),
     VIEWABILITY_START("viewability.start"),
     VIEWABILITY_SUCCESS("viewability.success"),
+    PLACEMENT_VISIBLE("placementVisible"),
 }
 
 internal enum class AdType(val nameString: String) {

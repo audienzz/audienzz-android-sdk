@@ -50,8 +50,8 @@ internal class EventNetworkMapper @Inject constructor(
 
         return EventNetwork(
             eventType = event.eventType?.nameString.orEmpty(),
-            companyId = null, // company/website are resolved by the collector from publisher_id.
-            publisherId = event.publisherId,
+            companyId = null, // company/website are resolved by the collector from sdk_id.
+            sdkId = event.publisherId,
             environment = event.environment,
             osVersion = android.os.Build.VERSION.RELEASE,
             source = "android-sdk",
