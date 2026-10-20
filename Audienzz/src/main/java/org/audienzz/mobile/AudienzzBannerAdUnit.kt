@@ -2,6 +2,7 @@ package org.audienzz.mobile
 
 import org.audienzz.mobile.api.data.AudienzzAdUnitFormat
 import org.prebid.mobile.BannerAdUnit
+import org.prebid.mobile.PrebidMobile
 import org.prebid.mobile.api.data.AdFormat
 import java.util.EnumSet
 
@@ -61,5 +62,8 @@ class AudienzzBannerAdUnit internal constructor(
         adUnit.configuration.setNativeConfiguration(
             parameters.prebidNativeParameters.nativeConfiguration,
         )
+        // Native 1.2 requires an id on every requested asset, and Microsoft's Prebid Server
+        // (PSP) asks apps to turn this on for native. Prebid leaves ids off by default.
+        PrebidMobile.assignNativeAssetID(true)
     }
 }

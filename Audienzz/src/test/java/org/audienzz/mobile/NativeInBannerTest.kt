@@ -23,6 +23,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.prebid.mobile.BannerAdUnit
+import org.prebid.mobile.PrebidMobile
 import org.prebid.mobile.api.data.AdFormat
 import org.prebid.mobile.rendering.networking.parameters.AdRequestInput
 import org.prebid.mobile.rendering.networking.parameters.BasicParameterBuilder
@@ -52,6 +53,7 @@ class NativeInBannerTest {
     @After fun cleanup() {
         banner.destroy()
         unmockkAll()
+        PrebidMobile.assignNativeAssetID(false)
     }
 
     // --- The bid request Prebid actually sends ---
@@ -86,6 +88,10 @@ class NativeInBannerTest {
         val required = (0 until assets.length())
             .count { assets.getJSONObject(it).optInt("required") == 1 }
         assertEquals("title, main image and sponsored-by only", 3, required)
+        assertTrue(
+            "every asset needs an id (native 1.2; required by Microsoft PSP)",
+            (0 until assets.length()).all { assets.getJSONObject(it).has("id") },
+        )
         assertEquals(1, native.getJSONArray("eventtrackers").length())
         assertTrue("GAM must be able to tell a native win from a banner win", includesFormat(prebid))
     }

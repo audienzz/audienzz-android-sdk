@@ -139,7 +139,32 @@ CSS editor, a size matching the slot (e.g. 300x250) or *Fluid*, and the native-e
 Google renders them in the same banner view. Choose *Fluid* only with `fluid: true` in the ad
 config. This part needs no Prebid setup and works even with `enabled: false`.
 
-### Prebid Server
+### Prebid Server: Microsoft Monetize (PSP)
+
+Audienzz publishers use Microsoft's Prebid Server Premium (`ib.adnxs.com`, account = Monetize
+member ID, `prebidConfig.placementId` = Monetize placement). Native is enabled in three places in
+the Monetize UI (paths from Microsoft Learn):
+
+1. **Placement accepts native.** *Publishers > Inventory Manager* > select the publisher > open
+   the placement > **Allowed Media**: allow **Native** next to **Banner** > **Save and close**.
+   This lets Microsoft's own marketplace bid native too.
+2. **PSP configuration requests native.** *Publishers > Prebid Server Premium* (opens
+   *Demand Partner Configurations*) > open the configuration whose targeting covers the placement
+   (or **New**) > **Monetize inventory selection > Media types**: tick **Native** as well as
+   Banner. Keep **Inventory type** covering App. Then under **Demand Partners**, only partners
+   with native-for-app support remain; check their parameters (some need a native-enabled or
+   separate native placement on their side). **Save**.
+3. **Partners enabled.** *Prebid Server Premium > Global Settings > Demand Partners*: the native
+   partners must be enabled here to be selectable in step 2. Price granularity here must match
+   the GAM native line items.
+
+Each partner must also enable native on the object its parameters point to, in that partner's
+own platform. Verify with *Prebid Server Premium > Request Response Sampler*: requests for the
+placement should carry `imp.native`, and native bids should come back.
+
+The SDK sets `PrebidMobile.assignNativeAssetID(true)` when native is enabled, as PSP requires.
+
+### Prebid Server: general requirements
 
 - The stored impression for the placement (`prebidConfig.placementId`) must allow native, and
   each bidder on it must support native for app traffic. Some SSPs need a separate native
