@@ -86,6 +86,10 @@ Give the container a real width and reserve the expected height while loading. A
 comes from the backend. Lazy loading defaults to `true` with a `200dp` prefetch margin; both are
 backend-controlled.
 
+The same banner can also serve native ads, styled in GAM (native styles), when its ad config sets
+`config.nativeConfig.enabled`. No app code is needed; see
+[docs/native-in-banner.md](docs/native-in-banner.md) for the backend and GAM setup.
+
 If multiple destinations share one native host (Compose/custom navigation), call
 `banner.setScreen(routeInstanceKey)` **before `loadAd()`**, using the same key reported in step 3.
 Use a distinct key for each route instance, not just an article route template. See

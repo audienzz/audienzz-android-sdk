@@ -254,6 +254,10 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
             Log.i(TAG, "No Prebid sizes in remote config for id=$adConfigId — serving GAM-only")
         }
 
+        // Native in this slot is drawn by a GAM native style, so the view stays a banner view; the
+        // toggle only adds native to the Prebid auction (and, if asked, GAM's fluid size).
+        val nativeConfig = config.config.nativeConfig
+
         val adaptiveConfig = gamConfig.adaptiveBannerConfig
         val isAdaptiveEnabled = adaptiveConfig?.enabled == true
 
@@ -298,6 +302,8 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
                 } else {
                     addAll(sortedGamSizes.drop(1))
                 }
+                // Lets a fluid native style serve: full slot width, height known only once it renders.
+                if (nativeConfig.fluid) add(AdSize.FLUID)
             }
 
             setAdSizes(finalSizes[0], *finalSizes.drop(1).toTypedArray())
@@ -316,10 +322,13 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         // CREATIVE inside the host; the `layoutParams` set in `init` centers the host inside the
         // publisher's container — two different problems, both needed. Same fix as the RN bridge
         // and AURemoteConfigBannerView. (From origin/main, 4a304c9.)
+        // A fluid ad takes its width from the view, so the GAM view must span the host when fluid
+        // is requested (with WRAP_CONTENT it would measure to nothing). Fixed-size creatives stay
+        // centered: Google's ad view centers its own child.
         addView(
             adViewLocal,
             LayoutParams(
-                LayoutParams.WRAP_CONTENT,
+                if (nativeConfig.fluid) LayoutParams.MATCH_PARENT else LayoutParams.WRAP_CONTENT,
                 LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER_HORIZONTAL,
             ),
@@ -345,6 +354,10 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
 
             // A missing/null refreshTimeSeconds means no periodic refresh, the same as an explicit 0.
             setAutoRefreshInterval(config.config.refreshTimeSeconds ?: 0)
+
+            // GAM-only slots skip it: no auction runs. GAM-sold native still serves through the
+            // slot's native style without it.
+            if (nativeConfig.enabled && headerBidding) enableNativeFormat()
         }
 
         adUnit = adUnitLocal

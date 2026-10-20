@@ -46,6 +46,7 @@ import org.audienzz.mobile.util.noBidResultCode
 import org.audienzz.mobile.util.prebidKeyword
 import org.audienzz.mobile.util.sizesJson
 import org.audienzz.mobile.util.unwrapActivity
+import org.prebid.mobile.api.data.AdFormat
 import java.util.UUID
 
 class AudienzzAdViewHandler @JvmOverloads constructor(
@@ -1055,7 +1056,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             isRefresh = isRefresh,
             slotReload = emittedSlotReload,
             adUnitCode = adUnit.configId,
-            mediaTypes = mediaTypesJson(adUnit.adFormats.adSubtype),
+            mediaTypes = mediaTypesJson(adUnit.adFormats),
         )
         // C1: Prebid's fetchDemand assigns a NEW BidLoader to AdUnit.bidLoader without retiring the
         // previous one, and a retired loader re-arms its own refresh timer from BOTH its success and
@@ -1179,7 +1180,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                     resultCode = noBidResultCode(resultCode),
                     slotReload = emittedSlotReload,
                     adUnitCode = adUnit.configId,
-                    mediaTypes = mediaTypesJson(adUnit.adFormats.adSubtype),
+                    mediaTypes = mediaTypesJson(adUnit.adFormats),
                 )
             }
             startGoogleLoad(request, callback, generationAtRequest, refreshGeneration, resultCode)
@@ -1424,6 +1425,20 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
 }
 
 /** `media_types` as a JSON array string (web-schema parity), derived from the ad subtype. */
+/**
+ * `media_types` from the formats the auction actually asks for, so a banner slot that also bids
+ * for native reports `["banner","native"]`. Order is fixed (banner, video, native).
+ */
+internal fun mediaTypesJson(formats: Iterable<AdFormat>?): String {
+    val set = formats?.toSet().orEmpty()
+    val types = buildList {
+        if (AdFormat.BANNER in set || AdFormat.INTERSTITIAL in set) add("banner")
+        if (AdFormat.VAST in set) add("video")
+        if (AdFormat.NATIVE in set) add("native")
+    }.ifEmpty { listOf("banner") }
+    return types.joinToString(",", "[", "]") { "\"$it\"" }
+}
+
 internal fun mediaTypesJson(subtype: AdSubtype): String = when (subtype) {
     AdSubtype.VIDEO -> "[\"video\"]"
     AdSubtype.MULTIFORMAT -> "[\"banner\",\"video\"]"

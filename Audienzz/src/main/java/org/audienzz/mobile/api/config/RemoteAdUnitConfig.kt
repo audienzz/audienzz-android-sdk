@@ -4,7 +4,9 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 
 @Serializable
@@ -40,7 +42,44 @@ data class RemoteConfig(
      *  null falls back to 0. */
     @SerialName("stickyTopOffset")
     val stickyTopOffset: Int? = null,
-)
+    /**
+     * Banners: native demand rendered by a GAM native style in the same banner slot. Held as raw
+     * JSON and read leniently (see [nativeConfig]), like `prebidConfig.format`: a strict type here
+     * would let one malformed value drop the whole ad config.
+     */
+    @SerialName("nativeConfig")
+    private val nativeConfigJson: JsonElement? = null,
+) {
+    /** Native-in-banner settings; [RemoteNativeConfig.DISABLED] when absent or malformed. */
+    val nativeConfig: RemoteNativeConfig
+        get() = RemoteNativeConfig.from(nativeConfigJson)
+}
+
+/**
+ * Native ads served into a banner slot and styled in GAM (native styles), not by app-side views.
+ *
+ * [enabled] adds a native impression to the Prebid request next to the banner one; a native win is
+ * rendered by the GAM native style's Prebid Universal Creative from Prebid Cache. [fluid] also asks
+ * GAM for the fluid size, so a fluid native style can fill the slot width with a runtime height.
+ * GAM-sold native needs neither: a native style at one of the slot's sizes already serves into it.
+ */
+data class RemoteNativeConfig(
+    val enabled: Boolean,
+    val fluid: Boolean,
+) {
+    companion object {
+        val DISABLED = RemoteNativeConfig(enabled = false, fluid = false)
+
+        /** Only a JSON boolean `true` turns a flag on; absent, string or number values are off. */
+        internal fun from(json: JsonElement?): RemoteNativeConfig {
+            val obj = json as? JsonObject ?: return DISABLED
+            fun flag(key: String) =
+                (obj[key] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull == true
+            val enabled = flag("enabled")
+            return RemoteNativeConfig(enabled = enabled, fluid = enabled && flag("fluid"))
+        }
+    }
+}
 
 @Serializable
 data class RemoteGamConfig(
