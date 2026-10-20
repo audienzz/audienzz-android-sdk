@@ -66,15 +66,15 @@ class AudienzzNativeParameters internal constructor(
 
         /**
          * The native request a banner slot sends when its ad config enables native (see
-         * [AudienzzBannerAdUnit.enableNativeFormat]). The winning ad is drawn by a GAM native style,
-         * so this list is a contract with that template: it may rely on title, main image and
+         * [AudienzzBannerAdUnit.enableNativeFormat]). The winning ad is drawn by an HTML template
+         * in GAM, so this list is a contract with that template: it may rely on title, main image and
          * sponsored-by, and must cope with icon, description and call-to-action being absent.
          * Only those three are required, so a bid lacking an optional asset still competes.
          *
          * Returns a new instance each call; adjust it before passing it on if a placement needs to.
          */
         @JvmStatic
-        fun gamNativeStyleDefaults(): AudienzzNativeParameters {
+        fun inBannerDefaults(): AudienzzNativeParameters {
             val title = AudienzzNativeTitleAsset().apply {
                 len = TITLE_LENGTH
                 isRequired = true

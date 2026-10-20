@@ -1,10 +1,11 @@
 # Native ads in banner slots
 
 A remote banner can also serve **native** ads. The slot stays the same `AudienzzRemoteBannerView`
-(a GAM `AdManagerAdView`); the native ad is laid out by a **GAM native style** (HTML/CSS defined
-in the GAM console) and rendered by Google in that view. Apps add no native views and no code.
+(a GAM `AdManagerAdView`); the native ad is laid out with HTML/CSS defined in the GAM console and
+rendered by Google in that view. Apps add no native views and no code.
 
-Native is switched on per placement in the ad config. Nothing changes for placements that do not
+Prebid native wins are drawn by an HTML creative in GAM, and GAM-sold native by a native style
+(see the GAM setup below). Native is switched on per placement in the ad config. Nothing changes for placements that do not
 set it.
 
 ## Backend schema
@@ -37,7 +38,7 @@ instead of an object) leaves native off; it never drops the rest of the ad confi
 With `enabled: true` (and Prebid sizes present, i.e. header bidding on):
 
 - The Prebid impression carries **banner and native**. The native request is
-  `AudienzzNativeParameters.gamNativeStyleDefaults()`:
+  `AudienzzNativeParameters.inBannerDefaults()`:
 
   | Asset | Required | Notes |
   |---|---|---|
@@ -63,19 +64,88 @@ native still serves into them through the native style, as it does without this 
 
 ## GAM / ad ops setup (required before enabling)
 
-1. **Native style** for the ad unit, at the slot's size (e.g. 300x250), or *fluid* when the ad
-   config sets `fluid: true`. It must render the assets above and cope with the optional ones
-   being absent.
-2. **Prebid native rendering**: the native style (or the Prebid native creative) uses the
-   Prebid Universal Creative's native renderer, reading the winning bid from Prebid Cache via
-   the `hb_cache_*` keys. See Prebid's [GAM native setup](https://docs.prebid.org/adops/gam-native.html)
-   and the [in-webview native integration](https://docs.prebid.org/prebid-mobile/recipes/subrecipes/android/gam-bidding-only-native-in-webview.html).
-3. **Line items**: Prebid native line items target `hb_format=native` plus the price key.
-   **On native-enabled ad units, the existing Prebid banner line items must target
-   `hb_format=banner`.** Otherwise a native win can be matched to the banner creative and render
-   blank. Placements that stay banner-only never receive `hb_format` and need no change.
-4. **Prebid Server**: the stored impression for the placement must allow native, and the bidders
-   on it must support native. Without that the toggle only enlarges the request.
+Two kinds of native demand reach the slot, and GAM handles them differently.
+
+### Prebid native wins: one HTML creative
+
+Prebid Mobile's documented in-app path for this ("in-webview native") is a **third-party HTML
+creative** that loads the Prebid Universal Creative's `native-trk.js`. In app mode it reads the
+winning bid from Prebid Cache (`hb_cache_id`), fills the template's placeholders and fires the
+bid's impression and click trackers. The HTML/CSS lives in GAM, so the look is still edited in
+the console. One creative can be shared by every Prebid native line item.
+
+```html
+<style>
+  .pbn { box-sizing: border-box; width: 300px; height: 250px; overflow: hidden;
+         font-family: -apple-system, Roboto, sans-serif; background: #fff; }
+  .pbn img.main { width: 100%; height: 150px; object-fit: cover; display: block; }
+  .pbn .t { font-size: 15px; font-weight: 600; margin: 6px 8px 2px; }
+  .pbn .b { font-size: 12px; color: #444; margin: 0 8px; }
+  .pbn .s { font-size: 11px; color: #888; margin: 4px 8px; }
+  .pbn a.cta { float: right; margin: 0 8px; font-size: 12px; }
+</style>
+<div class="pbn">
+  <a class="pb-click" href="%%CLICK_URL_UNESC%%hb_native_linkurl" target="_blank">
+    <img class="main" src="hb_native_image" alt="">
+    <div class="t">hb_native_title</div>
+  </a>
+  <div class="b">hb_native_body</div>
+  <div class="s">Sponsored by hb_native_brand
+    <a class="cta pb-click" href="%%CLICK_URL_UNESC%%hb_native_linkurl" target="_blank">hb_native_cta</a>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/prebid-universal-creative@1.17.2/dist/native-trk.js"></script>
+<script>
+  var pbNativeTagData = {};
+  pbNativeTagData.env = "mobile-app";
+  pbNativeTagData.uuid = "%%PATTERN:hb_cache_id%%";
+  pbNativeTagData.cacheHost = "%%PATTERN:hb_cache_host%%";
+  pbNativeTagData.cachePath = "%%PATTERN:hb_cache_path%%";
+  window.pbNativeTag.startTrackers(pbNativeTagData);
+</script>
+```
+
+Rules the renderer imposes (checked against PUC 1.17.2 source):
+
+- Placeholders are **bare** (`hb_native_title`), not `##hb_native_title##`: the `##` form is
+  only for Prebid.js on the web. Unfilled placeholders become empty strings.
+- Available keys: `hb_native_title`, `hb_native_image` (main), `hb_native_icon`,
+  `hb_native_body`, `hb_native_brand` (sponsored-by), `hb_native_cta`, `hb_native_linkurl`.
+- Click trackers fire only on elements with class `pb-click`.
+- Image vs icon and body vs sponsored vs CTA are told apart by the `type` in the bid's own
+  response assets. A bidder that omits it loses those assets (title and link still work), so
+  check real bids from each native bidder.
+- If the bid has no `hb_cache_host`/`hb_cache_path`, the renderer falls back to
+  `prebid.adnxs.com/pbc/v1/cache`. That is only correct if Prebid Cache is Xandr's.
+
+Line items (a new set, generated like the banner ones):
+
+| Setting | Value |
+|---|---|
+| Type | Price priority |
+| Targeting | `hb_pb` = price bucket **and** `hb_format` = `native` |
+| Creative | the HTML creative above, size = the slot size (e.g. 300x250) |
+| Inventory | the native-enabled ad units |
+
+**Existing Prebid banner line items: add `hb_format` is not `native`.** Prebid only sends
+`hb_format` when an auction asks for more than one format, so this matches every banner-only
+request (no key) and every banner win, and stops a native win landing on the banner creative.
+Prebid video line items, if they exist, already target `hb_format=video` or need the same guard.
+
+### GAM-sold native: a native style
+
+Direct native campaigns use GAM's own native setup: *Delivery > Native > New native ad*, HTML &
+CSS editor, a size matching the slot (e.g. 300x250) or *Fluid*, and the native-enabled ad units.
+Google renders them in the same banner view. Choose *Fluid* only with `fluid: true` in the ad
+config. This part needs no Prebid setup and works even with `enabled: false`.
+
+### Prebid Server
+
+- The stored impression for the placement (`prebidConfig.placementId`) must allow native, and
+  each bidder on it must support native for app traffic. Some SSPs need a separate native
+  placement or a native-enabled one. Without native bidders the toggle only enlarges the request.
+- Bids must be cached (the SDK always requests `cache.bids`), and `ext.prebid.targeting.
+  includeformat` must be honoured so `hb_format` reaches GAM.
 
 ## Using it without remote config
 
@@ -88,7 +158,7 @@ Call it before the first `fetchDemand`. Load the GAM request into the same `AdMa
 
 ## Not yet verified
 
-- On a device with a real native bid: the native style rendering a Prebid native win and firing
+- On a device with a real native bid: the HTML creative rendering a Prebid native win and firing
   its impression and click tracking inside the GAM webview.
 - `fluid` mixed with fixed sizes in one GAM request is not documented by Google; test on a device
   before enabling it in production.

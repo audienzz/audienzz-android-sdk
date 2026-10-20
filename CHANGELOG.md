@@ -8,11 +8,11 @@ adheres to [Semantic Versioning](https://semver.org/).
 - **Native ads in banner slots, styled in GAM.** A banner ad config can set
   `config.nativeConfig: { "enabled": true, "fluid": false }`. The same `AudienzzRemoteBannerView`
   then also bids for native in its Prebid auction (Prebid adds `hb_format` to the GAM keys) and a
-  native win is rendered by the slot's GAM native style. `fluid: true` also requests GAM's fluid
-  size. Off when absent or malformed. Needs GAM and Prebid Server setup before it is enabled: see
+  Prebid native win is rendered by an HTML creative in GAM (GAM-sold native by a native style).
+  `fluid: true` also requests GAM's fluid size. Off when absent or malformed. Needs GAM and Prebid Server setup before it is enabled: see
   `docs/native-in-banner.md`.
 - New `AudienzzBannerAdUnit.enableNativeFormat(parameters)` and
-  `AudienzzNativeParameters.gamNativeStyleDefaults()` for integrations without remote config.
+  `AudienzzNativeParameters.inBannerDefaults()` for integrations without remote config.
 - Analytics `media_types` now lists the formats the auction actually asks for (`native` included);
   the fluid size is reported as `fluid` in `sizes`.
 

@@ -43,7 +43,7 @@ data class RemoteConfig(
     @SerialName("stickyTopOffset")
     val stickyTopOffset: Int? = null,
     /**
-     * Banners: native demand rendered by a GAM native style in the same banner slot. Held as raw
+     * Banners: native demand rendered by GAM in the same banner slot. Held as raw
      * JSON and read leniently (see [nativeConfig]), like `prebidConfig.format`: a strict type here
      * would let one malformed value drop the whole ad config.
      */
@@ -56,10 +56,10 @@ data class RemoteConfig(
 }
 
 /**
- * Native ads served into a banner slot and styled in GAM (native styles), not by app-side views.
+ * Native ads served into a banner slot and styled in GAM, not by app-side views.
  *
  * [enabled] adds a native impression to the Prebid request next to the banner one; a native win is
- * rendered by the GAM native style's Prebid Universal Creative from Prebid Cache. [fluid] also asks
+ * rendered by a GAM HTML creative (Prebid Universal Creative) from Prebid Cache. [fluid] also asks
  * GAM for the fluid size, so a fluid native style can fill the slot width with a runtime height.
  * GAM-sold native needs neither: a native style at one of the slot's sizes already serves into it.
  */

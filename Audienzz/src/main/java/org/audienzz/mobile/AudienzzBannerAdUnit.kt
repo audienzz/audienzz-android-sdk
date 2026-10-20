@@ -45,14 +45,14 @@ class AudienzzBannerAdUnit internal constructor(
      * Also bid for native in this banner slot: the auction gets a native impression next to the
      * banner one, and Prebid adds `hb_format` (`banner` / `native`) to the GAM keys.
      *
-     * Rendering stays in GAM: a native win is drawn by a GAM native style (Prebid Universal
-     * Creative reading the cached bid), in the same `AdManagerAdView`. No app-side native views.
-     * GAM must target its Prebid line items on `hb_format`, or a native win can land on the banner
-     * creative. Call before the first `fetchDemand`.
+     * Rendering stays in GAM, in the same `AdManagerAdView`: a native win is drawn by a GAM HTML
+     * creative (Prebid Universal Creative's `native-trk.js` reading the cached bid). No app-side
+     * native views. GAM must target its Prebid line items on `hb_format`, or a native win can land
+     * on the banner creative. Call before the first `fetchDemand`.
      */
     @JvmOverloads
     fun enableNativeFormat(
-        parameters: AudienzzNativeParameters = AudienzzNativeParameters.gamNativeStyleDefaults(),
+        parameters: AudienzzNativeParameters = AudienzzNativeParameters.inBannerDefaults(),
     ) {
         // Prebid's own multiformat ad unit configures native exactly this way; its class is
         // package-private, so we apply the same configuration to the banner unit we already run.

@@ -254,8 +254,9 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
             Log.i(TAG, "No Prebid sizes in remote config for id=$adConfigId — serving GAM-only")
         }
 
-        // Native in this slot is drawn by a GAM native style, so the view stays a banner view; the
-        // toggle only adds native to the Prebid auction (and, if asked, GAM's fluid size).
+        // Native in this slot is drawn by GAM (HTML creative or native style), so the view stays a
+        // banner view; the toggle only adds native to the Prebid auction (and, if asked, GAM's
+        // fluid size).
         val nativeConfig = config.config.nativeConfig
 
         val adaptiveConfig = gamConfig.adaptiveBannerConfig
@@ -302,7 +303,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
                 } else {
                     addAll(sortedGamSizes.drop(1))
                 }
-                // Lets a fluid native style serve: full slot width, height known only once it renders.
+                // Lets a fluid GAM native style serve: full slot width, height known once it renders.
                 if (nativeConfig.fluid) add(AdSize.FLUID)
             }
 
