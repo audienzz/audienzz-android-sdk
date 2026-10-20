@@ -17,6 +17,10 @@ import kotlinx.serialization.Serializable
 data class PublisherConfig(
     @SerialName("id")
     val id: Int,
+    /** The id analytics reports as `sdk_id`. Absent from older configs → the id the app passed. */
+    @SerialName("sdkId")
+    @Serializable(with = SdkIdSerializer::class)
+    val sdkId: String? = null,
     @SerialName("prebidServer")
     val prebidServerConfig: PrebidServerConfig,
     @SerialName("gamConfig")
@@ -122,6 +126,18 @@ data class IosOrtbConfig(
 )
 
 /** A malformed optional tuning field must not invalidate the publisher's ad configuration. */
+/** Accepts the id as a JSON string or number; blank or missing → null. */
+internal object SdkIdSerializer : KSerializer<String?> {
+    override val descriptor = String.serializer().nullable.descriptor
+    override fun deserialize(decoder: Decoder): String? {
+        val primitive = (decoder as JsonDecoder).decodeJsonElement() as? JsonPrimitive
+        return primitive?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+    }
+    override fun serialize(encoder: Encoder, value: String?) {
+        if (value == null) encoder.encodeNull() else encoder.encodeString(value)
+    }
+}
+
 internal object AnalyticsBatchSizeSerializer : KSerializer<Int?> {
     override val descriptor = Int.serializer().nullable.descriptor
     override fun deserialize(decoder: Decoder): Int? {

@@ -10,7 +10,15 @@ adheres to [Semantic Versioning](https://semver.org/).
   filled or not. Carries `auction_id` (same as `adImpression`), `slot_reload` and `ad_unit_code`.
   Never sent for a slot that does not appear; a refresh or leaving the page closes the auction.
 - Analytics field `publisher_id` is renamed `sdk_id` (same ws-sdk-config id). Events queued by an
-  older version are re-sent under the new name.
+  older version are re-sent under the new name. Its value is the remote config's `sdkId`; before
+  the config is available (or if it has none) it is the id passed to `initializeRemoteSdk`.
+- Remote config is fetched from ws-sdk-config `sdks/{sdkId}` (and `sdks/{sdkId}/ad-configs`)
+  instead of `publishers/{id}`. Same response; a server without the new route (HTTP 404) falls
+  back to the old one.
+- Fix analytics `consent_string` missing on pages reported before Prebid finished initializing
+  (typically the first page of every session): the CMP's stored `IABTCF_TCString` is now read
+  directly when Prebid has no value yet. A consent string set through `AudienzzTargetingParams`
+  still takes precedence.
 
 ## 0.3.4
 

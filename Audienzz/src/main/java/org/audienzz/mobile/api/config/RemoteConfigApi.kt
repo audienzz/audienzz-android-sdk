@@ -4,7 +4,21 @@ import kotlinx.serialization.json.JsonArray
 import retrofit2.http.GET
 import retrofit2.http.Path
 
+/**
+ * ws-sdk-config. The SDK id the app initializes with addresses `sdks/{sdkId}`; the `publishers/`
+ * routes are what released SDKs call and are kept as a fallback when `sdks/` is not served.
+ */
 interface RemoteConfigApi {
+
+    @GET("sdks/{sdkId}")
+    suspend fun getSdkConfig(
+        @Path("sdkId") sdkId: String,
+    ): PublisherConfig
+
+    @GET("sdks/{sdkId}/ad-configs")
+    suspend fun getSdkAdUnitConfigs(
+        @Path("sdkId") sdkId: String,
+    ): JsonArray
 
     @GET("publishers/{publisherId}")
     suspend fun getPublisherConfig(

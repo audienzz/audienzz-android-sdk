@@ -13,7 +13,7 @@ remain JSON **strings**, including CPM and counters. The collector endpoint is
 
 | Field | Current branch contract |
 |---|---|
-| `sdk_id` | Top-level ws-sdk-config publisher ID (sent as `publisher_id` up to 0.3.4; events queued under that name are re-sent as `sdk_id`). Remote init supplies it; Flutter forwards it from Dart. Direct integrations may supply it through analytics configuration. Absent if unknown. |
+| `sdk_id` | Top-level ws-sdk-config id: the remote config's `sdkId`, or the id passed to remote init until a config is available (sent as `publisher_id` up to 0.3.4; events queued under that name are re-sent as `sdk_id`). Remote init supplies it; Flutter forwards it from Dart. Direct integrations may supply it through analytics configuration. Absent if unknown. |
 | `company_id`, `attributes.website_id` | Omitted on newly created events. Analytics resolves these from publisher ID and its own mapping. Pending events persisted by an older SDK retain their original payload. |
 | `environment` | `production` by default; explicitly configurable as `production`, `staging` or `test`. All four example apps set `test`. Invalid values are rejected without changing context. |
 | `source` | `ios-sdk` or `android-sdk`, including bridge apps. |

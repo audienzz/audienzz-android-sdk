@@ -11,6 +11,7 @@ import org.audienzz.mobile.event.database.dao.PublisherConfigDao
 import org.audienzz.mobile.event.database.dao.RemoteConfigDao
 import org.audienzz.mobile.event.database.entity.PublisherConfigEntity
 import org.audienzz.mobile.event.database.entity.RemoteConfigEntity
+import retrofit2.HttpException
 import javax.inject.Inject
 
 internal class RemoteConfigRepositoryImpl @Inject constructor(
@@ -25,7 +26,10 @@ internal class RemoteConfigRepositoryImpl @Inject constructor(
         try {
             // Fetch Publisher Config
             Log.d(TAG, "Fetching publisher config...")
-            val publisherConfig = api.getPublisherConfig(publisherId)
+            val publisherConfig = fromSdksOrPublishers(
+                sdks = { api.getSdkConfig(publisherId) },
+                publishers = { api.getPublisherConfig(publisherId) },
+            )
             Log.d(TAG, "Publisher config fetched successfully")
             publisherConfigDao.insertPublisherConfig(
                 PublisherConfigEntity(
@@ -37,7 +41,10 @@ internal class RemoteConfigRepositoryImpl @Inject constructor(
 
             // Fetch Ad Unit Configs
             Log.d(TAG, "Fetching ad unit configs...")
-            val adUnitConfigsJson = api.getAdUnitConfigs(publisherId)
+            val adUnitConfigsJson = fromSdksOrPublishers(
+                sdks = { api.getSdkAdUnitConfigs(publisherId) },
+                publishers = { api.getAdUnitConfigs(publisherId) },
+            )
             Log.d(TAG, "Fetched ${adUnitConfigsJson.size} ad unit config elements")
             // H9: decode each element independently so a single malformed entry is skipped rather
             // than throwing and discarding the whole config set (which recreated the cold-start
@@ -94,6 +101,19 @@ internal class RemoteConfigRepositoryImpl @Inject constructor(
             }
         }
     }
+
+    /**
+     * `sdks/{sdkId}` first. Only a 404 — a server that does not serve that route yet — falls back
+     * to the `publishers/` route released SDKs use; any other failure is reported as it is.
+     */
+    private suspend fun <T> fromSdksOrPublishers(sdks: suspend () -> T, publishers: suspend () -> T): T =
+        try {
+            sdks()
+        } catch (e: HttpException) {
+            if (e.code() != 404) throw e
+            Log.w(TAG, "sdks/ route not found; falling back to publishers/")
+            publishers()
+        }
 
     companion object {
         private const val TAG = "RemoteConfigRepository"
