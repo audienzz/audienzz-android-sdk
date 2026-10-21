@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 
 @Serializable
@@ -50,9 +51,23 @@ data class RemoteGamConfig(
     private val adSizesRaw: List<String>,
     @SerialName("adaptiveBannerConfig")
     val adaptiveBannerConfig: RemoteAdaptiveBannerConfig? = null,
+    /**
+     * Also ask GAM for the fluid size, next to [adSizes]: full slot width, height set by the
+     * creative (e.g. a fluid GAM native style). Prebid is unaffected and keeps bidding on
+     * `prebidConfig.adSizes`. Held as raw JSON and read leniently (see [includeFluid]), like
+     * `prebidConfig.format`, so a malformed value cannot drop the whole ad config.
+     */
+    @SerialName("includeFluid")
+    private val includeFluidJson: JsonElement? = null,
 ) {
     val adSizes: List<RemoteAdSize>
         get() = adSizesRaw.map { RemoteAdSizeMapper.map(it) }
+
+    /** true only for a JSON boolean `true`; absent, string or number values are off. */
+    val includeFluid: Boolean
+        get() = (includeFluidJson as? JsonPrimitive)
+            ?.takeUnless { it.isString }
+            ?.booleanOrNull == true
 }
 
 @Serializable

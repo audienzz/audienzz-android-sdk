@@ -10,8 +10,9 @@ internal val AdManagerAdView.adViewId: String
 internal val Iterable<AdSize>.sizeString
     get() = joinToString { it.sizeString }
 
+/** `WxH`, or `fluid` for Google's fluid size (whose width/height are negative sentinels). */
 internal val AdSize.sizeString: String
-    get() = "${width}x$height"
+    get() = if (this == AdSize.FLUID) "fluid" else "${width}x$height"
 
 /**
  * `sizes` as a JSON-array-encoded string (web-schema parity, like `media_types`) — e.g.
