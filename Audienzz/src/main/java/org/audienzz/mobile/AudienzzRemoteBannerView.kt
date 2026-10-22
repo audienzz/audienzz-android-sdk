@@ -6,6 +6,7 @@ import android.util.AttributeSet
 import android.util.Log
 import android.view.Gravity
 import android.widget.FrameLayout
+import androidx.annotation.VisibleForTesting
 import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.LoadAdError
@@ -261,7 +262,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         // Fluid is a GAM-only addition: Prebid keeps bidding on its fixed sizes. At least one fixed
         // GAM size is still required (checked above): it gives the slot a measurable placeholder
         // for the lazy-load gate, which a fluid-only request (height 0 until it renders) lacks.
-        val includeFluid = gamConfig.includeFluid
+        val includeFluid = gamConfig.includeFluid || mockIncludeFluid
 
         val adaptiveConfig = gamConfig.adaptiveBannerConfig
         val isAdaptiveEnabled = adaptiveConfig?.enabled == true
@@ -440,5 +441,13 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
          * on screen.
          */
         internal const val DEFAULT_LAZY_LOAD = true
+
+        /**
+         * TEMPORARY MOCK — remove before release. The backend does not send
+         * `gamConfig.includeFluid` yet, so every remote banner requests GAM's fluid size for
+         * testing. Tests switch it off to exercise the real config value.
+         */
+        @VisibleForTesting
+        internal var mockIncludeFluid = true
     }
 }
