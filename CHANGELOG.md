@@ -3,6 +3,15 @@
 All notable changes to the Audienzz Android SDK are documented here. This project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- **Fluid GAM size for remote banners.** An ad config can set `gamConfig.includeFluid: true`. The
+  banner then also asks GAM for the fluid size next to its fixed `gamConfig.adSizes`, so fluid
+  creatives such as GAM native styles can serve into the same slot (full width, height set by the
+  creative). Prebid is unaffected and keeps bidding on `prebidConfig.adSizes`. Off when absent or
+  not a JSON boolean. At least one fixed GAM size is still required. `getAdSize()` returns
+  `AdSize.FLUID` after a fluid ad; use the view's measured size then. Analytics logs it as `fluid`.
+
 ## 0.3.4
 
 - **Behavior change: a remote banner without a refresh interval no longer refreshes.** When the ad

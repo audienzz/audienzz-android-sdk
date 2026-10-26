@@ -6,6 +6,7 @@ import android.util.AttributeSet
 import android.util.Log
 import android.view.Gravity
 import android.widget.FrameLayout
+import androidx.annotation.VisibleForTesting
 import com.google.android.gms.ads.AdListener
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.LoadAdError
@@ -193,6 +194,10 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         externalAdListener = listener
     }
 
+    /**
+     * The delivered size. [AdSize.FLUID] when a fluid ad served (ad config `gamConfig.includeFluid`):
+     * its width/height are negative sentinels, so read this view's measured size instead.
+     */
     fun getAdSize(): AdSize? = adView?.adSize
 
     private fun loadBannerInternal() {
@@ -254,6 +259,11 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
             Log.i(TAG, "No Prebid sizes in remote config for id=$adConfigId — serving GAM-only")
         }
 
+        // Fluid is a GAM-only addition: Prebid keeps bidding on its fixed sizes. At least one fixed
+        // GAM size is still required (checked above): it gives the slot a measurable placeholder
+        // for the lazy-load gate, which a fluid-only request (height 0 until it renders) lacks.
+        val includeFluid = gamConfig.includeFluid || mockIncludeFluid
+
         val adaptiveConfig = gamConfig.adaptiveBannerConfig
         val isAdaptiveEnabled = adaptiveConfig?.enabled == true
 
@@ -298,6 +308,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
                 } else {
                     addAll(sortedGamSizes.drop(1))
                 }
+                if (includeFluid) add(AdSize.FLUID)
             }
 
             setAdSizes(finalSizes[0], *finalSizes.drop(1).toTypedArray())
@@ -316,10 +327,13 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         // CREATIVE inside the host; the `layoutParams` set in `init` centers the host inside the
         // publisher's container — two different problems, both needed. Same fix as the RN bridge
         // and AURemoteConfigBannerView. (From origin/main, 4a304c9.)
+        // A fluid ad takes its width from the view, so with fluid requested the GAM view spans the
+        // host (WRAP_CONTENT would measure it to nothing). Fixed-size creatives stay centered:
+        // Google's ad view centers its own child.
         addView(
             adViewLocal,
             LayoutParams(
-                LayoutParams.WRAP_CONTENT,
+                if (includeFluid) LayoutParams.MATCH_PARENT else LayoutParams.WRAP_CONTENT,
                 LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER_HORIZONTAL,
             ),
@@ -427,5 +441,13 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
          * on screen.
          */
         internal const val DEFAULT_LAZY_LOAD = true
+
+        /**
+         * TEMPORARY MOCK — remove before release. The backend does not send
+         * `gamConfig.includeFluid` yet, so every remote banner requests GAM's fluid size for
+         * testing. Tests switch it off to exercise the real config value.
+         */
+        @VisibleForTesting
+        internal var mockIncludeFluid = true
     }
 }
