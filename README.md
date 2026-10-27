@@ -349,6 +349,8 @@ If raising it does not move the auction earlier, the ad component is not mountin
 | Lazy loading | `lazyLoad` | `true` — the auction waits for the viewport |
 | Prefetch margin | `prefetchDistanceDp` | `200` dp |
 
+Sizing follows the ad config too: `config.resizeToPrebidCreative` (default `true`) sizes the banner to the Prebid creative when GAM served it in a creative of another size. For a publisher-owned `AdManagerAdView`, set `AudienzzAdViewHandler.resizeToPrebidCreative` before `load`.
+
 > **Default is lazy.** A remote-config banner waits until the slot comes within the prefetch margin. This is deliberate: a publisher who builds several below-fold placements on entering an article would otherwise buy fills the reader may never approach, and an unrendered fill cannot become an impression. Set `lazyLoad: false` on the ad config for slots that are always on screen.
 
 Smart Refresh

@@ -33,6 +33,12 @@ data class RemoteConfig(
      */
     @SerialName("lazyLoad")
     val lazyLoad: Boolean? = null,
+    /**
+     * Whether the banner is sized to the Prebid creative when the GAM creative that served it has
+     * another size. null falls back to on. See AudienzzAdViewHandler.resizeToPrebidCreative.
+     */
+    @SerialName("resizeToPrebidCreative")
+    val resizeToPrebidCreative: Boolean? = null,
     /** Reserved height (dp) for the sticky ad wrapper. null falls back to the SDK default (600). */
     @SerialName("stickyMaxHeight")
     val stickyMaxHeight: Int? = null,

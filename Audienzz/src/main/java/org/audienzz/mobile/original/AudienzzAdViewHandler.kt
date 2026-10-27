@@ -114,6 +114,19 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      */
     var headerBiddingEnabled: Boolean = true
 
+    /**
+     * Size the banner to the Prebid creative when the GAM creative that served it has another size.
+     * A 300x250 bid served through a 300x600 creative was left smaller and off-centre; a 300x600
+     * bid served through a 300x250 creative was cut off. A creative GAM served itself keeps GAM's
+     * size. On by default; the remote banner takes it from the ad config's `resizeToPrebidCreative`.
+     * See [PrebidCreativeSizer].
+     */
+    var resizeToPrebidCreative: Boolean
+        get() = creativeSizer.enabled
+        set(value) { creativeSizer.enabled = value }
+
+    internal val creativeSizer = PrebidCreativeSizer(adView)
+
     // Viewability tracking (viewability.start / viewability.success)
     private var viewabilityTracker: ViewabilityTracker? = null
 
@@ -275,6 +288,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      */
     private fun releaseForPage() {
         creativePageGeneration++
+        creativeSizer.cancel()
         // Bump the generation FIRST so a response already in flight is recognised as stale.
         auctionGeneration++
         retireCurrentAuction()
@@ -842,6 +856,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         disableSmartRefresh()
         cancelGoogleLoadTimeout()
         googleLoad = null
+        creativeSizer.cancel()
         adUnit.stopAutoRefresh()
         adUnit.destroy()
         gamRequestBuilder = null
@@ -1206,6 +1221,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         renderAuctionId = currentAuctionId
         watchGoogleLoad(load)
         setEventsListenerToAdView()
+        // Only a real Prebid win can render a Prebid creative; prebidWinningBidder is set for one.
+        creativeSizer.beginLoad(prebidWinningBidder?.let { request.prebidKeyword(HB_SIZE_KEY) })
         callback.invoke(request, resultCode)
     }
 
@@ -1235,6 +1252,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                     displayedPrebidLineItemWon = true
                     if (displayedPrebidBidder == null) displayedPrebidBidder = prebidWinningBidder
                 }
+                creativeSizer.onPrebidRendered()
             }
         }
 
@@ -1261,6 +1279,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                 // moment its economics become the ones render events describe.
                 commitDisplayedCreative()
                 restoreFromBlankIfNeeded()
+                // Before the publisher's callback, so a size it reads there is the one shown.
+                creativeSizer.onGoogleLoaded()
                 actualListener?.onAdLoaded()
             }
 
