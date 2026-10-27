@@ -377,6 +377,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         )
         adViewHandler = handler
         handler.headerBiddingEnabled = headerBidding
+        handler.resizeToPrebidCreative = config.config.resizeToPrebidCreative ?: true
         pendingScreenKey?.let { handler.hostScreenOverride = it }
         handler.keepsAdAcrossPages = galleryMode && !config.config.refreshOnBack
         // Before load(): a stop requested while config was resolving must be in place before the
