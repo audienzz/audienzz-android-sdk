@@ -230,13 +230,37 @@ class AnalyticsContractTest {
         val event = adEvent(0).copy(publisherId = "35", environment = "test",
             companyId = "seller", websiteId = "wrong-website")
         val payload = serialize(event)
-        assertEquals("35", (payload["publisher_id"] as JsonPrimitive).content)
+        // `sdk_id`, not `publisher_id`: the collector read that as Xandr's publisher id.
+        assertEquals("35", (payload["sdk_id"] as JsonPrimitive).content)
+        assertFalse(payload.containsKey("publisher_id"))
         assertEquals("test", (payload["environment"] as JsonPrimitive).content)
         assertEquals(android.os.Build.VERSION.RELEASE, (payload["os_version"] as JsonPrimitive).content)
         assertEquals("Android", (payload["os_name"] as JsonPrimitive).content)
         assertFalse(payload.containsKey("company_id"))
         assertFalse(attributes(payload).containsKey("website_id"))
-        assertFalse(serialize(adEvent(0)).containsKey("publisher_id"))
+        assertFalse(serialize(adEvent(0)).containsKey("sdk_id"))
+    }
+
+    @Test fun `an event persisted as publisher_id before the rename replays as sdk_id`() {
+        val lenient = Json { ignoreUnknownKeys = true; encodeDefaults = false; explicitNulls = false }
+        val stored = lenient.encodeToJsonElement(EventNetwork.serializer(),
+            EventNetworkMapper(RuntimeEnvironment.getApplication()).toNetwork(adEvent(0))) as JsonObject
+        val legacy = JsonObject(stored + ("publisher_id" to JsonPrimitive("35")))
+        val replayed = lenient.decodeFromJsonElement(EventNetwork.serializer(), legacy)
+        assertEquals("35", replayed.sdkId)
+        val sent = lenient.encodeToJsonElement(EventNetwork.serializer(), replayed) as JsonObject
+        assertEquals("35", (sent["sdk_id"] as JsonPrimitive).content)
+        assertFalse(sent.containsKey("publisher_id"))
+    }
+
+    @Test fun `placementVisible carries the auction id, slot reload and ad unit code`() {
+        val attrs = attributes(serialize(adEvent(1).copy(eventType = EventType.PLACEMENT_VISIBLE,
+            adSubtype = null, apiType = null)))
+        assertEquals("auction-1", attrs.getValue("auction_id").content)
+        assertEquals("1", attrs.getValue("slot_reload").content)
+        assertEquals("placement", attrs.getValue("ad_unit_code").content)
+        assertEquals("placementVisible", serialize(adEvent(0).copy(eventType = EventType.PLACEMENT_VISIBLE))
+            .getValue("event_type").let { (it as JsonPrimitive).content })
     }
 
     @Test fun `CPM has no exponent and currency is never rewritten`() {
@@ -278,7 +302,7 @@ class AnalyticsContractTest {
             dispatcher.scheduler.runCurrent()
             assertEquals(3, captured.size)
             assertEquals(listOf("A", "A", "B"), captured.map { it.screenName })
-            assertEquals(listOf("35", "35", "34"), captured.map { it.publisherId })
+            assertEquals(listOf("35", "35", "34"), captured.map { it.sdkId })
             assertEquals(listOf("test", "test", "production"), captured.map { it.environment })
             assertEquals(captured[0].pageImpressionId, captured[1].pageImpressionId)
             assertTrue(captured[0].pageImpressionId != captured[2].pageImpressionId)

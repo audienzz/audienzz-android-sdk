@@ -294,6 +294,30 @@ internal fun EventLogger.viewabilitySuccess(
     )
 }
 
+/**
+ * The slot of one auction reached the screen: at least one pixel, app in the foreground, after the
+ * auction ended (filled or not). Fill rate's denominator. Sent at most once per auction.
+ */
+internal fun EventLogger.placementVisible(
+    adUnitId: String?,
+    adUnitCode: String?,
+    auctionId: String?,
+    slotReload: Int,
+    pageContext: AnalyticsPageContext? = null,
+) {
+    logEvent(
+        EventDomain(
+            pageContext = pageContext,
+            eventType = org.audienzz.mobile.event.entity.EventType.PLACEMENT_VISIBLE,
+            adUnitId = adUnitId,
+            adType = AdType.BANNER,
+            adUnitCode = adUnitCode,
+            auctionId = auctionId,
+            slotReload = slotReload,
+        ),
+    )
+}
+
 @Suppress("LongParameterList")
 internal fun EventLogger.adClick(
     adUnitId: String,

@@ -699,6 +699,9 @@ object AudienzzPrebidMobile {
                 }
 
                 companyId = publisherConfig?.ortbConfig?.schainConfig?.sellerId ?: "1"
+                // Analytics reports the config's own `sdkId`; until a config answers (or if an
+                // older one has none) it is the id the app initialized with, set above.
+                publisherConfig?.sdkId?.let { org.audienzz.mobile.event.AnalyticsContext.setPublisherId(it) }
                 backendSmartRefreshV2 = publisherConfig?.smartRefreshV2
                 applyBackendPpidConfig(ppidEnabled = publisherConfig?.ppidEnabled)
 

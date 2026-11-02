@@ -28,6 +28,7 @@ import org.audienzz.mobile.event.entity.ApiType
 import org.audienzz.mobile.event.eventLogger
 import org.audienzz.mobile.event.noBid
 import org.audienzz.mobile.event.util.adSubtype
+import org.audienzz.mobile.event.placementVisible
 import org.audienzz.mobile.event.viewabilityStart
 import org.audienzz.mobile.event.viewabilitySuccess
 import org.audienzz.mobile.screen.screenAdCoordinator
@@ -116,6 +117,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
 
     // Viewability tracking (viewability.start / viewability.success)
     private var viewabilityTracker: ViewabilityTracker? = null
+    /** Watches whether the slot of the last completed auction reaches the screen (`placementVisible`). */
+    private var placementTracker: ViewabilityTracker? = null
 
     // Render-winner detection (bidder_code / winner_bidder_code on adImpression).
     // prebidWinningBidder = hb_bidder from the Prebid auction; prebidLineItemWon is flipped true
@@ -274,6 +277,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * auto-refresh, so the handler issues no further auctions or GAM loads until its page returns.
      */
     private fun releaseForPage() {
+        // Leaving the screen closes the auction: a later return must not report it as seen.
+        stopPlacementVisibility()
         creativePageGeneration++
         // Bump the generation FIRST so a response already in flight is recognised as stale.
         auctionGeneration++
@@ -839,6 +844,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      */
     fun destroy() {
         Log.d(TAG, "destroy() adUnitId=${adView.adUnitId}")
+        stopPlacementVisibility()
         disableSmartRefresh()
         cancelGoogleLoadTimeout()
         googleLoad = null
@@ -1018,6 +1024,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         Log.d(TAG, "fetchDemand() adUnitId=${adView.adUnitId} — isRefresh=$isRefresh, autorefresh=${autorefreshTime}ms")
 
         val requestStartMs = System.currentTimeMillis()
+        // A new auction closes the previous one's placementVisible window.
+        stopPlacementVisibility()
         // Mint the auction id up front so bidRequest and every later event of this auction share it.
         currentAuctionId = UUID.randomUUID().toString()
         val requestPage = eventLogger?.capturePageContext() ?: AnalyticsPageContext()
@@ -1261,6 +1269,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                 // moment its economics become the ones render events describe.
                 commitDisplayedCreative()
                 restoreFromBlankIfNeeded()
+                startPlacementVisibility()
                 actualListener?.onAdLoaded()
             }
 
@@ -1297,6 +1306,8 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                     error.code == com.google.android.gms.ads.AdRequest.ERROR_CODE_INTERNAL_ERROR
                 if (!completeGoogleLoad(retryableFailure = retryable)) return
                 restoreFromBlankIfNeeded()
+                // Filled or not: fill rate counts a visible slot that got no ad too.
+                startPlacementVisibility()
                 actualListener?.onAdFailedToLoad(error)
             }
 
@@ -1344,6 +1355,48 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             },
         ).also { viewabilityTracker = it }
         tracker.start()
+    }
+
+    /**
+     * After an auction ended (filled or not): send `placementVisible` once, the first time at least
+     * one pixel of the slot is on screen with the app in the foreground. The next auction, a page
+     * release or [destroy] closes the window; a slot that never shows sends nothing. Same
+     * eligibility as viewability (not blanked, not reported hidden, not under an interstitial).
+     */
+    private fun startPlacementVisibility() {
+        stopPlacementVisibility()
+        val auctionId = renderAuctionId ?: return
+        val slotReload = requestSlotReload
+        val page = currentAnalyticsPage
+        var tracker: ViewabilityTracker? = null
+        tracker = ViewabilityTracker(
+            view = adView,
+            // Any visible pixel: the fraction of a 1px sliver is above the smallest positive float.
+            thresholdFraction = Float.MIN_VALUE,
+            isEligible = {
+                acceptsGoogleEvents && !blankedForReload && !hostReportedHidden &&
+                    RefreshBlockReason.INTERSTITIAL !in refreshController.blockReasons
+            },
+            onStart = {
+                tracker?.stop()
+                if (placementTracker === tracker) placementTracker = null
+                eventLogger?.placementVisible(
+                    adUnitId = adView.adUnitId,
+                    adUnitCode = adUnit.configId,
+                    auctionId = auctionId,
+                    slotReload = slotReload,
+                    pageContext = page,
+                )
+            },
+            onSuccess = {},
+        )
+        placementTracker = tracker
+        tracker.start()
+    }
+
+    private fun stopPlacementVisibility() {
+        placementTracker?.stop()
+        placementTracker = null
     }
 
     /**

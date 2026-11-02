@@ -13,7 +13,7 @@ remain JSON **strings**, including CPM and counters. The collector endpoint is
 
 | Field | Current branch contract |
 |---|---|
-| `publisher_id` | Top-level ws-sdk-config publisher ID. Remote init supplies it; Flutter forwards it from Dart. Direct integrations may supply it through analytics configuration. Absent if unknown. |
+| `sdk_id` | Top-level ws-sdk-config id: the remote config's `sdkId`, or the id passed to remote init until a config is available (sent as `publisher_id` up to 0.3.4; events queued under that name are re-sent as `sdk_id`). Remote init supplies it; Flutter forwards it from Dart. Direct integrations may supply it through analytics configuration. Absent if unknown. |
 | `company_id`, `attributes.website_id` | Omitted on newly created events. Analytics resolves these from publisher ID and its own mapping. Pending events persisted by an older SDK retain their original payload. |
 | `environment` | `production` by default; explicitly configurable as `production`, `staging` or `test`. All four example apps set `test`. Invalid values are rejected without changing context. |
 | `source` | `ios-sdk` or `android-sdk`, including bridge apps. |
@@ -115,6 +115,12 @@ Non-finite or negative values are omitted.
   not independent proof that this bid won the Google auction.
 - `slot_reload` is the string `"0"` for the first slot load, `"1"` after that. It is distinct from
   the numeric request-targeting `hb_refresh_count`, which resets with a page visit.
+- `placementVisible` (banners) is the fill-rate denominator: once per auction, the first time at
+  least one pixel of the slot is on screen with the app in the foreground after the auction ended,
+  whether Google filled it or not. It carries that auction's `auction_id` (the one `adImpression`
+  uses), `slot_reload` and `ad_unit_code`. A slot that never shows sends nothing; the next auction
+  (refresh), a page release or destruction closes the window. Same exclusions as viewability
+  (blanked for reload, hidden by the host, under an interstitial).
 - `viewability.start` is emitted only on the creative's first eligible exposure, with its
   `auction_id`. Scrolling away/back, uncovering or returning from background restarts the exposure
   timer without another start for that ad. `viewability.success` is terminal: at most one per
@@ -194,7 +200,7 @@ Backend/publisher owners still need to provide or verify:
    `com.pagesuite.android.laliberte` versus `ch.stpaul.laliberte`.
 4. Production rollout owners/dates and exact client build/native dependency versions. The SDK
    repository cannot establish when a publisher will ship.
-5. Collector joins on `publisher_id`, filtering on `environment`, and deduplication on `event_id`.
+5. Collector joins on `sdk_id` (`publisher_id` from older SDKs), filtering on `environment`, and deduplication on `event_id`.
    Keep legacy handling for queued old payloads and older app versions.
 
 Historical milliseconds can be normalized with `timestamp > 100000000000 ? timestamp / 1000 : timestamp`.

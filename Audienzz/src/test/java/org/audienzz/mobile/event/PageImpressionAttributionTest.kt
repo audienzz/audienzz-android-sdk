@@ -153,7 +153,7 @@ class PageImpressionAttributionTest {
         // Delivery has not run yet. Neither navigation nor async enrichment can rewrite the visit.
         assertTrue(sent.isEmpty())
         drain()
-        assertEquals(11, sent.size) // three page impressions + all eight ad event types
+        assertEquals(3 + EventType.entries.size - 1, sent.size) // three page impressions + every ad event type
         assertEquals(listOf(a.pageImpressionId, b.pageImpressionId, returnedA.pageImpressionId), sent.take(3).map(::pageId))
         sent.drop(3).forEach {
             assertEquals(pageId(sent.first()), pageId(it))
