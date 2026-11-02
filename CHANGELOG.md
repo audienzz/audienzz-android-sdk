@@ -3,7 +3,7 @@
 All notable changes to the Audienzz Android SDK are documented here. This project
 adheres to [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.3.5
 
 - New analytics event `placementVisible` (banners) for fill rate: sent once per auction when at
   least 1 px of the slot is on screen with the app in the foreground after the auction ended,
