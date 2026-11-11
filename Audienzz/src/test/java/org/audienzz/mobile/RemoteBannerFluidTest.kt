@@ -35,8 +35,6 @@ class RemoteBannerFluidTest {
     private lateinit var banner: AudienzzRemoteBannerView
 
     @Before fun setup() {
-        // Exercise the real ad config value, not the temporary mock.
-        AudienzzRemoteBannerView.mockIncludeFluid = false
         activity = Robolectric.buildActivity(Activity::class.java).setup().get()
         banner = AudienzzRemoteBannerView(activity, "fluid")
         activity.setContentView(banner)
@@ -48,14 +46,6 @@ class RemoteBannerFluidTest {
     @After fun cleanup() {
         banner.destroy()
         unmockkAll()
-        AudienzzRemoteBannerView.mockIncludeFluid = true
-    }
-
-    @Test fun `temporary mock - fluid is requested even when the ad config omits it`() {
-        AudienzzRemoteBannerView.mockIncludeFluid = true
-        val google = create(parse(null))
-        assertTrue(AdSize.FLUID in google.adSizes!!.toList())
-        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, google.layoutParams.width)
     }
 
     private fun parse(
