@@ -5,6 +5,11 @@ adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- **`AudienzzAdViewHandler.keepsAdAcrossPages`** (default `false`). When on, a banner that has
+  loaded is only paused while its page is not the active one: the creative stays (no release, no
+  blanking), no auction runs and nothing is counted; on return (page or foreground) its refresh
+  resumes with the remaining eligible interval instead of a forced new auction. For bridges' gallery
+  (ePaper) slots that a reader leaves for an article and comes back to. Set before `load`.
 - **Fluid GAM size for remote banners.** An ad config can set `gamConfig.includeFluid: true`. The
   banner then also asks GAM for the fluid size next to its fixed `gamConfig.adSizes`, so fluid
   creatives such as GAM native styles can serve into the same slot (full width, height set by the

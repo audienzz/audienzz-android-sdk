@@ -114,6 +114,22 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      */
     var headerBiddingEnabled: Boolean = true
 
+    /**
+     * Keep the delivered ad across page transitions instead of releasing it and loading a new one.
+     *
+     * Off (the default), leaving the banner's page releases it (auction retired, creative blanked)
+     * and coming back forces a fresh auction. On, a banner that has loaded is only paused while its
+     * page is not the active one: the creative stays, no auction runs and no viewability or
+     * `placementVisible` is counted; on return its refresh resumes with the remaining eligible
+     * interval, exactly as after scrolling back into view. A return from the background is the same
+     * kind of return. A banner that never loaded keeps the default behaviour (released, first load
+     * re-armed on return).
+     *
+     * For slots a reader leaves and comes back to within one visit, such as the ad tiles of an
+     * ePaper whose articles open on top of it. Set before [load].
+     */
+    var keepsAdAcrossPages: Boolean = false
+
     // Viewability tracking (viewability.start / viewability.success)
     private var viewabilityTracker: ViewabilityTracker? = null
 
@@ -229,6 +245,10 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * released banner in the meantime.
      */
     internal fun onPageActiveChanged(active: Boolean, epoch: Int) {
+        if (keepsAdAcrossPages && lastRefreshTime != 0L) {
+            holdForPage(active, epoch)
+            return
+        }
         viewabilityTracker?.stop()
         viewabilityTracker = null
         screenActive = active
@@ -266,6 +286,34 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} host=$host — INACTIVE, releasing")
             refreshController.block(RefreshBlockReason.PAGE_INACTIVE)
             releaseForPage()
+        }
+    }
+
+    /**
+     * [keepsAdAcrossPages]: a page transition pauses or resumes the banner and keeps its creative.
+     *
+     * The viewability and `placementVisible` watchers stay installed: [acceptsGoogleEvents] is false
+     * while [screenActive] is, so nothing is counted while the page is away, and a creative that had
+     * not been seen yet is still counted once its page returns and it is on screen. Restarting them
+     * would report the same creative twice.
+     */
+    private fun holdForPage(active: Boolean, epoch: Int) {
+        screenActive = active
+        if (active) {
+            pageEpoch = epoch
+            Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} — ACTIVE, keeping the ad")
+            refreshController.unblock(RefreshBlockReason.PAGE_INACTIVE, schedule = false)
+            if (AppForegroundMonitor.isForeground) {
+                refreshController.unblock(RefreshBlockReason.APP_BACKGROUND, schedule = false)
+            }
+            resumeEligibleWork()
+        } else {
+            Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} — INACTIVE, holding the ad")
+            refreshController.block(RefreshBlockReason.PAGE_INACTIVE)
+            // An auction in flight belongs to the visit that is ending; retiring it keeps the
+            // displayed creative (nothing is blanked) and stops its Prebid loader.
+            auctionGeneration++
+            retireCurrentAuction()
         }
     }
 
