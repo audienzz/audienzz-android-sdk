@@ -102,6 +102,9 @@ class RemoteConfigStickyFragment : Fragment() {
         // One under every ad slot. They all open the same screen; which one you tapped is recorded
         // so a captured log says WHICH slot's leave-and-return you were exercising — with four
         // identical buttons the log would otherwise be ambiguous.
+        view.findViewById<Button>(R.id.btnOpenGallery).setOnClickListener {
+            startActivity(android.content.Intent(requireContext(), GalleryAdActivity::class.java))
+        }
         listOf(
             R.id.btnOpenAdScreen1 to "banner1",
             R.id.btnOpenAdScreen2 to "sticky1",

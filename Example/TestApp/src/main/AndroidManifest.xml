@@ -47,6 +47,14 @@
             android:name=".view.RemoteConfigAdActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".view.GalleryAdActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".view.GalleryArticleActivity"
+            android:exported="false" />
+
     </application>
 
 </manifest>

@@ -84,9 +84,36 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     private var creativePageGeneration = 0
     private var renderAuctionId: String? = null
     private var googleLoad: GoogleLoad? = null
+
+    /**
+     * A Google creative has been delivered to this view (and not blanked by a page release). Only
+     * then is there an ad worth keeping across pages: a slot whose requests only failed retries on
+     * return like any other.
+     */
+    private var showsCreative = false
+
+    /** [keepsAdAcrossPages]: the page went inactive while a Google load was in flight. */
+    internal var holdPending = false
+        private set
     private var googleEventPageGeneration: Int? = null
     private val acceptsGoogleEvents: Boolean
         get() = googleEventPageGeneration == creativePageGeneration && screenActive && !refreshController.isDestroyed
+
+    /**
+     * Viewability and `placementVisible` may count. Not while a page hold waits for a Google load
+     * to complete: that load may still finish, but its page is already away.
+     */
+    internal val countsExposure: Boolean
+        get() = acceptsGoogleEvents && !holdPending
+
+    /**
+     * [keepsAdAcrossPages]: the displayed creative of a page that is away (or leaving, with its
+     * Google load completing). Google still records its impression, and so does the SDK, so the two
+     * agree; its viewability waits for the return ([countsExposure]).
+     */
+    private val keptOnInactivePage: Boolean
+        get() = keepsAdAcrossPages && showsCreative && (holdPending || !screenActive) &&
+            googleEventPageGeneration == creativePageGeneration && !refreshController.isDestroyed
     private var pendingLoadReason: RefreshRequestReason? = null
 
     private var isFirstDemandFetch = true
@@ -114,6 +141,22 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * that was never in header bidding. Set before [load].
      */
     var headerBiddingEnabled: Boolean = true
+
+    /**
+     * Keep the delivered ad across page transitions instead of releasing it and loading a new one.
+     *
+     * Off (the default), leaving the banner's page releases it (auction retired, creative blanked)
+     * and coming back forces a fresh auction. On, a banner that has loaded is only paused while its
+     * page is not the active one: the creative stays, no auction runs and no viewability or
+     * `placementVisible` is counted; on return its refresh resumes with the remaining eligible
+     * interval, exactly as after scrolling back into view. A return from the background is the same
+     * kind of return. A banner that never loaded keeps the default behaviour (released, first load
+     * re-armed on return).
+     *
+     * For slots a reader leaves and comes back to within one visit, such as the ad tiles of an
+     * ePaper whose articles open on top of it. Set before [load].
+     */
+    var keepsAdAcrossPages: Boolean = false
 
     // Viewability tracking (viewability.start / viewability.success)
     private var viewabilityTracker: ViewabilityTracker? = null
@@ -232,6 +275,10 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * released banner in the meantime.
      */
     internal fun onPageActiveChanged(active: Boolean, epoch: Int) {
+        if (keepsAdAcrossPages && showsCreative) {
+            holdForPage(active, epoch)
+            return
+        }
         viewabilityTracker?.stop()
         viewabilityTracker = null
         screenActive = active
@@ -270,6 +317,73 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             refreshController.block(RefreshBlockReason.PAGE_INACTIVE)
             releaseForPage()
         }
+    }
+
+    /**
+     * [keepsAdAcrossPages]: a page transition pauses or resumes the banner and keeps its creative.
+     *
+     * The viewability and `placementVisible` watchers stay installed: [countsExposure] is false
+     * while [screenActive] is and while the hold is pending, so nothing is counted while the page is
+     * away, and a creative that had not been seen yet is still counted once its page returns and it
+     * is on screen. Restarting them would report the same creative twice. Its impression is recorded
+     * when Google records it ([keptOnInactivePage]).
+     */
+    private fun holdForPage(active: Boolean, epoch: Int) {
+        if (active) {
+            holdPending = false
+            screenActive = true
+            pageEpoch = epoch
+            Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} — ACTIVE, keeping the ad")
+            refreshController.unblock(RefreshBlockReason.PAGE_INACTIVE, schedule = false)
+            if (AppForegroundMonitor.isForeground) {
+                refreshController.unblock(RefreshBlockReason.APP_BACKGROUND, schedule = false)
+            }
+            resumeEligibleWork()
+            return
+        }
+        Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} — INACTIVE, holding the ad")
+        // Blocking alone pauses the refresh clock and keeps the eligible time already earned, so
+        // the return resumes the remaining interval.
+        refreshController.block(RefreshBlockReason.PAGE_INACTIVE)
+        if (googleLoad != null) {
+            // Google is already loading a creative into this view, and that cannot be cancelled:
+            // retiring it would let its creative replace the displayed one while its completion,
+            // impression and placementVisible were dropped. Let it complete as part of the visit
+            // that started it, then hold (applyPendingHold). Exposure stops now (countsExposure).
+            holdPending = true
+            refreshKeptTrackers()
+            return
+        }
+        screenActive = false
+        retireAuctionKeepingClock()
+        refreshKeptTrackers()
+    }
+
+    /** Applies a page hold deferred while a Google load was in flight (see [holdForPage]). */
+    private fun applyPendingHold() {
+        if (!holdPending) return
+        holdPending = false
+        screenActive = false
+        refreshKeptTrackers()
+    }
+
+    /**
+     * Retires an auction still at the Prebid stage, keeping the displayed creative (nothing is
+     * blanked). Retiring clears the refresh clock, which would leave a kept ad with nothing to
+     * measure its next refresh from, so the interval restarts from now. With nothing in flight
+     * there is nothing to retire, and the clock keeps the eligible time already earned.
+     */
+    private fun retireAuctionKeepingClock() {
+        if (!refreshController.hasRequestInFlight) return
+        auctionGeneration++
+        retireCurrentAuction()
+        refreshController.noteLoadedNow()
+    }
+
+    /** Ends any exposure in progress now, rather than on the trackers' next draw or poll. */
+    private fun refreshKeptTrackers() {
+        viewabilityTracker?.refreshVisibility()
+        placementTracker?.refreshVisibility()
     }
 
     /**
@@ -408,11 +522,21 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         override fun onEnterBackground() {
             Log.d(TAG, "background adUnitId=${adView.adUnitId} — stopping auto refresh")
             refreshController.block(RefreshBlockReason.APP_BACKGROUND)
-            // Invalidate in-flight auctions and retire the loader behind them: a response landing
-            // while backgrounded re-arms Prebid's timer from both its success and failure handlers,
-            // and that refresh calls load() directly without passing the auction gate.
-            auctionGeneration++
-            retireCurrentAuction()
+            if (keepsAdAcrossPages && showsCreative) {
+                // A kept ad comes back to the same creative, so the return does not reload it and
+                // its refresh clock must survive: retiring unconditionally cleared it, and refresh
+                // never resumed. Only an auction still at the Prebid stage is retired; a Google load
+                // in flight completes as part of this visit.
+                if (googleLoad == null) retireAuctionKeepingClock()
+                refreshKeptTrackers()
+            } else {
+                // Invalidate in-flight auctions and retire the loader behind them: a response
+                // landing while backgrounded re-arms Prebid's timer from both its success and
+                // failure handlers, and that refresh calls load() directly without passing the
+                // auction gate.
+                auctionGeneration++
+                retireCurrentAuction()
+            }
             // The OTHER refresh owner. A GAM ad unit can carry a server-configured refresh rate,
             // which the GMA banner runs entirely on its own — the SDK cannot read it, and the
             // request it issues reuses the last auction's Prebid keywords. `BaseAdView.pause()` is
@@ -463,6 +587,13 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         // without this a released banner on a kept-mounted route would come back to life.
         if (!screenActive) {
             Log.d(TAG, "reloadAd() adUnitId=${adView.adUnitId} — page released, skipping")
+            return
+        }
+        // Nor one whose page is leaving: the Google load still in flight completes for the visit
+        // that started it, then the hold applies. A reload now would retire that load while its
+        // creative still replaced the displayed one.
+        if (holdPending) {
+            Log.d(TAG, "reloadAd() adUnitId=${adView.adUnitId} — page leaving, skipping")
             return
         }
         auctionGeneration++
@@ -980,6 +1111,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             } else {
                 resumeEligibleWork()
             }
+            applyPendingHold()
         }
         googleLoadTimeout = timeout
         refreshHandler.postDelayed(timeout, 120_000L)
@@ -1231,7 +1363,9 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         // listener the publisher already set.
         val actualAppEventListener = publisherAppEventListener
         installedAppEventListener = AppEventListener { name, info ->
-            if (!acceptsGoogleEvents) return@AppEventListener
+            // A kept creative whose page is away still gets its attribution: its impression is
+            // recorded too ([keptOnInactivePage]), and must not be reported as an ad-server fill.
+            if (!(acceptsGoogleEvents || keptOnInactivePage)) return@AppEventListener
             actualAppEventListener?.onAppEvent(name, info)
             if (name.equals(PREBID_APP_EVENT, ignoreCase = true)) {
                 Log.d(TAG, "onAppEvent($name) — Prebid line item won for ${adView.adUnitId}")
@@ -1264,13 +1398,19 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             }
 
             override fun onAdLoaded() {
-                if (!completeGoogleLoad(retryableFailure = false)) return
+                if (!completeGoogleLoad(retryableFailure = false)) {
+                    // A pending page hold is settled by every completion, current or stale.
+                    applyPendingHold()
+                    return
+                }
                 // This is the moment the replacement becomes what the reader sees, so it is the
                 // moment its economics become the ones render events describe.
                 commitDisplayedCreative()
+                showsCreative = true
                 restoreFromBlankIfNeeded()
                 startPlacementVisibility()
                 actualListener?.onAdLoaded()
+                applyPendingHold()
             }
 
             override fun onAdOpened() {
@@ -1284,7 +1424,10 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             }
 
             override fun onAdImpression() {
-                if (!acceptsGoogleEvents || displayedImpressionRecorded) return
+                // A kept creative whose page is away still had its impression recorded by Google;
+                // recording it too keeps the two in step (dropping it lost it for good). Its
+                // viewability waits for the return.
+                if (!(acceptsGoogleEvents || keptOnInactivePage) || displayedImpressionRecorded) return
                 val responseId = adView.responseInfo?.responseId
                 if (responseId != null && responseId == lastImpressionResponseId) return
                 displayedImpressionRecorded = true
@@ -1304,11 +1447,15 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             override fun onAdFailedToLoad(error: LoadAdError) {
                 val retryable = error.code == com.google.android.gms.ads.AdRequest.ERROR_CODE_NETWORK_ERROR ||
                     error.code == com.google.android.gms.ads.AdRequest.ERROR_CODE_INTERNAL_ERROR
-                if (!completeGoogleLoad(retryableFailure = retryable)) return
+                if (!completeGoogleLoad(retryableFailure = retryable)) {
+                    applyPendingHold()
+                    return
+                }
                 restoreFromBlankIfNeeded()
                 // Filled or not: fill rate counts a visible slot that got no ad too.
                 startPlacementVisibility()
                 actualListener?.onAdFailedToLoad(error)
+                applyPendingHold()
             }
 
             override fun onAdSwipeGestureClicked() {
@@ -1330,7 +1477,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         val tracker = ViewabilityTracker(
             view = adView,
             isEligible = {
-                acceptsGoogleEvents && !blankedForReload && !hostReportedHidden &&
+                countsExposure && !blankedForReload && !hostReportedHidden &&
                     RefreshBlockReason.INTERSTITIAL !in refreshController.blockReasons
             },
             onStart = {
@@ -1374,7 +1521,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             // Any visible pixel: the fraction of a 1px sliver is above the smallest positive float.
             thresholdFraction = Float.MIN_VALUE,
             isEligible = {
-                acceptsGoogleEvents && !blankedForReload && !hostReportedHidden &&
+                countsExposure && !blankedForReload && !hostReportedHidden &&
                     RefreshBlockReason.INTERSTITIAL !in refreshController.blockReasons
             },
             onStart = {

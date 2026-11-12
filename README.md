@@ -86,6 +86,10 @@ Give the container a real width and reserve the expected height while loading. A
 comes from the backend. Lazy loading defaults to `true` with a `200dp` prefetch margin; both are
 backend-controlled.
 
+With `gamConfig.includeFluid: true` in the ad config, the banner also requests GAM's fluid size
+(for example fluid GAM native styles) next to its fixed sizes; Prebid keeps its fixed sizes. A
+fluid ad fills the container width and sets its own height, so let the container wrap its content.
+
 If multiple destinations share one native host (Compose/custom navigation), call
 `banner.setScreen(routeInstanceKey)` **before `loadAd()`**, using the same key reported in step 3.
 Use a distinct key for each route instance, not just an article route template. See
@@ -864,6 +868,48 @@ override fun onDestroy() {
 
 In a Fragment, destroy in `onDestroyView`; in Compose, use `AndroidView.onRelease`. Do not destroy
 on a temporary detach or add manual refreshes to `onResume`.
+
+### Gallery Ads (ePaper, paged screens)
+
+A pager binds a page only when it is about to show it, so an ad page further along is requested
+too late if it is requested when bound, and requesting every ad page when the screen opens buys ads
+for pages most readers never reach. `AudienzzGalleryAds` owns the ads instead: each slot requests
+its ad once the reader is within its preload distance and keeps it while pages are recycled.
+
+```kotlin
+val galleryAds = AudienzzGalleryAds(
+    context,
+    listOf(
+        AudienzzGalleryAdSlot("epaper-1", adConfigId = "123", pageIndex = 4),
+        AudienzzGalleryAdSlot("epaper-2", adConfigId = "124", pageIndex = 12),
+    ),
+    screen = this, // what you report to pageImpression for this screen
+)
+galleryAds.listener = object : AudienzzGalleryAds.Listener {
+    override fun onAdViewCreated(slotKey: String) { /* rebind the slot's page if it is shown */ }
+    override fun onAdFailedToLoad(slotKey: String, error: LoadAdError?) { /* e.g. drop the page */ }
+}
+viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+    override fun onPageScrolled(position: Int, offset: Float, offsetPx: Int) {
+        galleryAds.updatePosition(position + offset)
+    }
+})
+// Adapter, ad page: galleryAds.bind("epaper-1", holder.container) — false while there is no ad yet.
+// onDestroy: galleryAds.destroy()
+```
+
+- **Ad config:** each slot is a normal remote banner ad config (ad unit, sizes, Prebid,
+  `gamConfig.includeFluid`). It loads as soon as it is in range; `lazyLoad` and
+  `prefetchDistanceDp` do not apply.
+- **Preload distance:** `config.preloadDistancePages`: the reader is that many pages away or closer,
+  in either direction, fractional while swiping. Absent or invalid: **2**; `0` = only on its own page.
+- **Refresh:** `config.refreshTimeSeconds`, counted only while the ad is on screen.
+- **Screen:** leaving the gallery's screen (an article opened on top, background) and coming back
+  keeps the ad: it is paused, and refresh resumes where it stopped (`keepsAdAcrossPages`).
+- **Refresh on back:** `config.refreshOnBack: true` reloads the slot's ad when the reader comes back
+  instead, like any other banner. Default `false` (kept); only a JSON boolean `true` turns it on.
+- **Page view:** `bind` puts the ad in a `FrameLayout` centered vertically, full width.
+  `onAdViewCreated` is delivered outside the scroll callback, so updating the adapter there is safe.
 
 ### Interstitial Ad (Remote Config)
 

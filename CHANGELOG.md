@@ -3,6 +3,31 @@
 All notable changes to the Audienzz Android SDK are documented here. This project
 adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- **Gallery ads (`AudienzzGalleryAds`) for paged screens (ePaper).** Wraps the ad pages of a
+  horizontal pager: each `AudienzzGalleryAdSlot(slotKey, adConfigId, pageIndex)` requests its
+  remote-config banner once the reader is within the ad config's new `config.preloadDistancePages`
+  (default 2) of its page, instead of when the screen opens or when the page is bound, and keeps it
+  while pages are recycled (`bind(slotKey, container)`). Refresh is the ad config's
+  `refreshTimeSeconds`, counted only while the ad is on screen. Pass the screen you report to
+  `pageImpression`: leaving it and coming back keeps the ad (`keepsAdAcrossPages`), unless the ad
+  config's new `config.refreshOnBack` is `true` (default `false`), which reloads it on return like
+  any other banner. Feed the reader's position with `updatePosition(page)` (ViewPager2:
+  `position + positionOffset`).
+- **`AudienzzAdViewHandler.keepsAdAcrossPages`** (default `false`). When on, a banner that has
+  loaded is only paused while its page is not the active one: the creative stays (no release, no
+  blanking), no auction runs and no viewability or `placementVisible` is counted (an impression Google
+  records meanwhile is recorded too, so the two agree); on return (page or foreground) its refresh
+  resumes with the remaining eligible interval instead of a forced new auction. For bridges' gallery
+  (ePaper) slots that a reader leaves for an article and comes back to. Set before `load`.
+- **Fluid GAM size for remote banners.** An ad config can set `gamConfig.includeFluid: true`. The
+  banner then also asks GAM for the fluid size next to its fixed `gamConfig.adSizes`, so fluid
+  creatives such as GAM native styles can serve into the same slot (full width, height set by the
+  creative). Prebid is unaffected and keeps bidding on `prebidConfig.adSizes`. Off when absent or
+  not a JSON boolean. At least one fixed GAM size is still required. `getAdSize()` returns
+  `AdSize.FLUID` after a fluid ad; use the view's measured size then. Analytics logs it as `fluid`.
+
 ## 0.3.5
 
 - New analytics event `placementVisible` (banners) for fill rate: sent once per auction when at

@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 
 @Serializable
@@ -40,7 +41,47 @@ data class RemoteConfig(
      *  null falls back to 0. */
     @SerialName("stickyTopOffset")
     val stickyTopOffset: Int? = null,
-)
+    /**
+     * Gallery ads: how many pages before the reader reaches it a slot requests its ad. Held as raw
+     * JSON and read leniently (see [preloadDistancePages]), so a malformed value cannot drop the
+     * whole ad config.
+     */
+    @SerialName("preloadDistancePages")
+    private val preloadDistancePagesJson: JsonElement? = null,
+    /**
+     * Gallery ads: reload the slot's ad when the reader comes back to the gallery (an article
+     * closed, the app back from the background), like every other banner. Read leniently (see
+     * [refreshOnBack]).
+     */
+    @SerialName("refreshOnBack")
+    private val refreshOnBackJson: JsonElement? = null,
+) {
+    /**
+     * true only for a JSON boolean `true`. Off (absent, or any other value), a gallery ad is kept
+     * across leaving and returning to its screen.
+     */
+    val refreshOnBack: Boolean
+        get() = (refreshOnBackJson as? JsonPrimitive)
+            ?.takeUnless { it.isString }
+            ?.booleanOrNull == true
+
+    /**
+     * A non-negative whole number, else null (absent, negative, fractional or not a number);
+     * [org.audienzz.mobile.AudienzzGalleryAds] then uses its default.
+     */
+    val preloadDistancePages: Int?
+        get() {
+            val value = (preloadDistancePagesJson as? JsonPrimitive)
+                ?.takeUnless { it.isString }
+                ?.doubleOrNull
+                ?: return null
+            return if (value >= 0 && value == Math.floor(value) && value <= Int.MAX_VALUE) {
+                value.toInt()
+            } else {
+                null
+            }
+        }
+}
 
 @Serializable
 data class RemoteGamConfig(
@@ -50,9 +91,23 @@ data class RemoteGamConfig(
     private val adSizesRaw: List<String>,
     @SerialName("adaptiveBannerConfig")
     val adaptiveBannerConfig: RemoteAdaptiveBannerConfig? = null,
+    /**
+     * Also ask GAM for the fluid size, next to [adSizes]: full slot width, height set by the
+     * creative (e.g. a fluid GAM native style). Prebid is unaffected and keeps bidding on
+     * `prebidConfig.adSizes`. Held as raw JSON and read leniently (see [includeFluid]), like
+     * `prebidConfig.format`, so a malformed value cannot drop the whole ad config.
+     */
+    @SerialName("includeFluid")
+    private val includeFluidJson: JsonElement? = null,
 ) {
     val adSizes: List<RemoteAdSize>
         get() = adSizesRaw.map { RemoteAdSizeMapper.map(it) }
+
+    /** true only for a JSON boolean `true`; absent, string or number values are off. */
+    val includeFluid: Boolean
+        get() = (includeFluidJson as? JsonPrimitive)
+            ?.takeUnless { it.isString }
+            ?.booleanOrNull == true
 }
 
 @Serializable
