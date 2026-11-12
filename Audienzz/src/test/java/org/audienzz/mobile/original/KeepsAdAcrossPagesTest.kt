@@ -17,6 +17,9 @@ import org.audienzz.mobile.util.AppForegroundMonitor
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
+import android.os.Looper
+import java.util.concurrent.TimeUnit
 import org.robolectric.RobolectricTestRunner
 
 /** `keepsAdAcrossPages`: a page transition pauses the banner instead of releasing and reloading it. */
@@ -174,5 +177,34 @@ class KeepsAdAcrossPagesTest {
         AudienzzPrebidMobile.pageImpression("remote")
         observer.dispatchOnPreDraw()
         assertEquals("first load re-armed on return", 2, responses.size)
+    }
+
+    private fun waitBeyondTheRefreshInterval() {
+        shadowOf(Looper.getMainLooper()).idleFor(31, TimeUnit.SECONDS)
+    }
+
+    @Test fun `refresh resumes after a return`() {
+        handler.keepsAdAcrossPages = true
+        loadVisibleBanner()
+        AudienzzPrebidMobile.pageImpression("article")
+        waitBeyondTheRefreshInterval()
+        assertEquals("no refresh while away", 1, responses.size)
+        AudienzzPrebidMobile.pageImpression("remote")
+        observer.dispatchOnPreDraw()
+        waitBeyondTheRefreshInterval()
+        assertEquals("the configured refresh runs again on return", 2, responses.size)
+    }
+
+    @Test fun `refresh resumes after a return that retired an auction in flight`() {
+        handler.keepsAdAcrossPages = true
+        loadVisibleBanner()
+        waitBeyondTheRefreshInterval()
+        assertEquals("a periodic refresh is in flight", 2, responses.size)
+        AudienzzPrebidMobile.pageImpression("article")
+        responses[1](AudienzzResultCode.NO_BIDS)
+        AudienzzPrebidMobile.pageImpression("remote")
+        observer.dispatchOnPreDraw()
+        waitBeyondTheRefreshInterval()
+        assertEquals("the next refresh still comes", 3, responses.size)
     }
 }

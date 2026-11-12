@@ -309,11 +309,18 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             resumeEligibleWork()
         } else {
             Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} — INACTIVE, holding the ad")
+            // Blocking alone pauses the refresh clock and keeps the eligible time already earned,
+            // so the return resumes the remaining interval.
             refreshController.block(RefreshBlockReason.PAGE_INACTIVE)
-            // An auction in flight belongs to the visit that is ending; retiring it keeps the
-            // displayed creative (nothing is blanked) and stops its Prebid loader.
-            auctionGeneration++
-            retireCurrentAuction()
+            if (refreshController.hasRequestInFlight) {
+                // An auction in flight belongs to the visit that is ending; retiring it keeps the
+                // displayed creative (nothing is blanked) and stops its Prebid loader. Retiring
+                // also clears the refresh clock, which would leave the kept ad with nothing to
+                // measure its next refresh from — so the interval restarts from now.
+                auctionGeneration++
+                retireCurrentAuction()
+                refreshController.noteLoadedNow()
+            }
         }
     }
 
