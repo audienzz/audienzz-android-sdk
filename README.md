@@ -1,6 +1,21 @@
 Audienzz Android SDK
 ========
 
+## What's new in 0.3.6
+
+- **Gallery ads for ePaper and other paged screens** (`AudienzzGalleryAds`): an ad is preloaded once
+  the reader is within `config.preloadDistancePages` pages of it (default 2). It is kept when the
+  reader opens an article and comes back, unless `config.refreshOnBack` is `true`. Refresh follows
+  `refreshTimeSeconds` and only counts while the ad is on screen.
+  See [Gallery Ads](#gallery-ads-epaper-paged-screens).
+- **`AudienzzAdViewHandler.keepsAdAcrossPages`** (off by default): a loaded banner is paused while
+  its page is not active and resumes on return, without a new auction.
+- **Fluid GAM size:** `gamConfig.includeFluid: true` also requests fluid creatives, such as GAM
+  native styles. Prebid is unchanged. See [Place a remote banner](#4-place-a-remote-banner).
+
+All new ad config fields are optional; without them the defaults apply. Full list:
+[CHANGELOG](CHANGELOG.md).
+
 ## Quick integration (remote config + `pageImpression`)
 
 Initialize once, report navigation, and keep one owner per placement. Remote configuration controls
