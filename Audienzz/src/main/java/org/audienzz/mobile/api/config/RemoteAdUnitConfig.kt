@@ -48,7 +48,23 @@ data class RemoteConfig(
      */
     @SerialName("preloadDistancePages")
     private val preloadDistancePagesJson: JsonElement? = null,
+    /**
+     * Gallery ads: reload the slot's ad when the reader comes back to the gallery (an article
+     * closed, the app back from the background), like every other banner. Read leniently (see
+     * [refreshOnBack]).
+     */
+    @SerialName("refreshOnBack")
+    private val refreshOnBackJson: JsonElement? = null,
 ) {
+    /**
+     * true only for a JSON boolean `true`. Off (absent, or any other value), a gallery ad is kept
+     * across leaving and returning to its screen.
+     */
+    val refreshOnBack: Boolean
+        get() = (refreshOnBackJson as? JsonPrimitive)
+            ?.takeUnless { it.isString }
+            ?.booleanOrNull == true
+
     /**
      * A non-negative whole number, else null (absent, negative, fractional or not a number);
      * [org.audienzz.mobile.AudienzzGalleryAds] then uses its default.

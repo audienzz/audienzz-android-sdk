@@ -61,7 +61,8 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     /**
      * Set by [AudienzzGalleryAds] before [loadAd]: load eagerly whatever the ad config's `lazyLoad`
      * says (a gallery slot is requested ahead of its page, while nothing is on screen for a viewport
-     * trigger to watch), and keep the ad across page transitions.
+     * trigger to watch), and keep the ad across page transitions unless the ad config sets
+     * `config.refreshOnBack`.
      */
     internal var galleryMode = false
 
@@ -377,7 +378,7 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         adViewHandler = handler
         handler.headerBiddingEnabled = headerBidding
         pendingScreenKey?.let { handler.hostScreenOverride = it }
-        handler.keepsAdAcrossPages = galleryMode
+        handler.keepsAdAcrossPages = galleryMode && !config.config.refreshOnBack
         // Before load(): a stop requested while config was resolving must be in place before the
         // handler can issue its first request.
         applyPendingPublisherState(handler)

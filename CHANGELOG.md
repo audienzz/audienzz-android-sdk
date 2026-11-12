@@ -11,8 +11,10 @@ adheres to [Semantic Versioning](https://semver.org/).
   (default 2) of its page, instead of when the screen opens or when the page is bound, and keeps it
   while pages are recycled (`bind(slotKey, container)`). Refresh is the ad config's
   `refreshTimeSeconds`, counted only while the ad is on screen. Pass the screen you report to
-  `pageImpression`: leaving it and coming back keeps the ad (`keepsAdAcrossPages`). Feed the reader's
-  position with `updatePosition(page)` (ViewPager2: `position + positionOffset`).
+  `pageImpression`: leaving it and coming back keeps the ad (`keepsAdAcrossPages`), unless the ad
+  config's new `config.refreshOnBack` is `true` (default `false`), which reloads it on return like
+  any other banner. Feed the reader's position with `updatePosition(page)` (ViewPager2:
+  `position + positionOffset`).
 - **`AudienzzAdViewHandler.keepsAdAcrossPages`** (default `false`). When on, a banner that has
   loaded is only paused while its page is not the active one: the creative stays (no release, no
   blanking), no auction runs and nothing is counted; on return (page or foreground) its refresh

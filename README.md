@@ -906,6 +906,8 @@ viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback(
 - **Refresh:** `config.refreshTimeSeconds`, counted only while the ad is on screen.
 - **Screen:** leaving the gallery's screen (an article opened on top, background) and coming back
   keeps the ad: it is paused, and refresh resumes where it stopped (`keepsAdAcrossPages`).
+- **Refresh on back:** `config.refreshOnBack: true` reloads the slot's ad when the reader comes back
+  instead, like any other banner. Default `false` (kept); only a JSON boolean `true` turns it on.
 - **Page view:** `bind` puts the ad in a `FrameLayout` centered vertically, full width.
   `onAdViewCreated` is delivered outside the scroll callback, so updating the adapter there is safe.
 

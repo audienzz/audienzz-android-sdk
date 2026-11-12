@@ -106,6 +106,24 @@ class AudienzzGalleryAdsTest {
         assertNull(config("a", "null").config.preloadDistancePages)
     }
 
+    @Test fun `refreshOnBack is read leniently and off by default`() {
+        fun parse(value: String?): Boolean {
+            val field = value?.let { ""","refreshOnBack":$it""" }.orEmpty()
+            return Json.decodeFromString(
+                RemoteAdUnitConfig.serializer(),
+                """{"id":1,"config":{"adType":"banner"$field},""" +
+                    """"gamConfig":{"adUnitPath":"/1/a","adSizes":["300x250"]},""" +
+                    """"prebidConfig":{"placementId":"p","adSizes":["300x250"]}}""",
+            ).config.refreshOnBack
+        }
+        assertFalse(parse(null))
+        assertFalse(parse("false"))
+        assertTrue(parse("true"))
+        assertFalse(parse("\"true\""))
+        assertFalse(parse("1"))
+        assertFalse(parse("null"))
+    }
+
     // --- Preload distance ---
 
     @Test fun `nothing is requested before a position or far from the slots`() {
@@ -188,6 +206,28 @@ class AudienzzGalleryAdsTest {
         verify { anyConstructed<AudienzzAdViewHandler>().keepsAdAcrossPages = false }
         verify(exactly = 1) {
             anyConstructed<AudienzzAdViewHandler>().load(true, any(), any(), any())
+        }
+    }
+
+    @Test fun `refreshOnBack makes a gallery ad reload on return, still preloaded eagerly`() {
+        mockkConstructor(AudienzzAdViewHandler::class)
+        every { anyConstructed<AudienzzAdViewHandler>().load(any(), any(), any(), any()) } just Runs
+        every { anyConstructed<AudienzzAdViewHandler>().enableSmartRefresh() } just Runs
+        val refreshing = Json.decodeFromString(
+            RemoteAdUnitConfig.serializer(),
+            """{"id":1,"config":{"adType":"banner","lazyLoad":true,"refreshOnBack":true},""" +
+                """"gamConfig":{"adUnitPath":"/1/a","adSizes":["300x250"]},""" +
+                """"prebidConfig":{"placementId":"p","adSizes":["300x250"]}}""",
+        )
+        val banner = AudienzzRemoteBannerView(activity, "a").also { it.galleryMode = true }
+        AudienzzRemoteBannerView::class.java
+            .getDeclaredMethod("createAdFromConfig", RemoteAdUnitConfig::class.java)
+            .apply { isAccessible = true }
+            .invoke(banner, refreshing)
+        verify { anyConstructed<AudienzzAdViewHandler>().keepsAdAcrossPages = false }
+        verify(exactly = 0) { anyConstructed<AudienzzAdViewHandler>().keepsAdAcrossPages = true }
+        verify(exactly = 1) {
+            anyConstructed<AudienzzAdViewHandler>().load(false, any(), any(), any())
         }
     }
 
