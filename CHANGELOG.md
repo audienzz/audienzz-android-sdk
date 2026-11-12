@@ -3,7 +3,7 @@
 All notable changes to the Audienzz Android SDK are documented here. This project
 adheres to [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.3.6
 
 - **Gallery ads (`AudienzzGalleryAds`) for paged screens (ePaper).** Wraps the ad pages of a
   horizontal pager: each `AudienzzGalleryAdSlot(slotKey, adConfigId, pageIndex)` requests its
