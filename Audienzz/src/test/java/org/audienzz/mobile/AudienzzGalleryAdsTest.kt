@@ -291,6 +291,38 @@ class AudienzzGalleryAdsTest {
         assertEquals("judged as soon as it is", listOf("a"), createdConfigs())
     }
 
+    @Test fun `a config that arrives late is picked up on the next position`() {
+        val gallery = gallery(listOf(AudienzzGalleryAdSlot("x", "late", pageIndex = 4)))
+        gallery.updatePosition(4f)
+        idle()
+        assertTrue(created.isEmpty())
+        configs["late"] = config("late")
+        gallery.updatePosition(4.2f)
+        idle()
+        assertEquals("loaded once its config exists", listOf("late"), createdConfigs())
+        assertEquals("the miss was still reported once", listOf("x"), failures)
+    }
+
+    @Test fun `binding a recycled page takes out the other slot's ad`() {
+        val gallery = gallery()
+        val page = FrameLayout(activity)
+        gallery.updatePosition(4f)
+        gallery.updatePosition(12f)
+        assertTrue(gallery.bind("ad-1", page))
+        assertTrue(gallery.bind("ad-2", page))
+        assertEquals("only ad-2 is in the page", 1, page.childCount)
+        assertSame(gallery.adView("ad-2"), page.getChildAt(0))
+    }
+
+    @Test fun `binding a slot without an ad still clears the recycled page`() {
+        val gallery = gallery()
+        val page = FrameLayout(activity)
+        gallery.updatePosition(4f)
+        assertTrue(gallery.bind("ad-1", page))
+        assertFalse("ad-2 is not in range yet", gallery.bind("ad-2", page))
+        assertEquals("ad-1 must not show as if it were ad-2", 0, page.childCount)
+    }
+
     @Test fun `destroy releases the ads and stops requesting`() {
         val gallery = gallery()
         val page = FrameLayout(activity)

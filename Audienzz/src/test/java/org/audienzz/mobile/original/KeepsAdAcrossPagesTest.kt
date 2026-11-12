@@ -207,4 +207,58 @@ class KeepsAdAcrossPagesTest {
         waitBeyondTheRefreshInterval()
         assertEquals("the next refresh still comes", 3, responses.size)
     }
+
+    @Test fun `refresh resumes after the app returns from the background`() {
+        handler.keepsAdAcrossPages = true
+        loadVisibleBanner()
+        val activity = mockk<android.app.Activity>(relaxed = true)
+        AppForegroundMonitor.onActivityStarted(activity)
+        AppForegroundMonitor.onActivityStopped(activity)
+        waitBeyondTheRefreshInterval()
+        assertEquals("no refresh in the background", 1, responses.size)
+        AppForegroundMonitor.onActivityStarted(activity)
+        shadowOf(Looper.getMainLooper()).idle()
+        observer.dispatchOnPreDraw()
+        assertEquals("foreground recovery keeps the ad", 1, responses.size)
+        waitBeyondTheRefreshInterval()
+        assertEquals("the configured refresh runs again", 2, responses.size)
+    }
+
+    @Test fun `a slot whose request only failed is retried on return, not kept`() {
+        handler.keepsAdAcrossPages = true
+        AudienzzPrebidMobile.blankOnScreenReload = true
+        AudienzzPrebidMobile.smartRefreshV2Override = true
+        handler.load(withLazyLoading = false) { request, _ -> googleLoads++; requests += request }
+        handler.enableSmartRefresh()
+        responses[0](AudienzzResultCode.NO_BIDS)
+        val noFill = mockk<com.google.android.gms.ads.LoadAdError>(relaxed = true)
+        every { noFill.code } returns com.google.android.gms.ads.AdRequest.ERROR_CODE_NO_FILL
+        listener.onAdFailedToLoad(noFill)
+        AudienzzPrebidMobile.pageImpression("article")
+        AudienzzPrebidMobile.pageImpression("remote")
+        observer.dispatchOnPreDraw()
+        assertEquals("an empty slot gets a new request on return", 2, responses.size)
+    }
+
+    @Test fun `a Google load in flight when the page is left completes, then the ad is held`() {
+        handler.keepsAdAcrossPages = true
+        loadVisibleBanner()
+        handler.reloadAd()
+        responses[1](AudienzzResultCode.NO_BIDS)
+        assertEquals("creative B is loading into the view", 2, googleLoads)
+        AudienzzPrebidMobile.pageImpression("article")
+        listener.onAdLoaded()
+        assertTrue(
+            "B completed, then the hold applied",
+            handler.refreshController.blockReasons.contains(RefreshBlockReason.PAGE_INACTIVE),
+        )
+        assertFalse(handler.refreshController.hasRequestInFlight)
+        waitBeyondTheRefreshInterval()
+        assertEquals("nothing while away", 2, responses.size)
+        AudienzzPrebidMobile.pageImpression("remote")
+        observer.dispatchOnPreDraw()
+        assertEquals("no auction on return", 2, responses.size)
+        waitBeyondTheRefreshInterval()
+        assertEquals("refresh resumes after B", 3, responses.size)
+    }
 }

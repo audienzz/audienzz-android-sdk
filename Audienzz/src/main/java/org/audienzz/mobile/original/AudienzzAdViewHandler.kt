@@ -84,6 +84,16 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     private var creativePageGeneration = 0
     private var renderAuctionId: String? = null
     private var googleLoad: GoogleLoad? = null
+
+    /**
+     * A Google creative has been delivered to this view (and not blanked by a page release). Only
+     * then is there an ad worth keeping across pages: a slot whose requests only failed retries on
+     * return like any other.
+     */
+    private var showsCreative = false
+
+    /** [keepsAdAcrossPages]: the page went inactive while a Google load was in flight. */
+    private var holdPending = false
     private var googleEventPageGeneration: Int? = null
     private val acceptsGoogleEvents: Boolean
         get() = googleEventPageGeneration == creativePageGeneration && screenActive && !refreshController.isDestroyed
@@ -248,7 +258,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * released banner in the meantime.
      */
     internal fun onPageActiveChanged(active: Boolean, epoch: Int) {
-        if (keepsAdAcrossPages && lastRefreshTime != 0L) {
+        if (keepsAdAcrossPages && showsCreative) {
             holdForPage(active, epoch)
             return
         }
@@ -301,8 +311,9 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
      * would report the same creative twice.
      */
     private fun holdForPage(active: Boolean, epoch: Int) {
-        screenActive = active
         if (active) {
+            holdPending = false
+            screenActive = true
             pageEpoch = epoch
             Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} — ACTIVE, keeping the ad")
             refreshController.unblock(RefreshBlockReason.PAGE_INACTIVE, schedule = false)
@@ -310,21 +321,50 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                 refreshController.unblock(RefreshBlockReason.APP_BACKGROUND, schedule = false)
             }
             resumeEligibleWork()
-        } else {
-            Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} — INACTIVE, holding the ad")
-            // Blocking alone pauses the refresh clock and keeps the eligible time already earned,
-            // so the return resumes the remaining interval.
-            refreshController.block(RefreshBlockReason.PAGE_INACTIVE)
-            if (refreshController.hasRequestInFlight) {
-                // An auction in flight belongs to the visit that is ending; retiring it keeps the
-                // displayed creative (nothing is blanked) and stops its Prebid loader. Retiring
-                // also clears the refresh clock, which would leave the kept ad with nothing to
-                // measure its next refresh from — so the interval restarts from now.
-                auctionGeneration++
-                retireCurrentAuction()
-                refreshController.noteLoadedNow()
-            }
+            return
         }
+        Log.d(TAG, "pageChange adUnitId=${adView.adUnitId} — INACTIVE, holding the ad")
+        // Blocking alone pauses the refresh clock and keeps the eligible time already earned, so
+        // the return resumes the remaining interval.
+        refreshController.block(RefreshBlockReason.PAGE_INACTIVE)
+        if (googleLoad != null) {
+            // Google is already loading a creative into this view, and that cannot be cancelled:
+            // retiring it would let its creative replace the displayed one while its completion,
+            // impression and placementVisible were dropped. Let it complete as part of the visit
+            // that started it, then hold (applyPendingHold).
+            holdPending = true
+            return
+        }
+        screenActive = false
+        retireAuctionKeepingClock()
+        refreshKeptTrackers()
+    }
+
+    /** Applies a page hold deferred while a Google load was in flight (see [holdForPage]). */
+    private fun applyPendingHold() {
+        if (!holdPending) return
+        holdPending = false
+        screenActive = false
+        refreshKeptTrackers()
+    }
+
+    /**
+     * Retires an auction still at the Prebid stage, keeping the displayed creative (nothing is
+     * blanked). Retiring clears the refresh clock, which would leave a kept ad with nothing to
+     * measure its next refresh from, so the interval restarts from now. With nothing in flight
+     * there is nothing to retire, and the clock keeps the eligible time already earned.
+     */
+    private fun retireAuctionKeepingClock() {
+        if (!refreshController.hasRequestInFlight) return
+        auctionGeneration++
+        retireCurrentAuction()
+        refreshController.noteLoadedNow()
+    }
+
+    /** Ends any exposure in progress now, rather than on the trackers' next draw or poll. */
+    private fun refreshKeptTrackers() {
+        viewabilityTracker?.refreshVisibility()
+        placementTracker?.refreshVisibility()
     }
 
     /**
@@ -463,11 +503,21 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         override fun onEnterBackground() {
             Log.d(TAG, "background adUnitId=${adView.adUnitId} — stopping auto refresh")
             refreshController.block(RefreshBlockReason.APP_BACKGROUND)
-            // Invalidate in-flight auctions and retire the loader behind them: a response landing
-            // while backgrounded re-arms Prebid's timer from both its success and failure handlers,
-            // and that refresh calls load() directly without passing the auction gate.
-            auctionGeneration++
-            retireCurrentAuction()
+            if (keepsAdAcrossPages && showsCreative) {
+                // A kept ad comes back to the same creative, so the return does not reload it and
+                // its refresh clock must survive: retiring unconditionally cleared it, and refresh
+                // never resumed. Only an auction still at the Prebid stage is retired; a Google load
+                // in flight completes as part of this visit.
+                if (googleLoad == null) retireAuctionKeepingClock()
+                refreshKeptTrackers()
+            } else {
+                // Invalidate in-flight auctions and retire the loader behind them: a response
+                // landing while backgrounded re-arms Prebid's timer from both its success and
+                // failure handlers, and that refresh calls load() directly without passing the
+                // auction gate.
+                auctionGeneration++
+                retireCurrentAuction()
+            }
             // The OTHER refresh owner. A GAM ad unit can carry a server-configured refresh rate,
             // which the GMA banner runs entirely on its own — the SDK cannot read it, and the
             // request it issues reuses the last auction's Prebid keywords. `BaseAdView.pause()` is
@@ -1035,6 +1085,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             } else {
                 resumeEligibleWork()
             }
+            applyPendingHold()
         }
         googleLoadTimeout = timeout
         refreshHandler.postDelayed(timeout, 120_000L)
@@ -1323,9 +1374,11 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                 // This is the moment the replacement becomes what the reader sees, so it is the
                 // moment its economics become the ones render events describe.
                 commitDisplayedCreative()
+                showsCreative = true
                 restoreFromBlankIfNeeded()
                 startPlacementVisibility()
                 actualListener?.onAdLoaded()
+                applyPendingHold()
             }
 
             override fun onAdOpened() {
@@ -1364,6 +1417,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
                 // Filled or not: fill rate counts a visible slot that got no ad too.
                 startPlacementVisibility()
                 actualListener?.onAdFailedToLoad(error)
+                applyPendingHold()
             }
 
             override fun onAdSwipeGestureClicked() {

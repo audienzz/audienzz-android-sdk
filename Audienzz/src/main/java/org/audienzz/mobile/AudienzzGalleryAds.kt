@@ -106,8 +106,12 @@ class AudienzzGalleryAds internal constructor(
     /** Resolved preload distance per ad config id; absent until its config has been read. */
     private val distances = mutableMapOf<String, Int>()
 
-    /** Ad config ids without a remote configuration. */
+    /** Ad config ids without a remote configuration (yet): retried on later positions. */
     private val missingConfigs = mutableSetOf<String>()
+
+    /** Slots already reported as having no configuration, so the failure is reported once. */
+    private val reportedMissing = mutableSetOf<String>()
+    private var resolving = false
     private var position: Float? = null
     private var destroyed = false
 
@@ -118,7 +122,8 @@ class AudienzzGalleryAds internal constructor(
     init {
         val duplicate = this.slots.groupBy { it.slotKey }.entries.firstOrNull { it.value.size > 1 }
         require(duplicate == null) { "AudienzzGalleryAds: duplicate slotKey \"${duplicate?.key}\"" }
-        scope.launch { resolveConfigs() }
+        val adConfigIds = this.slots.map { it.adConfigId }.distinct()
+        scope.launch { resolveConfigs(adConfigIds) }
     }
 
     constructor(context: Context, slots: List<AudienzzGalleryAdSlot>, screen: Any) : this(
@@ -138,6 +143,10 @@ class AudienzzGalleryAds internal constructor(
      */
     fun updatePosition(page: Float) {
         position = page
+        if (missingConfigs.isNotEmpty() && !resolving) {
+            // A config that was missing may have arrived since (a late remote config refresh).
+            scope.launch { resolveConfigs(missingConfigs.toList()) }
+        }
         evaluate()
     }
 
@@ -146,11 +155,17 @@ class AudienzzGalleryAds internal constructor(
 
     /**
      * Puts the slot's ad into [container], the view of its page, taking it out of the page it was
-     * in before. Returns false while the slot has no ad yet; [Listener.onAdViewCreated] says when
-     * to bind again. A [FrameLayout] container centers the ad vertically; it spans the width.
+     * in before. Another slot's ad left in a recycled [container] is taken out first, also when
+     * this slot has no ad yet. Returns false while the slot has no ad; [Listener.onAdViewCreated]
+     * says when to bind again. A [FrameLayout] container centers the ad vertically; it spans the
+     * width.
      */
     fun bind(slotKey: String, container: ViewGroup): Boolean {
-        val view = banners[slotKey] ?: return false
+        val view = banners[slotKey]
+        banners.values
+            .filter { it !== view && it.parent === container }
+            .forEach { container.removeView(it) }
+        if (view == null) return false
         if (view.parent === container) return true
         (view.parent as? ViewGroup)?.removeView(view)
         val params = if (container is FrameLayout) {
@@ -181,28 +196,36 @@ class AudienzzGalleryAds internal constructor(
         banners.clear()
     }
 
-    private suspend fun resolveConfigs() {
-        for (adConfigId in slots.map { it.adConfigId }.distinct()) {
-            val config = try {
-                configLookup(adConfigId)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to read remote config $adConfigId", e)
-                null
-            }
-            if (destroyed) return
-            if (config == null) {
-                Log.e(TAG, "Remote config not found for id=$adConfigId")
-                missingConfigs += adConfigId
-                slots.filter { it.adConfigId == adConfigId }
-                    .forEach { listener?.onAdFailedToLoad(it.slotKey, null) }
-            } else {
-                distances[adConfigId] =
-                    config.config.preloadDistancePages ?: DEFAULT_PRELOAD_DISTANCE_PAGES
-            }
+    private suspend fun resolveConfigs(adConfigIds: List<String>) {
+        resolving = true
+        try {
+            adConfigIds.forEach { resolveConfig(it) }
+        } finally {
+            resolving = false
         }
         evaluate()
+    }
+
+    private suspend fun resolveConfig(adConfigId: String) {
+        val config = try {
+            configLookup(adConfigId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read remote config $adConfigId", e)
+            null
+        }
+        if (destroyed) return
+        if (config == null) {
+            Log.e(TAG, "Remote config not found for id=$adConfigId")
+            missingConfigs += adConfigId
+            slots.filter { it.adConfigId == adConfigId && reportedMissing.add(it.slotKey) }
+                .forEach { listener?.onAdFailedToLoad(it.slotKey, null) }
+        } else {
+            missingConfigs -= adConfigId
+            distances[adConfigId] =
+                config.config.preloadDistancePages ?: DEFAULT_PRELOAD_DISTANCE_PAGES
+        }
     }
 
     private fun evaluate() {
