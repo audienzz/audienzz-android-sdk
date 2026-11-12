@@ -93,10 +93,27 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     private var showsCreative = false
 
     /** [keepsAdAcrossPages]: the page went inactive while a Google load was in flight. */
-    private var holdPending = false
+    internal var holdPending = false
+        private set
     private var googleEventPageGeneration: Int? = null
     private val acceptsGoogleEvents: Boolean
         get() = googleEventPageGeneration == creativePageGeneration && screenActive && !refreshController.isDestroyed
+
+    /**
+     * Viewability and `placementVisible` may count. Not while a page hold waits for a Google load
+     * to complete: that load may still finish, but its page is already away.
+     */
+    internal val countsExposure: Boolean
+        get() = acceptsGoogleEvents && !holdPending
+
+    /**
+     * [keepsAdAcrossPages]: the displayed creative of a page that is away (or leaving, with its
+     * Google load completing). Google still records its impression, and so does the SDK, so the two
+     * agree; its viewability waits for the return ([countsExposure]).
+     */
+    private val keptOnInactivePage: Boolean
+        get() = keepsAdAcrossPages && showsCreative && (holdPending || !screenActive) &&
+            googleEventPageGeneration == creativePageGeneration && !refreshController.isDestroyed
     private var pendingLoadReason: RefreshRequestReason? = null
 
     private var isFirstDemandFetch = true
@@ -305,10 +322,11 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
     /**
      * [keepsAdAcrossPages]: a page transition pauses or resumes the banner and keeps its creative.
      *
-     * The viewability and `placementVisible` watchers stay installed: [acceptsGoogleEvents] is false
-     * while [screenActive] is, so nothing is counted while the page is away, and a creative that had
-     * not been seen yet is still counted once its page returns and it is on screen. Restarting them
-     * would report the same creative twice.
+     * The viewability and `placementVisible` watchers stay installed: [countsExposure] is false
+     * while [screenActive] is and while the hold is pending, so nothing is counted while the page is
+     * away, and a creative that had not been seen yet is still counted once its page returns and it
+     * is on screen. Restarting them would report the same creative twice. Its impression is recorded
+     * when Google records it ([keptOnInactivePage]).
      */
     private fun holdForPage(active: Boolean, epoch: Int) {
         if (active) {
@@ -331,8 +349,9 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             // Google is already loading a creative into this view, and that cannot be cancelled:
             // retiring it would let its creative replace the displayed one while its completion,
             // impression and placementVisible were dropped. Let it complete as part of the visit
-            // that started it, then hold (applyPendingHold).
+            // that started it, then hold (applyPendingHold). Exposure stops now (countsExposure).
             holdPending = true
+            refreshKeptTrackers()
             return
         }
         screenActive = false
@@ -568,6 +587,13 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         // without this a released banner on a kept-mounted route would come back to life.
         if (!screenActive) {
             Log.d(TAG, "reloadAd() adUnitId=${adView.adUnitId} — page released, skipping")
+            return
+        }
+        // Nor one whose page is leaving: the Google load still in flight completes for the visit
+        // that started it, then the hold applies. A reload now would retire that load while its
+        // creative still replaced the displayed one.
+        if (holdPending) {
+            Log.d(TAG, "reloadAd() adUnitId=${adView.adUnitId} — page leaving, skipping")
             return
         }
         auctionGeneration++
@@ -1370,7 +1396,11 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             }
 
             override fun onAdLoaded() {
-                if (!completeGoogleLoad(retryableFailure = false)) return
+                if (!completeGoogleLoad(retryableFailure = false)) {
+                    // A pending page hold is settled by every completion, current or stale.
+                    applyPendingHold()
+                    return
+                }
                 // This is the moment the replacement becomes what the reader sees, so it is the
                 // moment its economics become the ones render events describe.
                 commitDisplayedCreative()
@@ -1392,7 +1422,10 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             }
 
             override fun onAdImpression() {
-                if (!acceptsGoogleEvents || displayedImpressionRecorded) return
+                // A kept creative whose page is away still had its impression recorded by Google;
+                // recording it too keeps the two in step (dropping it lost it for good). Its
+                // viewability waits for the return.
+                if (!(acceptsGoogleEvents || keptOnInactivePage) || displayedImpressionRecorded) return
                 val responseId = adView.responseInfo?.responseId
                 if (responseId != null && responseId == lastImpressionResponseId) return
                 displayedImpressionRecorded = true
@@ -1412,7 +1445,10 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             override fun onAdFailedToLoad(error: LoadAdError) {
                 val retryable = error.code == com.google.android.gms.ads.AdRequest.ERROR_CODE_NETWORK_ERROR ||
                     error.code == com.google.android.gms.ads.AdRequest.ERROR_CODE_INTERNAL_ERROR
-                if (!completeGoogleLoad(retryableFailure = retryable)) return
+                if (!completeGoogleLoad(retryableFailure = retryable)) {
+                    applyPendingHold()
+                    return
+                }
                 restoreFromBlankIfNeeded()
                 // Filled or not: fill rate counts a visible slot that got no ad too.
                 startPlacementVisibility()
@@ -1439,7 +1475,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         val tracker = ViewabilityTracker(
             view = adView,
             isEligible = {
-                acceptsGoogleEvents && !blankedForReload && !hostReportedHidden &&
+                countsExposure && !blankedForReload && !hostReportedHidden &&
                     RefreshBlockReason.INTERSTITIAL !in refreshController.blockReasons
             },
             onStart = {
@@ -1483,7 +1519,7 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
             // Any visible pixel: the fraction of a 1px sliver is above the smallest positive float.
             thresholdFraction = Float.MIN_VALUE,
             isEligible = {
-                acceptsGoogleEvents && !blankedForReload && !hostReportedHidden &&
+                countsExposure && !blankedForReload && !hostReportedHidden &&
                     RefreshBlockReason.INTERSTITIAL !in refreshController.blockReasons
             },
             onStart = {

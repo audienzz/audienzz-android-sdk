@@ -10,6 +10,8 @@ import io.mockk.*
 import org.audienzz.mobile.AudienzzAdUnit
 import org.audienzz.mobile.AudienzzPrebidMobile
 import org.audienzz.mobile.AudienzzResultCode
+import org.audienzz.mobile.event.entity.EventDomain
+import org.audienzz.mobile.event.entity.EventType
 import org.audienzz.mobile.refresh.RefreshBlockReason
 import org.audienzz.mobile.screen.ScreenAdCoordinator
 import org.audienzz.mobile.screen.screenAdCoordinatorOverride
@@ -41,6 +43,8 @@ class KeepsAdAcrossPagesTest {
      */
     private var creativeVisibility = View.VISIBLE
     private var oldBlank = false
+    private val events = mutableListOf<EventDomain>()
+    private var responseId = "A"
     private var oldV2: Boolean? = null
 
     @Before fun setup() {
@@ -73,6 +77,13 @@ class KeepsAdAcrossPagesTest {
         every { creative.visibility = any() } answers { creativeVisibility = firstArg() }
         every { view.childCount } returns 1
         every { view.getChildAt(0) } returns creative
+        every { view.responseInfo } answers {
+            mockk(relaxed = true) { every { this@mockk.responseId } answers { this@KeepsAdAcrossPagesTest.responseId } }
+        }
+        val logger = mockk<org.audienzz.mobile.event.EventLogger>(relaxed = true)
+        every { logger.logEvent(capture(events)) } just Runs
+        mockkObject(org.audienzz.mobile.di.MainComponent.Companion)
+        every { org.audienzz.mobile.di.MainComponent.eventLogger } returns logger
         every { view.adListener } answers { listener }
         every { view.adListener = any() } answers { listener = firstArg() }
         val unit = mockk<AudienzzAdUnit>(relaxed = true)
@@ -240,25 +251,116 @@ class KeepsAdAcrossPagesTest {
         assertEquals("an empty slot gets a new request on return", 2, responses.size)
     }
 
-    @Test fun `a Google load in flight when the page is left completes, then the ad is held`() {
+    private fun events(type: EventType) = events.filter { it.eventType == type }
+
+    /**
+     * A kept banner showing creative A (seen), whose refresh B is loading in Google when the reader
+     * leaves. Returns B's auction id.
+     */
+    private fun leaveWhileBIsLoading(): String {
         handler.keepsAdAcrossPages = true
         loadVisibleBanner()
-        handler.reloadAd()
+        listener.onAdImpression()
+        observer.dispatchOnPreDraw()
+        waitBeyondTheRefreshInterval()
+        assertEquals("refresh B started", 2, responses.size)
         responses[1](AudienzzResultCode.NO_BIDS)
         assertEquals("creative B is loading into the view", 2, googleLoads)
+        val auctionB = requireNotNull(events(EventType.BID_REQUEST).last().auctionId)
         AudienzzPrebidMobile.pageImpression("article")
+        assertTrue(handler.holdPending)
+        assertFalse("nothing is counted once the page is away", handler.countsExposure)
+        return auctionB
+    }
+
+    @Test fun `a Google load in flight when the page is left commits B, counts it only on return`() {
+        val auctionB = leaveWhileBIsLoading()
+        val placementsBefore = events(EventType.PLACEMENT_VISIBLE).size
+
+        responseId = "B"
         listener.onAdLoaded()
-        assertTrue(
-            "B completed, then the hold applied",
-            handler.refreshController.blockReasons.contains(RefreshBlockReason.PAGE_INACTIVE),
-        )
+        assertFalse("the hold applied once B completed", handler.holdPending)
+        assertTrue(handler.refreshController.blockReasons.contains(RefreshBlockReason.PAGE_INACTIVE))
         assertFalse(handler.refreshController.hasRequestInFlight)
+        // Google records B's impression while the article is on top: B's auction is credited,
+        // because B is what the slot shows (Google counted it too).
+        listener.onAdImpression()
+        assertEquals(auctionB, events(EventType.AD_IMPRESSION).last().auctionId)
+        observer.dispatchOnPreDraw()
+        shadowOf(Looper.getMainLooper()).idleFor(2, TimeUnit.SECONDS)
+        assertEquals("no placementVisible while away", placementsBefore, events(EventType.PLACEMENT_VISIBLE).size)
+        assertTrue(
+            "no viewability while away",
+            events(EventType.VIEWABILITY_START).none { it.auctionId == auctionB },
+        )
         waitBeyondTheRefreshInterval()
+        assertEquals("nothing while away", 2, responses.size)
+
+        AudienzzPrebidMobile.pageImpression("remote")
+        observer.dispatchOnPreDraw()
+        assertEquals("no auction on return", 2, responses.size)
+        assertEquals(
+            "B's placementVisible on return, under B's auction",
+            auctionB,
+            events(EventType.PLACEMENT_VISIBLE).last().auctionId,
+        )
+        shadowOf(Looper.getMainLooper()).idleFor(2, TimeUnit.SECONDS)
+        observer.dispatchOnPreDraw()
+        assertTrue(events(EventType.VIEWABILITY_START).any { it.auctionId == auctionB })
+        waitBeyondTheRefreshInterval()
+        assertEquals("refresh resumes after B", 3, responses.size)
+    }
+
+    @Test fun `a reload cannot retire the load a hold is waiting for`() {
+        val auctionB = leaveWhileBIsLoading()
+        handler.reloadAd()
+        assertEquals("no new auction", 2, responses.size)
+        responseId = "B"
+        listener.onAdLoaded()
+        listener.onAdImpression()
+        assertEquals("B is still credited", auctionB, events(EventType.AD_IMPRESSION).last().auctionId)
+        assertFalse(handler.holdPending)
+    }
+
+    @Test fun `a failed load still settles the hold, and the kept ad stays`() {
+        leaveWhileBIsLoading()
+        val noFill = mockk<com.google.android.gms.ads.LoadAdError>(relaxed = true)
+        every { noFill.code } returns com.google.android.gms.ads.AdRequest.ERROR_CODE_NO_FILL
+        listener.onAdFailedToLoad(noFill)
+        assertFalse(handler.holdPending)
+        assertFalse(handler.countsExposure)
+        AudienzzPrebidMobile.pageImpression("remote")
+        observer.dispatchOnPreDraw()
+        assertEquals("A is kept: no auction on return", 2, responses.size)
+        assertTrue(handler.countsExposure)
+    }
+
+    @Test fun `a Google load that never completes still settles the hold`() {
+        leaveWhileBIsLoading()
+        shadowOf(Looper.getMainLooper()).idleFor(121, TimeUnit.SECONDS)
+        assertFalse(handler.holdPending)
         assertEquals("nothing while away", 2, responses.size)
         AudienzzPrebidMobile.pageImpression("remote")
         observer.dispatchOnPreDraw()
         assertEquals("no auction on return", 2, responses.size)
-        waitBeyondTheRefreshInterval()
-        assertEquals("refresh resumes after B", 3, responses.size)
+    }
+
+    @Test fun `a background while the hold is pending lets the load complete`() {
+        val auctionB = leaveWhileBIsLoading()
+        val activity = mockk<android.app.Activity>(relaxed = true)
+        AppForegroundMonitor.onActivityStarted(activity)
+        AppForegroundMonitor.onActivityStopped(activity)
+        responseId = "B"
+        listener.onAdLoaded()
+        listener.onAdImpression()
+        assertEquals(auctionB, events(EventType.AD_IMPRESSION).last().auctionId)
+        assertFalse(handler.holdPending)
+    }
+
+    @Test fun `an ordinary released banner records no impression`() {
+        loadVisibleBanner()
+        AudienzzPrebidMobile.pageImpression("article")
+        listener.onAdImpression()
+        assertTrue(events(EventType.AD_IMPRESSION).isEmpty())
     }
 }
