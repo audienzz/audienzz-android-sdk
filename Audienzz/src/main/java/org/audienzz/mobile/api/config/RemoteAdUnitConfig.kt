@@ -41,7 +41,31 @@ data class RemoteConfig(
      *  null falls back to 0. */
     @SerialName("stickyTopOffset")
     val stickyTopOffset: Int? = null,
-)
+    /**
+     * Gallery ads: how many pages before the reader reaches it a slot requests its ad. Held as raw
+     * JSON and read leniently (see [preloadDistancePages]), so a malformed value cannot drop the
+     * whole ad config.
+     */
+    @SerialName("preloadDistancePages")
+    private val preloadDistancePagesJson: JsonElement? = null,
+) {
+    /**
+     * A non-negative whole number, else null (absent, negative, fractional or not a number);
+     * [org.audienzz.mobile.AudienzzGalleryAds] then uses its default.
+     */
+    val preloadDistancePages: Int?
+        get() {
+            val value = (preloadDistancePagesJson as? JsonPrimitive)
+                ?.takeUnless { it.isString }
+                ?.doubleOrNull
+                ?: return null
+            return if (value >= 0 && value == Math.floor(value) && value <= Int.MAX_VALUE) {
+                value.toInt()
+            } else {
+                null
+            }
+        }
+}
 
 @Serializable
 data class RemoteGamConfig(

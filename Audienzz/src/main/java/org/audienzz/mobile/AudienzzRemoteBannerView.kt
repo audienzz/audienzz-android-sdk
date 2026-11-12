@@ -58,6 +58,13 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     private var pendingPublisherStop = false
     private var pendingHostCover = false
 
+    /**
+     * Set by [AudienzzGalleryAds] before [loadAd]: load eagerly whatever the ad config's `lazyLoad`
+     * says (a gallery slot is requested ahead of its page, while nothing is on screen for a viewport
+     * trigger to watch), and keep the ad across page transitions.
+     */
+    internal var galleryMode = false
+
     // Delivery settings. Lazy loading and the prefetch margin are backend-driven only: the ad
     // config's `lazyLoad` and `prefetchDistanceDp`, else the SDK defaults. There is deliberately no
     // publisher override, so one placement behaves the same in every app and on every platform.
@@ -370,11 +377,12 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         adViewHandler = handler
         handler.headerBiddingEnabled = headerBidding
         pendingScreenKey?.let { handler.hostScreenOverride = it }
+        handler.keepsAdAcrossPages = galleryMode
         // Before load(): a stop requested while config was resolving must be in place before the
         // handler can issue its first request.
         applyPendingPublisherState(handler)
         handler.load(
-            withLazyLoading = resolveLazyLoad(config),
+            withLazyLoading = !galleryMode && resolveLazyLoad(config),
             prefetchMarginDp = resolvePrefetchMarginDp(config),
         ) { request, resultCode ->
             Log.d(TAG, "Ad request prepared, resultCode=${resultCode ?: "unknown"}")
