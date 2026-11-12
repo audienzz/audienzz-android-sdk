@@ -27,6 +27,23 @@ adheres to [Semantic Versioning](https://semver.org/).
   not a JSON boolean. At least one fixed GAM size is still required. `getAdSize()` returns
   `AdSize.FLUID` after a fluid ad; use the view's measured size then. Analytics logs it as `fluid`.
 
+## 0.3.5
+
+- New analytics event `placementVisible` (banners) for fill rate: sent once per auction when at
+  least 1 px of the slot is on screen with the app in the foreground after the auction ended,
+  filled or not. Carries `auction_id` (same as `adImpression`), `slot_reload` and `ad_unit_code`.
+  Never sent for a slot that does not appear; a refresh or leaving the page closes the auction.
+- Analytics field `publisher_id` is renamed `sdk_id` (same ws-sdk-config id). Events queued by an
+  older version are re-sent under the new name. Its value is the remote config's `sdkId`; before
+  the config is available (or if it has none) it is the id passed to `initializeRemoteSdk`.
+- Remote config is fetched from ws-sdk-config `sdks/{sdkId}` (and `sdks/{sdkId}/ad-configs`)
+  instead of `publishers/{id}`. Same response; a server without the new route (HTTP 404) falls
+  back to the old one.
+- Fix analytics `consent_string` missing on pages reported before Prebid finished initializing
+  (typically the first page of every session): the CMP's stored `IABTCF_TCString` is now read
+  directly when Prebid has no value yet. A consent string set through `AudienzzTargetingParams`
+  still takes precedence.
+
 ## 0.3.4
 
 - **Behavior change: a remote banner without a refresh interval no longer refreshes.** When the ad

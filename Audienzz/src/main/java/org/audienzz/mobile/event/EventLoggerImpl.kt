@@ -77,10 +77,19 @@ internal class EventLoggerImpl @Inject constructor(
                 screenName = screenName,
                 // Guarded: reading Prebid targeting touches org.json, which is unavailable in plain
                 // JVM unit tests; never let analytics setup crash a screen visit.
-                consentString = runCatching { AudienzzTargetingParams.gdprConsentString }.getOrNull(),
+                consentString = currentConsentString(),
             ),
         )
     }
+
+    /**
+     * The publisher's own value through Prebid when set, else the CMP's stored string. Prebid
+     * returns null until it has initialized, so the first page of a session went out without
+     * consent although the CMP had already stored it.
+     */
+    private fun currentConsentString(): String? =
+        runCatching { AudienzzTargetingParams.gdprConsentString }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: runCatching { preferences.getIabTcString() }.getOrNull()
 
     override fun logEvent(event: EventDomain) {
         // Only an actual pageImpression creates an ID. Late ad callbacks carry their request's

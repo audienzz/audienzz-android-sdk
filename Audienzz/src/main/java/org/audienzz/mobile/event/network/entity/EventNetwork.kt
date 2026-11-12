@@ -1,14 +1,20 @@
 package org.audienzz.mobile.event.network.entity
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNames
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class EventNetwork(
     @SerialName("event_type") val eventType: String,
     @SerialName("company_id") val companyId: String? = null,
     // Defaults allow already-persisted payloads to be replayed without inventing missing metadata.
-    @SerialName("publisher_id") val publisherId: String? = null,
+    // The ws-sdk-config id the SDK was initialized with. Sent as `sdk_id` (it was `publisher_id`,
+    // which the collector confused with Xandr's publisher id); events persisted under the old name
+    // before an update still replay with their id.
+    @SerialName("sdk_id") @JsonNames("publisher_id") val sdkId: String? = null,
     @SerialName("environment") val environment: String? = null,
     @SerialName("os_version") val osVersion: String? = null,
     @SerialName("source") val source: String,
