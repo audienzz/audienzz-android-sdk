@@ -31,6 +31,8 @@ class KeepsAdAcrossPagesTest {
     private lateinit var view: AdManagerAdView
     private lateinit var observer: ViewTreeObserver
     private var listener: AdListener = object : AdListener() {}
+    private var appEventListener: com.google.android.gms.ads.admanager.AppEventListener =
+        com.google.android.gms.ads.admanager.AppEventListener { _, _ -> }
     private val responses = mutableListOf<(AudienzzResultCode?) -> Unit>()
     private val requests = mutableListOf<com.google.android.gms.ads.admanager.AdManagerAdRequest>()
     private var googleLoads = 0
@@ -84,6 +86,8 @@ class KeepsAdAcrossPagesTest {
         every { logger.logEvent(capture(events)) } just Runs
         mockkObject(org.audienzz.mobile.di.MainComponent.Companion)
         every { org.audienzz.mobile.di.MainComponent.eventLogger } returns logger
+        every { view.appEventListener } answers { appEventListener }
+        every { view.appEventListener = any() } answers { appEventListener = firstArg() }
         every { view.adListener } answers { listener }
         every { view.adListener = any() } answers { listener = firstArg() }
         val unit = mockk<AudienzzAdUnit>(relaxed = true)
@@ -309,6 +313,19 @@ class KeepsAdAcrossPagesTest {
         assertTrue(events(EventType.VIEWABILITY_START).any { it.auctionId == auctionB })
         waitBeyondTheRefreshInterval()
         assertEquals("refresh resumes after B", 3, responses.size)
+    }
+
+    @Test fun `a Prebid win reported after the hold applied still attributes the kept creative`() {
+        val auctionB = leaveWhileBIsLoading()
+        responseId = "B"
+        listener.onAdLoaded()
+        assertFalse("the hold applied", handler.holdPending)
+        // GAM reports the Prebid line item after the load completed, then B's impression.
+        appEventListener.onAppEvent("Prebid", "")
+        listener.onAdImpression()
+        val impression = events(EventType.AD_IMPRESSION).last()
+        assertEquals(auctionB, impression.auctionId)
+        assertEquals("prebid", impression.bidderCode)
     }
 
     @Test fun `a reload cannot retire the load a hold is waiting for`() {

@@ -1363,7 +1363,9 @@ class AudienzzAdViewHandler @JvmOverloads constructor(
         // listener the publisher already set.
         val actualAppEventListener = publisherAppEventListener
         installedAppEventListener = AppEventListener { name, info ->
-            if (!acceptsGoogleEvents) return@AppEventListener
+            // A kept creative whose page is away still gets its attribution: its impression is
+            // recorded too ([keptOnInactivePage]), and must not be reported as an ad-server fill.
+            if (!(acceptsGoogleEvents || keptOnInactivePage)) return@AppEventListener
             actualAppEventListener?.onAppEvent(name, info)
             if (name.equals(PREBID_APP_EVENT, ignoreCase = true)) {
                 Log.d(TAG, "onAppEvent($name) — Prebid line item won for ${adView.adUnitId}")
