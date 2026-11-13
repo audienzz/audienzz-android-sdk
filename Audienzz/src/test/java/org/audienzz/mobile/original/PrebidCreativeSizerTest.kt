@@ -3,6 +3,7 @@ package org.audienzz.mobile.original
 import android.app.Activity
 import android.os.Looper
 import android.view.View
+import android.view.ViewGroup
 import com.google.android.gms.ads.AdSize
 import com.google.android.gms.ads.admanager.AdManagerAdView
 import org.junit.Assert.assertEquals
@@ -67,6 +68,73 @@ class PrebidCreativeSizerTest {
         googleServes(AdSize(300, 600))
         assertShows(300, 250)
         assertEquals("the app event settled it; no markup read needed", 0, markupReads)
+    }
+
+    /** Lays [adView] out in a wrap-content parent, as a publisher's slot does. */
+    private fun inWrapContentSlot(): android.widget.FrameLayout {
+        val slot = android.widget.FrameLayout(adView.context)
+        slot.addView(
+            adView,
+            android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+        return slot
+    }
+
+    private fun layOut(slot: View, width: Int, height: Int) {
+        // GAM's measure is a stub under Robolectric: model the size it would take from its adSize.
+        // The slot first: its own layout places the child at the child's measured size.
+        slot.layout(0, 0, width, height)
+        adView.layout(0, 0, width, height)
+    }
+
+    @Test
+    fun `restoring the sizes holds the view at the shown size until the next creative loads`() {
+        val slot = inWrapContentSlot()
+        sizer.beginLoad("320x50")
+        sizer.onPrebidRendered()
+        googleServes(AdSize(300, 250))
+        layOut(slot, 320, 50)
+
+        sizer.beginLoad(null)
+        assertEquals(320, adView.layoutParams.width)
+        assertEquals(
+            "not GAM's first size (600) while the 50 dp creative still shows",
+            50,
+            adView.layoutParams.height,
+        )
+
+        googleServes(AdSize(300, 250))
+        assertEquals(ViewGroup.LayoutParams.WRAP_CONTENT, adView.layoutParams.width)
+        assertEquals(ViewGroup.LayoutParams.WRAP_CONTENT, adView.layoutParams.height)
+    }
+
+    @Test
+    fun `a failed load keeps the hold and a released banner drops it`() {
+        val slot = inWrapContentSlot()
+        sizer.beginLoad("320x50")
+        sizer.onPrebidRendered()
+        googleServes(AdSize(300, 250))
+        layOut(slot, 320, 50)
+
+        sizer.beginLoad(null)
+        // No onGoogleLoaded: the load failed and the previous creative is still the one shown.
+        sizer.beginLoad(null)
+        assertEquals(50, adView.layoutParams.height)
+
+        sizer.cancel()
+        assertEquals(ViewGroup.LayoutParams.WRAP_CONTENT, adView.layoutParams.height)
+    }
+
+    @Test
+    fun `a view that was never resized is not held`() {
+        val slot = inWrapContentSlot()
+        googleServes(AdSize(300, 250))
+        layOut(slot, 300, 250)
+        sizer.beginLoad(null)
+        assertEquals(ViewGroup.LayoutParams.WRAP_CONTENT, adView.layoutParams.height)
     }
 
     @Test

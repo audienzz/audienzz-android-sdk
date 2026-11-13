@@ -62,6 +62,12 @@ internal class PrebidCreativeSizer(private val adView: AdManagerAdView) {
     /** Whether the current load was resized. Read-only, for tests. */
     internal val resized: Boolean get() = sizesBeforeResize != null
 
+    /**
+     * The view's own layout size while it is held at the size shown, put back when the next
+     * creative loads. Null when it is not held.
+     */
+    private var layoutBeforePin: Pair<Int, Int>? = null
+
     /** A new Google request is starting: forget the previous delivery. */
     fun beginLoad(hbSize: String?) {
         generation++
@@ -69,7 +75,13 @@ internal class PrebidCreativeSizer(private val adView: AdManagerAdView) {
         prebidRendered = false
         googleLoaded = false
         // A previous resize narrowed the view to one size. Request every configured size again.
-        sizesBeforeResize?.let { adView.setAdSizes(*it) }
+        // GAM's view takes the first of them at once and laid itself out at it (a 50 dp slot became
+        // 600 dp) while the previous creative was still showing, for the whole load. Hold the view
+        // at the size shown until the next creative is in.
+        sizesBeforeResize?.let {
+            pinToShownSize()
+            adView.setAdSizes(*it)
+        }
         sizesBeforeResize = null
         prebidSize = if (enabled) parseSize(hbSize) else null
     }
@@ -77,6 +89,7 @@ internal class PrebidCreativeSizer(private val adView: AdManagerAdView) {
     /** Google finished loading the current request. */
     fun onGoogleLoaded() {
         googleLoaded = true
+        releasePin()
         if (apply(via = "appEvent") || prebidRendered) return
         probeMarkup()
     }
@@ -92,6 +105,26 @@ internal class PrebidCreativeSizer(private val adView: AdManagerAdView) {
     fun cancel() {
         generation++
         probing = false
+        releasePin()
+    }
+
+    /** A failed load leaves the previous creative showing, so the pin stays until one loads. */
+    private fun pinToShownSize() {
+        val params = adView.layoutParams ?: return
+        if (adView.width <= 0 || adView.height <= 0) return
+        if (layoutBeforePin == null) layoutBeforePin = params.width to params.height
+        params.width = adView.width
+        params.height = adView.height
+        adView.layoutParams = params
+    }
+
+    private fun releasePin() {
+        val (width, height) = layoutBeforePin ?: return
+        layoutBeforePin = null
+        val params = adView.layoutParams ?: return
+        params.width = width
+        params.height = height
+        adView.layoutParams = params
     }
 
     private fun probeMarkup() {
