@@ -1,17 +1,15 @@
 Audienzz Android SDK
 ========
 
-## What's new in 0.3.6
+## What's new in 0.3.7
 
-- **Gallery ads for ePaper and other paged screens** (`AudienzzGalleryAds`): an ad is preloaded once
-  the reader is within `config.preloadDistancePages` pages of it (default 2). It is kept when the
-  reader opens an article and comes back, unless `config.refreshOnBack` is `true`. Refresh follows
-  `refreshTimeSeconds` and only counts while the ad is on screen.
-  See [Gallery Ads](#gallery-ads-epaper-paged-screens).
-- **`AudienzzAdViewHandler.keepsAdAcrossPages`** (off by default): a loaded banner is paused while
-  its page is not active and resumes on return, without a new auction.
-- **Fluid GAM size:** `gamConfig.includeFluid: true` also requests fluid creatives, such as GAM
-  native styles. Prebid is unchanged. See [Place a remote banner](#4-place-a-remote-banner).
+- **Banners are sized to the Prebid creative.** When a Prebid bid renders through a GAM creative of
+  another size (a 320x50 bid in a 300x250 creative, say), the banner takes the bid's size instead of
+  the GAM creative's. On by default for every banner through `AudienzzAdViewHandler`; turn it off
+  with `resizeToPrebidCreative = false` or the ad config's `config.resizeToPrebidCreative`. The
+  proper fix is still in GAM: size the Prebid line items' creatives by `hb_size`.
+- **`AudienzzRemoteBannerView.onAdSizeChanged`:** called when the banner was resized to the Prebid
+  creative, for hosts that size the slot themselves (React Native, Flutter).
 
 All new ad config fields are optional; without them the defaults apply. Full list:
 [CHANGELOG](CHANGELOG.md).
@@ -32,11 +30,11 @@ Google Mobile Ads **app ID**. GAM ad-unit paths and Prebid placement IDs come fr
 repositories { mavenCentral() }
 
 dependencies {
-  implementation 'com.audienzz:sdk:0.3.6'
+  implementation 'com.audienzz:sdk:0.3.7'
 }
 ```
 
-This guide targets Android SDK **0.3.6** (minimum Android API **24**). Find releases on
+This guide targets Android SDK **0.3.7** (minimum Android API **24**). Find releases on
 [Maven Central](https://central.sonatype.com/artifact/com.audienzz/sdk). Add your
 GAM/AdMob app ID to `AndroidManifest.xml` as `com.google.android.gms.ads.APPLICATION_ID`.
 In GAM, leave each banner ad unit's **refresh rate unset**; Audienzz owns refresh.
@@ -227,7 +225,7 @@ repositories {
 }
 
 dependencies {
-  implementation 'com.audienzz:sdk:0.3.6'
+  implementation 'com.audienzz:sdk:0.3.7'
 }
 ```
 

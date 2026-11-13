@@ -3,7 +3,7 @@
 All notable changes to the Audienzz Android SDK are documented here. This project
 adheres to [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.3.7
 
 - **Banners are sized to the Prebid creative.** When a Prebid bid renders through a GAM creative of
   another size (a 300x250 bid in a 300x600 creative was left smaller and off-centre; a 300x600 bid
@@ -14,6 +14,9 @@ adheres to [Semantic Versioning](https://semver.org/).
   (`resizeToPrebidCreative = false` turns it off); remote banners take it from the ad config's
   `config.resizeToPrebidCreative`. The proper fix is still in GAM: size the Prebid line items'
   creatives by `hb_size`.
+- **`AudienzzRemoteBannerView.onAdSizeChanged`** is called with the Prebid creative's size when the
+  banner was resized to it, for hosts that size the slot themselves (React Native, Flutter). A
+  banner the owner has replaced no longer reports.
 
 ## 0.3.6
 
