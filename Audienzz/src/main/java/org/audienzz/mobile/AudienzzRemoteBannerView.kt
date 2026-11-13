@@ -202,6 +202,16 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
     }
 
     /**
+     * Called on the main thread when the banner is resized after Google delivered it: to the Prebid
+     * creative's size, when GAM served a Prebid bid through a creative of another size (ad config
+     * `config.resizeToPrebidCreative`, on by default). May come just before [AdListener.onAdLoaded]
+     * or up to about a second after it. [getAdSize] returns the same size from then on. For hosts
+     * that size this view themselves (React Native, Flutter); a banner this view has since replaced
+     * never reports.
+     */
+    var onAdSizeChanged: ((AdSize) -> Unit)? = null
+
+    /**
      * The delivered size. [AdSize.FLUID] when a fluid ad served (ad config `gamConfig.includeFluid`):
      * its width/height are negative sentinels, so read this view's measured size instead.
      */
@@ -378,6 +388,9 @@ class AudienzzRemoteBannerView @JvmOverloads constructor(
         adViewHandler = handler
         handler.headerBiddingEnabled = headerBidding
         handler.resizeToPrebidCreative = config.config.resizeToPrebidCreative ?: true
+        handler.creativeSizer.onResized = { size ->
+            if (adViewHandler === handler) onAdSizeChanged?.invoke(size)
+        }
         pendingScreenKey?.let { handler.hostScreenOverride = it }
         handler.keepsAdAcrossPages = galleryMode && !config.config.refreshOnBack
         // Before load(): a stop requested while config was resolving must be in place before the

@@ -209,4 +209,30 @@ class PrebidCreativeSizerTest {
         assertNull(PrebidCreativeSizer.parseSize("0x250"))
         assertNull(PrebidCreativeSizer.parseSize("fluid"))
     }
+
+    @Test
+    fun `the resize is reported once, with the Prebid size, also when found late in the markup`() {
+        val reported = mutableListOf<String>()
+        sizer.onResized = { reported += "${it.width}x${it.height}" }
+        sizer.beginLoad("300x250")
+        markupAnswers = mutableListOf(null, AdSize(300, 250))
+        googleServes(AdSize(300, 600))
+        assertEquals("nothing until the creative is known", emptyList<String>(), reported)
+        idle(2_000)
+        sizer.onPrebidRendered()
+        assertEquals(listOf("300x250"), reported)
+    }
+
+    @Test
+    fun `a creative kept at GAM's size is not reported as a resize`() {
+        val reported = mutableListOf<AdSize>()
+        sizer.onResized = { reported += it }
+        sizer.beginLoad("300x250")
+        googleServes(AdSize(300, 250))
+        sizer.onPrebidRendered()
+        sizer.beginLoad(null)
+        googleServes(AdSize(300, 600))
+        idle(2_000)
+        assertEquals(emptyList<AdSize>(), reported)
+    }
 }

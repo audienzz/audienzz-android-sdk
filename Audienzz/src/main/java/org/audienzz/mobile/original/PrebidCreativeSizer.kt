@@ -53,6 +53,9 @@ internal class PrebidCreativeSizer(private val adView: AdManagerAdView) {
     private var googleLoaded = false
     private var probing = false
 
+    /** Called with the Prebid creative's size once the view was resized to it. */
+    var onResized: ((AdSize) -> Unit)? = null
+
     /** The sizes the view requested before it was resized; the next request asks for them again. */
     private var sizesBeforeResize: Array<AdSize>? = null
 
@@ -139,6 +142,7 @@ internal class PrebidCreativeSizer(private val adView: AdManagerAdView) {
             "to" to "${target.width}x${target.height}",
             "via" to via,
         )
+        onResized?.invoke(target)
         return true
     }
 
